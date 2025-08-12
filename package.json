@@ -1,0 +1,76 @@
+{
+  "name": "openrouter-mcp",
+  "version": "1.0.0",
+  "description": "A Model Context Protocol (MCP) server for OpenRouter API - Access multiple AI models through a unified interface",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "openrouter",
+    "ai",
+    "llm",
+    "claude",
+    "gpt",
+    "anthropic",
+    "openai",
+    "fastmcp"
+  ],
+  "author": "Your Name <your.email@example.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/yourusername/openrouter-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/openrouter-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/openrouter-mcp/issues"
+  },
+  "bin": {
+    "openrouter-mcp": "./bin/openrouter-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "pytest.ini",
+    "docs/",
+    "README.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "scripts": {
+    "start": "node bin/openrouter-mcp.js start",
+    "init": "node bin/openrouter-mcp.js init",
+    "test": "cd . && python -m pytest tests/ -v",
+    "test:coverage": "cd . && python -m pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html",
+    "lint": "cd . && python -m ruff check src/ tests/",
+    "format": "cd . && python -m black src/ tests/",
+    "build": "echo 'Python package - no build step required'",
+    "prepublishOnly": "npm run test",
+    "postinstall": "node bin/check-python.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "inquirer": "^9.2.12",
+    "ora": "^6.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "eslint": "^8.53.0",
+    "prettier": "^3.0.3"
+  },
+  "preferGlobal": true,
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}
