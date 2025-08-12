@@ -25,7 +25,7 @@ from typing import Any
 from pathlib import Path
 
 import uvicorn
-from fastmcp import mcp
+from fastmcp import FastMCP
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Import handlers to register MCP tools
 from .handlers import chat  # noqa: F401
+from .handlers import multimodal  # noqa: F401
 
 
 def validate_environment() -> None:
@@ -60,44 +61,8 @@ def validate_environment() -> None:
     logger.info("Environment validation successful")
 
 
-@mcp.get("/health")
-async def health_check() -> dict[str, Any]:
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "openrouter-mcp",
-        "version": "1.0.0"
-    }
-
-
-@mcp.get("/info")
-async def server_info() -> dict[str, Any]:
-    """Server information endpoint."""
-    return {
-        "name": "OpenRouter MCP Server",
-        "description": "A Model Context Protocol server for OpenRouter API",
-        "version": "1.0.0",
-        "tools": [
-            {
-                "name": "chat_with_model",
-                "description": "Generate chat completion using OpenRouter API"
-            },
-            {
-                "name": "list_available_models", 
-                "description": "List all available models from OpenRouter"
-            },
-            {
-                "name": "get_usage_stats",
-                "description": "Get API usage statistics from OpenRouter"
-            }
-        ],
-        "capabilities": [
-            "chat_completion",
-            "streaming_response",
-            "model_listing",
-            "usage_tracking"
-        ]
-    }
+# Create FastMCP instance
+mcp = FastMCP("openrouter-mcp")
 
 
 def create_app():
@@ -107,16 +72,9 @@ def create_app():
     # Validate environment
     validate_environment()
     
-    # Configure MCP app
-    app = mcp.create_app(
-        name="openrouter-mcp",
-        version="1.0.0",
-        description="A Model Context Protocol server for OpenRouter API"
-    )
-    
     logger.info("OpenRouter MCP Server initialized successfully")
     
-    return app
+    return mcp
 
 
 def main():

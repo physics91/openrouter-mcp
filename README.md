@@ -8,7 +8,20 @@
 
 ## ✨ Features
 
-- 🤖 **Multi-Model Access**: Chat with GPT-4, Claude, Llama, Gemini, and 100+ other AI models
+- 🤖 **Multi-Model Access**: Chat with GPT-4o, Claude 3.5, Llama 3.3, Gemini 2.5, and 200+ other AI models
+- 🖼️ **Vision/Multimodal Support**: Analyze images and visual content with vision-capable models
+  - Support for base64-encoded images and image URLs
+  - Automatic image resizing and optimization for API limits
+  - Compatible with GPT-4o, Claude 3.5, Gemini 2.5, Llama Vision, and more
+- 🚀 **Latest Models (Jan 2025)**: Always up-to-date with the newest models
+  - OpenAI o1, GPT-4o, GPT-4 Turbo
+  - Claude 3.5 Sonnet, Claude 3 Opus
+  - Gemini 2.5 Pro/Flash (1M+ context)
+  - DeepSeek V3, Grok 2, and more
+- ⚡ **Intelligent Caching**: Smart model list caching for improved performance
+  - In-memory and persistent file caching
+  - Configurable TTL with automatic refresh
+  - Enhanced model metadata and categorization
 - 🔄 **Streaming Support**: Real-time response streaming for better user experience
 - 📊 **Usage Tracking**: Monitor API usage, costs, and token consumption
 - 🛡️ **Error Handling**: Robust error handling with detailed logging
@@ -201,7 +214,7 @@ Once integrated with Claude Desktop or Claude Code CLI, you'll have access to th
 Chat with any available AI model.
 
 **Parameters:**
-- `model`: Model ID (e.g., "openai/gpt-4", "anthropic/claude-3-sonnet")
+- `model`: Model ID (e.g., "openai/gpt-4o", "anthropic/claude-3.5-sonnet")
 - `messages`: Conversation history
 - `temperature`: Creativity level (0.0-2.0)
 - `max_tokens`: Maximum response length
@@ -210,7 +223,7 @@ Chat with any available AI model.
 **Example:**
 ```json
 {
-  "model": "openai/gpt-4",
+  "model": "openai/gpt-4o",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Explain quantum computing"}
@@ -242,6 +255,60 @@ Track your API usage and costs.
 - Total costs and token usage
 - Request counts
 - Model-specific breakdowns
+
+### 4. `chat_with_vision` 🖼️
+Chat with vision-capable models by sending images.
+
+**Parameters:**
+- `model`: Vision-capable model ID (e.g., "openai/gpt-4o", "anthropic/claude-3-opus", "google/gemini-pro-vision")
+- `messages`: Conversation history (supports both text and image content)
+- `images`: List of images (file paths, URLs, or base64 strings)
+- `temperature`: Creativity level (0.0-2.0)
+- `max_tokens`: Maximum response length
+
+**Image Format Support:**
+- **File paths**: `/path/to/image.jpg`, `./image.png`
+- **URLs**: `https://example.com/image.jpg`
+- **Base64**: Direct base64 strings (with or without data URI prefix)
+
+**Example - Multiple Images:**
+```json
+{
+  "model": "openai/gpt-4o",
+  "messages": [
+    {"role": "user", "content": "Compare these images and describe the differences"}
+  ],
+  "images": [
+    {"data": "/home/user/image1.jpg", "type": "path"},
+    {"data": "https://example.com/image2.png", "type": "url"},
+    {"data": "data:image/jpeg;base64,/9j/4AAQ...", "type": "base64"}
+  ]
+}
+```
+
+**Features:**
+- Automatic image format detection and conversion
+- Image resizing for API size limits (20MB max)
+- Support for JPEG, PNG, GIF, and WebP formats
+- Batch processing of multiple images
+
+### 5. `list_vision_models` 🖼️
+Get all vision-capable models.
+
+**Parameters:** None
+
+**Returns:**
+- List of models that support image analysis
+- Model capabilities and pricing information
+- Context window sizes for multimodal content
+
+**Example Vision Models:**
+- `openai/gpt-4o`: OpenAI's latest multimodal model
+- `openai/gpt-4o-mini`: Fast and cost-effective vision model
+- `anthropic/claude-3-opus`: Most capable Claude vision model
+- `anthropic/claude-3-sonnet`: Balanced Claude vision model
+- `google/gemini-pro-vision`: Google's multimodal AI
+- `meta-llama/llama-3.2-90b-vision-instruct`: Meta's vision-capable Llama model
 
 ## 🔧 Configuration
 
@@ -277,22 +344,26 @@ LOG_LEVEL=info
 Here are some popular models available through OpenRouter:
 
 ### OpenAI Models
-- `openai/gpt-4`: Most capable GPT-4 model
-- `openai/gpt-3.5-turbo`: Fast and cost-effective
-- `openai/gpt-4-vision-preview`: GPT-4 with vision capabilities
+- `openai/gpt-4o`: Most capable multimodal GPT-4 model (text + vision)
+- `openai/gpt-4o-mini`: Fast and cost-effective with vision support
+- `openai/gpt-4`: Most capable text-only GPT-4 model
+- `openai/gpt-3.5-turbo`: Fast and cost-effective text model
 
 ### Anthropic Models
-- `anthropic/claude-3-opus`: Most capable Claude model
-- `anthropic/claude-3-sonnet`: Balanced capability and speed
-- `anthropic/claude-3-haiku`: Fast and efficient
+- `anthropic/claude-3-opus`: Most capable Claude model (text + vision)
+- `anthropic/claude-3-sonnet`: Balanced capability and speed (text + vision)
+- `anthropic/claude-3-haiku`: Fast and efficient (text + vision)
 
 ### Open Source Models
-- `meta-llama/llama-2-70b-chat`: Meta's flagship model
+- `meta-llama/llama-3.2-90b-vision-instruct`: Meta's flagship vision model
+- `meta-llama/llama-3.2-11b-vision-instruct`: Smaller vision-capable Llama
+- `meta-llama/llama-2-70b-chat`: Meta's text-only flagship model
 - `mistralai/mixtral-8x7b-instruct`: Efficient mixture of experts
 - `microsoft/wizardlm-2-8x22b`: High-quality instruction following
 
 ### Specialized Models
-- `google/gemini-pro`: Google's multimodal AI
+- `google/gemini-pro-vision`: Google's multimodal AI (text + vision)
+- `google/gemini-pro`: Google's text-only model
 - `cohere/command-r-plus`: Great for RAG applications
 - `perplexity/llama-3-sonar-large-32k-online`: Web-connected model
 
@@ -315,6 +386,9 @@ python --version
 ```bash
 # Install manually if needed
 pip install -r requirements.txt
+
+# For multimodal/vision features
+pip install Pillow>=10.0.0
 ```
 
 **3. API key not configured**
@@ -380,17 +454,25 @@ openrouter-mcp/
 │   └── check-python.js    # Python environment checker
 ├── src/openrouter_mcp/    # Python MCP server
 │   ├── client/            # OpenRouter API client
+│   │   └── openrouter.py  # Main API client with vision support
 │   ├── handlers/          # MCP tool handlers
+│   │   ├── chat.py        # Text-only chat handlers
+│   │   └── multimodal.py  # Vision/multimodal handlers
 │   └── server.py          # Main server entry point
 ├── tests/                 # Test suite
+│   ├── test_chat.py       # Chat functionality tests
+│   └── test_multimodal.py # Multimodal functionality tests
+├── examples/              # Usage examples
+│   └── multimodal_example.py # Multimodal usage examples
 ├── docs/                  # Documentation
-├── requirements.txt       # Python dependencies
+├── requirements.txt       # Python dependencies (includes Pillow)
 └── package.json          # Node.js package config
 ```
 
 ## 📚 Documentation
 
 - [API Documentation](docs/API.md) - Detailed API reference
+- [Multimodal/Vision Guide](docs/MULTIMODAL_GUIDE.md) - Complete vision capabilities guide
 - [Claude Desktop Integration](docs/CLAUDE_DESKTOP_GUIDE.md) - Complete Desktop setup guide
 - [Claude Code CLI Integration](docs/CLAUDE_CODE_GUIDE.md) - Terminal workflow integration
 - [Contributing Guide](CONTRIBUTING.md) - Development guidelines

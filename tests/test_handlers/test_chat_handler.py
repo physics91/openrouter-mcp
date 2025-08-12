@@ -32,7 +32,7 @@ class TestChatHandler:
                 max_tokens=100
             )
             
-            result = await chat_with_model(request)
+            result = await chat_with_model.fn(request)
             
             assert result["choices"][0]["message"]["content"] == "Hello! How can I help you today?"
             assert result["usage"]["total_tokens"] == 18
@@ -65,7 +65,7 @@ class TestChatHandler:
                 stream=True
             )
             
-            result = await chat_with_model(request)
+            result = await chat_with_model.fn(request)
             
             # For streaming, result should be a list of chunks
             assert isinstance(result, list)
@@ -88,7 +88,7 @@ class TestChatHandler:
             )
             
             with pytest.raises(ValueError, match="Invalid model"):
-                await chat_with_model(request)
+                await chat_with_model.fn(request)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -105,7 +105,7 @@ class TestChatHandler:
             )
             
             with pytest.raises(OpenRouterError, match="API error"):
-                await chat_with_model(request)
+                await chat_with_model.fn(request)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -118,7 +118,7 @@ class TestChatHandler:
             
             request = ModelListRequest()
             
-            result = await list_available_models(request)
+            result = await list_available_models.fn(request)
             
             assert len(result) == 2
             assert result[0]["id"] == "openai/gpt-4"
@@ -139,7 +139,7 @@ class TestChatHandler:
             
             request = ModelListRequest(filter_by="gpt")
             
-            result = await list_available_models(request)
+            result = await list_available_models.fn(request)
             
             assert len(result) == 1
             assert result[0]["id"] == "openai/gpt-4"
@@ -158,7 +158,7 @@ class TestChatHandler:
             request = ModelListRequest()
             
             with pytest.raises(OpenRouterError, match="API error"):
-                await list_available_models(request)
+                await list_available_models.fn(request)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -181,7 +181,7 @@ class TestChatHandler:
                 end_date="2024-01-31"
             )
             
-            result = await get_usage_stats(request)
+            result = await get_usage_stats.fn(request)
             
             assert result["total_cost"] == 0.00054
             assert result["total_tokens"] == 18
@@ -211,7 +211,7 @@ class TestChatHandler:
             
             request = UsageStatsRequest()
             
-            result = await get_usage_stats(request)
+            result = await get_usage_stats.fn(request)
             
             assert result["total_cost"] == 0.00054
             
@@ -232,7 +232,7 @@ class TestChatHandler:
             request = UsageStatsRequest()
             
             with pytest.raises(OpenRouterError, match="API error"):
-                await get_usage_stats(request)
+                await get_usage_stats.fn(request)
 
     @pytest.mark.unit
     def test_chat_completion_request_validation(self):

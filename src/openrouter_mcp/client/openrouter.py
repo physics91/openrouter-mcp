@@ -5,6 +5,8 @@ import httpx
 import json as json_lib
 from contextlib import asynccontextmanager
 
+from ..models import ModelCache, EnhancedModelInfo
+
 
 class OpenRouterError(Exception):
     """Base exception for OpenRouter API errors."""
@@ -48,7 +50,9 @@ class OpenRouterClient:
         app_name: Optional[str] = None,
         http_referer: Optional[str] = None,
         timeout: float = 30.0,
-        logger: Optional[logging.Logger] = None
+        logger: Optional[logging.Logger] = None,
+        enable_cache: bool = True,
+        cache_ttl: int = 3600
     ) -> None:
         """Initialize OpenRouter client.
         
@@ -59,6 +63,8 @@ class OpenRouterClient:
             http_referer: HTTP referer for tracking
             timeout: Request timeout in seconds
             logger: Custom logger instance
+            enable_cache: Whether to enable model caching
+            cache_ttl: Cache time-to-live in seconds
             
         Raises:
             ValueError: If API key is empty or None
@@ -72,8 +78,15 @@ class OpenRouterClient:
         self.http_referer = http_referer
         self.timeout = timeout
         self.logger = logger or logging.getLogger(__name__)
+        self.enable_cache = enable_cache
         
         self._client = httpx.AsyncClient(timeout=timeout)
+        
+        # Initialize model cache
+        if enable_cache:
+            self._model_cache = ModelCache(ttl_seconds=cache_ttl)
+        else:
+            self._model_cache = None
     
     @classmethod
     def from_env(cls) -> "OpenRouterClient":
@@ -262,7 +275,12 @@ class OpenRouterClient:
         else:
             raise OpenRouterError(f"API error: {error_message}")
     
-    async def list_models(self, filter_by: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_models(
+        self,
+        filter_by: Optional[str] = None,
+        use_cache: bool = True,
+        enhance_info: bool = True
+    ) -> List[Dict[str, Any]]:
         """List available models from OpenRouter.
         
         Retrieves a list of all available AI models, optionally filtered by name.
@@ -270,6 +288,8 @@ class OpenRouterClient:
         
         Args:
             filter_by: Optional string to filter model names (case-insensitive)
+            use_cache: Whether to use cached models if available
+            enhance_info: Whether to enhance model info with additional metadata
             
         Returns:
             List of dictionaries containing model information with keys:
@@ -287,14 +307,39 @@ class OpenRouterClient:
             >>> models = await client.list_models()
             >>> gpt_models = await client.list_models(filter_by="gpt")
         """
+        # Check cache first if enabled
+        if use_cache and self._model_cache and not filter_by:
+            cached_models = self._model_cache.get()
+            if cached_models is not None:
+                self.logger.info(f"Retrieved {len(cached_models)} models from cache")
+                if enhance_info:
+                    cached_models = [
+                        EnhancedModelInfo.enhance_model_info(model)
+                        for model in cached_models
+                    ]
+                return cached_models
+        
+        # Fetch from API
         params = {}
         if filter_by:
             params["filter"] = filter_by
         
-        self.logger.info(f"Listing models with filter: {filter_by or 'none'}")
+        self.logger.info(f"Listing models from API with filter: {filter_by or 'none'}")
         response = await self._make_request("GET", "/models", params=params)
         models = response.get("data", [])
-        self.logger.info(f"Retrieved {len(models)} models")
+        self.logger.info(f"Retrieved {len(models)} models from API")
+        
+        # Cache the unfiltered results
+        if use_cache and self._model_cache and not filter_by:
+            self._model_cache.set(models)
+        
+        # Enhance model info if requested
+        if enhance_info:
+            models = [
+                EnhancedModelInfo.enhance_model_info(model)
+                for model in models
+            ]
+        
         return models
     
     async def get_model_info(self, model: str) -> Dict[str, Any]:
@@ -312,7 +357,7 @@ class OpenRouterClient:
     async def chat_completion(
         self,
         model: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         stream: bool = False,
@@ -322,7 +367,7 @@ class OpenRouterClient:
         
         Args:
             model: Model to use
-            messages: List of message dictionaries
+            messages: List of message dictionaries (can include image content)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             stream: Whether to stream the response
@@ -332,7 +377,9 @@ class OpenRouterClient:
             Chat completion response
         """
         self._validate_model(model)
-        self._validate_messages(messages)
+        # Skip message validation for multimodal messages (they have different structure)
+        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
+            self._validate_messages(messages)
         
         payload = {
             "model": model,
@@ -347,10 +394,55 @@ class OpenRouterClient:
         
         return await self._make_request("POST", "/chat/completions", json=payload)
     
+    async def chat_completion_with_vision(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        stream: bool = False,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Create a chat completion with vision/image support.
+        
+        This method specifically handles messages that contain images,
+        properly formatting them for vision-capable models.
+        
+        Args:
+            model: Vision-capable model to use
+            messages: List of message dictionaries with potential image content
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            stream: Whether to stream the response
+            **kwargs: Additional parameters
+            
+        Returns:
+            Chat completion response
+            
+        Example:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "What's in this image?"},
+                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+                    ]
+                }
+            ]
+        """
+        return await self.chat_completion(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=stream,
+            **kwargs
+        )
+    
     async def stream_chat_completion(
         self,
         model: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         **kwargs
@@ -359,7 +451,7 @@ class OpenRouterClient:
         
         Args:
             model: Model to use
-            messages: List of message dictionaries
+            messages: List of message dictionaries (can include image content)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             **kwargs: Additional parameters
@@ -368,7 +460,9 @@ class OpenRouterClient:
             Chat completion chunks
         """
         self._validate_model(model)
-        self._validate_messages(messages)
+        # Skip message validation for multimodal messages
+        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
+            self._validate_messages(messages)
         
         payload = {
             "model": model,
@@ -382,6 +476,35 @@ class OpenRouterClient:
             payload["max_tokens"] = max_tokens
         
         async for chunk in self._stream_request("/chat/completions", payload):
+            yield chunk
+    
+    async def stream_chat_completion_with_vision(
+        self,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Create a streaming chat completion with vision support.
+        
+        Args:
+            model: Vision-capable model to use
+            messages: List of message dictionaries with potential image content
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            **kwargs: Additional parameters
+            
+        Yields:
+            Chat completion chunks
+        """
+        async for chunk in self.stream_chat_completion(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        ):
             yield chunk
     
     async def track_usage(
@@ -409,6 +532,22 @@ class OpenRouterClient:
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
+    
+    def get_cache_info(self) -> Optional[Dict[str, Any]]:
+        """Get information about the model cache.
+        
+        Returns:
+            Cache information dictionary or None if cache is disabled.
+        """
+        if self._model_cache:
+            return self._model_cache.get_info()
+        return None
+    
+    def clear_cache(self) -> None:
+        """Clear the model cache."""
+        if self._model_cache:
+            self._model_cache.clear()
+            self.logger.info("Model cache cleared")
     
     async def __aenter__(self) -> "OpenRouterClient":
         """Async context manager entry."""

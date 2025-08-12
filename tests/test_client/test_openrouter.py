@@ -80,12 +80,12 @@ class TestOpenRouterClient:
         self, mock_api_key, mock_models_response, create_response
     ):
         """Test successful models listing."""
-        client = OpenRouterClient(api_key=mock_api_key)
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
         
         with patch.object(client, '_make_request') as mock_request:
             mock_request.return_value = mock_models_response
             
-            models = await client.list_models()
+            models = await client.list_models(enhance_info=False)
             
             assert len(models) == 2
             assert models[0]["id"] == "openai/gpt-4"
@@ -98,7 +98,7 @@ class TestOpenRouterClient:
         self, mock_api_key, mock_models_response, create_response
     ):
         """Test models listing with filter."""
-        client = OpenRouterClient(api_key=mock_api_key)
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
         
         with patch.object(client, '_make_request') as mock_request:
             mock_request.return_value = mock_models_response
@@ -228,7 +228,7 @@ class TestOpenRouterClient:
     @pytest.mark.asyncio
     async def test_authentication_error(self, mock_api_key, mock_error_response):
         """Test authentication error handling."""
-        client = OpenRouterClient(api_key=mock_api_key)
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
         
         with patch.object(client._client, 'request') as mock_request:
             mock_response = Mock()
@@ -246,7 +246,7 @@ class TestOpenRouterClient:
     @pytest.mark.asyncio
     async def test_rate_limit_error(self, mock_api_key):
         """Test rate limit error handling."""
-        client = OpenRouterClient(api_key=mock_api_key)
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
         
         with patch.object(client._client, 'request') as mock_request:
             mock_response = Mock()
@@ -295,7 +295,7 @@ class TestOpenRouterClient:
     @pytest.mark.asyncio
     async def test_network_error_handling(self, mock_api_key):
         """Test network error handling."""
-        client = OpenRouterClient(api_key=mock_api_key)
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
         
         with patch.object(client._client, 'request') as mock_request:
             mock_request.side_effect = httpx.ConnectError("Connection failed")
