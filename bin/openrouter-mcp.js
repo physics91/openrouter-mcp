@@ -66,6 +66,15 @@ program
     await installClaudeConfig();
   });
 
+// Install command for Claude Code CLI
+program
+  .command('install-claude-code')
+  .description('Install configuration for Claude Code CLI')
+  .action(async () => {
+    console.log(chalk.green('💻 Installing Claude Code CLI configuration...'));
+    await installClaudeCodeConfig();
+  });
+
 async function checkPythonRequirements() {
   console.log(chalk.blue('🐍 Checking Python environment...'));
   
@@ -204,18 +213,25 @@ LOG_LEVEL=info
   fs.writeFileSync('.env', envContent);
   console.log(chalk.green('✓ Configuration saved to .env file'));
   
-  // Ask about Claude Desktop integration
-  const { installClaude } = await inquirer.prompt([
+  // Ask about Claude integrations
+  const { integrations } = await inquirer.prompt([
     {
-      type: 'confirm',
-      name: 'installClaude',
-      message: 'Would you like to configure Claude Desktop integration?',
-      default: true
+      type: 'checkbox',
+      name: 'integrations',
+      message: 'Which Claude integrations would you like to configure?',
+      choices: [
+        { name: 'Claude Desktop', value: 'desktop', checked: true },
+        { name: 'Claude Code CLI', value: 'code', checked: true }
+      ]
     }
   ]);
   
-  if (installClaude) {
+  if (integrations.includes('desktop')) {
     await installClaudeConfig();
+  }
+  
+  if (integrations.includes('code')) {
+    await installClaudeCodeConfig();
   }
   
   console.log(chalk.green('🎉 Initialization complete! Run "openrouter-mcp start" to begin.'));
@@ -302,6 +318,89 @@ async function installClaudeConfig() {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log(chalk.green(`✓ Claude Desktop configuration updated: ${configPath}`));
   console.log(chalk.blue('💡 Restart Claude Desktop to use OpenRouter tools'));
+}
+
+async function installClaudeCodeConfig() {
+  const homeDir = os.homedir();
+  let configPath;
+  
+  // Determine Claude Code CLI config path based on OS
+  switch (os.platform()) {
+    case 'darwin':
+      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
+      break;
+    case 'win32':
+      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
+      break;
+    default:
+      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
+  }
+  
+  // Check if Claude Code CLI is installed
+  try {
+    await runCommand('claude-code', ['--version']);
+    console.log(chalk.green('✓ Claude Code CLI detected'));
+  } catch (error) {
+    console.log(chalk.yellow('⚠️  Claude Code CLI not found. Please install it first:'));
+    console.log(chalk.blue('   npm install -g @anthropic/claude-code'));
+    console.log(chalk.blue('   or visit: https://docs.anthropic.com/en/docs/claude-code'));
+    return;
+  }
+  
+  // Create directory if it doesn't exist
+  const configDir = path.dirname(configPath);
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+  
+  // Read existing config or create new one
+  let config = { mcpServers: {} };
+  if (fs.existsSync(configPath)) {
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (error) {
+      console.log(chalk.yellow('⚠️  Existing config file is invalid, creating new one'));
+    }
+  }
+  
+  // Check if API key is available
+  const apiKey = process.env.OPENROUTER_API_KEY || 
+    (fs.existsSync('.env') && fs.readFileSync('.env', 'utf8').match(/OPENROUTER_API_KEY=(.+)/)?.[1]) ||
+    'your-openrouter-api-key';
+  
+  if (apiKey === 'your-openrouter-api-key') {
+    console.log(chalk.yellow('⚠️  No API key found. Run "openrouter-mcp init" first to configure your API key.'));
+  }
+  
+  // Add OpenRouter MCP server
+  config.mcpServers = config.mcpServers || {};
+  config.mcpServers.openrouter = {
+    command: "npx",
+    args: ["openrouter-mcp", "start"],
+    env: {
+      OPENROUTER_API_KEY: apiKey
+    }
+  };
+  
+  // Write config
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log(chalk.green(`✓ Claude Code CLI configuration updated: ${configPath}`));
+  console.log(chalk.blue('💡 OpenRouter tools are now available in Claude Code CLI'));
+  console.log(chalk.blue('💡 Use commands like: "List available AI models using OpenRouter"'));
+  
+  // Show configuration example
+  console.log(chalk.cyan('\n📝 Configuration added:'));
+  console.log(chalk.gray(JSON.stringify({
+    mcpServers: {
+      openrouter: {
+        command: "npx",
+        args: ["openrouter-mcp", "start"],
+        env: {
+          OPENROUTER_API_KEY: "***"
+        }
+      }
+    }
+  }, null, 2)));
 }
 
 function runCommand(command, args) {

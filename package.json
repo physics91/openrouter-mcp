@@ -1,6 +1,6 @@
 {
   "name": "openrouter-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A Model Context Protocol (MCP) server for OpenRouter API - Access multiple AI models through a unified interface",
   "keywords": [
     "mcp",

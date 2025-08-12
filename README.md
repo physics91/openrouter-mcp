@@ -92,6 +92,9 @@ npx openrouter-mcp status
 
 # Configure Claude Desktop integration
 npx openrouter-mcp install-claude
+
+# Configure Claude Code CLI integration
+npx openrouter-mcp install-claude-code
 ```
 
 ### Start Server Options
@@ -141,9 +144,58 @@ Add to your Claude Desktop config file:
 
 Then restart Claude Desktop.
 
+## 💻 Claude Code CLI Integration
+
+### Automatic Setup
+
+```bash
+npx openrouter-mcp install-claude-code
+```
+
+This automatically configures Claude Code CLI to use OpenRouter models.
+
+### Manual Setup
+
+Add to your Claude Code CLI config file at `~/.claude/claude_code_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "openrouter": {
+      "command": "npx",
+      "args": ["openrouter-mcp", "start"],
+      "env": {
+        "OPENROUTER_API_KEY": "your-openrouter-api-key"
+      }
+    }
+  }
+}
+```
+
+### Usage with Claude Code CLI
+
+Once configured, you can use OpenRouter models directly in your terminal:
+
+```bash
+# Chat with different AI models
+claude-code "Use GPT-4 to explain this complex algorithm"
+claude-code "Have Claude Opus review my Python code"
+claude-code "Ask Llama 2 to suggest optimizations"
+
+# Model discovery and comparison
+claude-code "List all available AI models and their pricing"
+claude-code "Compare GPT-4 and Claude Sonnet for code generation"
+
+# Usage tracking
+claude-code "Show my OpenRouter API usage for today"
+claude-code "Which AI models am I using most frequently?"
+```
+
+For detailed setup instructions, see [Claude Code CLI Integration Guide](docs/CLAUDE_CODE_GUIDE.md).
+
 ## 🛠️ Available MCP Tools
 
-Once integrated with Claude Desktop, you'll have access to these tools:
+Once integrated with Claude Desktop or Claude Code CLI, you'll have access to these tools:
 
 ### 1. `chat_with_model`
 Chat with any available AI model.
@@ -339,6 +391,8 @@ openrouter-mcp/
 ## 📚 Documentation
 
 - [API Documentation](docs/API.md) - Detailed API reference
+- [Claude Desktop Integration](docs/CLAUDE_DESKTOP_GUIDE.md) - Complete Desktop setup guide
+- [Claude Code CLI Integration](docs/CLAUDE_CODE_GUIDE.md) - Terminal workflow integration
 - [Contributing Guide](CONTRIBUTING.md) - Development guidelines
 - [OpenRouter API Docs](https://openrouter.ai/docs) - Official OpenRouter documentation
 - [MCP Specification](https://modelcontextprotocol.io) - Model Context Protocol standard
