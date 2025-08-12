@@ -585,6 +585,19 @@ except Exception as e:
 4. Implement caching for repeated queries
 5. Use streaming for long responses to improve UX
 
+## Related Documentation
+
+- [Installation Guide](INSTALLATION.md) - Set up the OpenRouter MCP Server  
+- [Benchmarking Guide](BENCHMARK_GUIDE.md) - Compare model performance
+- [Model Metadata Guide](METADATA_GUIDE.md) - Model filtering and categorization
+- [Multimodal Guide](MULTIMODAL_GUIDE.md) - Image and vision capabilities
+- [Troubleshooting](TROUBLESHOOTING.md) - API usage issues and solutions
+
+For a complete documentation overview, see the [Documentation Index](INDEX.md).
+
 ---
+
+**Last Updated**: 2025-01-12
+**Version**: 1.0.0
 
 For more information, see the [main README](../README.md) or visit [OpenRouter Documentation](https://openrouter.ai/docs).

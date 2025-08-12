@@ -5,7 +5,8 @@ import httpx
 import json as json_lib
 from contextlib import asynccontextmanager
 
-from ..models import ModelCache, EnhancedModelInfo
+# Import ModelCache for intelligent caching
+from ..models.cache import ModelCache
 
 
 class OpenRouterError(Exception):
@@ -84,7 +85,9 @@ class OpenRouterClient:
         
         # Initialize model cache
         if enable_cache:
-            self._model_cache = ModelCache(ttl_seconds=cache_ttl)
+            # Convert seconds to hours for ModelCache
+            ttl_hours = max(1, cache_ttl // 3600)  # Minimum 1 hour
+            self._model_cache = ModelCache(ttl_hours=ttl_hours)
         else:
             self._model_cache = None
     
@@ -278,8 +281,7 @@ class OpenRouterClient:
     async def list_models(
         self,
         filter_by: Optional[str] = None,
-        use_cache: bool = True,
-        enhance_info: bool = True
+        use_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """List available models from OpenRouter.
         
@@ -289,7 +291,6 @@ class OpenRouterClient:
         Args:
             filter_by: Optional string to filter model names (case-insensitive)
             use_cache: Whether to use cached models if available
-            enhance_info: Whether to enhance model info with additional metadata
             
         Returns:
             List of dictionaries containing model information with keys:
@@ -307,39 +308,40 @@ class OpenRouterClient:
             >>> models = await client.list_models()
             >>> gpt_models = await client.list_models(filter_by="gpt")
         """
-        # Check cache first if enabled
-        if use_cache and self._model_cache and not filter_by:
-            cached_models = self._model_cache.get()
-            if cached_models is not None:
-                self.logger.info(f"Retrieved {len(cached_models)} models from cache")
-                if enhance_info:
-                    cached_models = [
-                        EnhancedModelInfo.enhance_model_info(model)
-                        for model in cached_models
-                    ]
-                return cached_models
+        # Use cache system if enabled
+        if use_cache and self._model_cache:
+            try:
+                all_models = await self._model_cache.get_models()
+                if all_models:
+                    self.logger.info(f"Retrieved {len(all_models)} models from cache")
+                    
+                    # Apply filter if specified
+                    if filter_by:
+                        filter_lower = filter_by.lower()
+                        filtered_models = [
+                            model for model in all_models 
+                            if filter_lower in model.get("name", "").lower() 
+                            or filter_lower in model.get("id", "").lower()
+                        ]
+                        self.logger.info(f"Filtered to {len(filtered_models)} models")
+                        return filtered_models
+                    else:
+                        return all_models
+            except Exception as e:
+                self.logger.warning(f"Failed to get cached models: {e}")
+                # Continue to API fetch
         
-        # Fetch from API
+        # Fallback: Fetch directly from API if cache is disabled or failed
+        self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
+        
         params = {}
         if filter_by:
             params["filter"] = filter_by
-        
-        self.logger.info(f"Listing models from API with filter: {filter_by or 'none'}")
+            
         response = await self._make_request("GET", "/models", params=params)
         models = response.get("data", [])
+        
         self.logger.info(f"Retrieved {len(models)} models from API")
-        
-        # Cache the unfiltered results
-        if use_cache and self._model_cache and not filter_by:
-            self._model_cache.set(models)
-        
-        # Enhance model info if requested
-        if enhance_info:
-            models = [
-                EnhancedModelInfo.enhance_model_info(model)
-                for model in models
-            ]
-        
         return models
     
     async def get_model_info(self, model: str) -> Dict[str, Any]:
@@ -540,13 +542,15 @@ class OpenRouterClient:
             Cache information dictionary or None if cache is disabled.
         """
         if self._model_cache:
-            return self._model_cache.get_info()
+            return self._model_cache.get_cache_stats()
         return None
     
-    def clear_cache(self) -> None:
+    async def clear_cache(self) -> None:
         """Clear the model cache."""
         if self._model_cache:
-            self._model_cache.clear()
+            # Clear memory cache
+            self._model_cache._memory_cache = []
+            self._model_cache._last_update = None
             self.logger.info("Model cache cleared")
     
     async def __aenter__(self) -> "OpenRouterClient":

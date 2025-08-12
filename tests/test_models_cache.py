@@ -1,431 +1,425 @@
-"""Tests for OpenRouter model caching and fetching functionality."""
+#!/usr/bin/env python3
+"""
+Tests for dynamic model caching and updating functionality.
 
-import asyncio
-import json
-import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+This test suite follows TDD principles to implement model caching system
+that keeps the latest AI models from OpenRouter API.
+"""
 
 import pytest
-import httpx
+import time
+import json
+import tempfile
+from unittest.mock import MagicMock, patch, mock_open
+from datetime import datetime, timedelta
+from pathlib import Path
 
-from src.openrouter_mcp.client.openrouter import OpenRouterClient
 
+class TestModelCache:
+    """Test dynamic model caching system - TDD RED phase."""
 
-class TestModelCaching:
-    """Test cases for model list caching and real-time fetching."""
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_fetch_latest_models_from_api(self, mock_api_key):
-        """Test fetching the latest models from OpenRouter API."""
-        client = OpenRouterClient(api_key=mock_api_key)
-        
-        # Mock response with latest models (January 2025)
-        mock_latest_models = {
-            "data": [
-                # OpenAI Models
-                {"id": "openai/gpt-4o", "name": "GPT-4o", "context_length": 128000},
-                {"id": "openai/gpt-4o-mini", "name": "GPT-4o Mini", "context_length": 128000},
-                {"id": "openai/gpt-4-turbo", "name": "GPT-4 Turbo", "context_length": 128000},
-                {"id": "openai/o1", "name": "OpenAI o1", "context_length": 200000},
-                {"id": "openai/o1-mini", "name": "OpenAI o1-mini", "context_length": 128000},
-                
-                # Anthropic Models
-                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "context_length": 200000},
-                {"id": "anthropic/claude-3-opus", "name": "Claude 3 Opus", "context_length": 200000},
-                {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku", "context_length": 200000},
-                
-                # Google Models
-                {"id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "context_length": 1048576},
-                {"id": "google/gemini-2.5-flash", "name": "Gemini 2.5 Flash", "context_length": 1048576},
-                {"id": "google/gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "context_length": 1048576},
-                {"id": "google/gemini-pro-1.5", "name": "Gemini Pro 1.5", "context_length": 2000000},
-                
-                # Meta Models
-                {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B", "context_length": 128000},
-                {"id": "meta-llama/llama-3.2-90b-vision-instruct", "name": "Llama 3.2 90B Vision", "context_length": 128000},
-                {"id": "meta-llama/llama-3.2-11b-vision-instruct", "name": "Llama 3.2 11B Vision", "context_length": 128000},
-                
-                # Mistral Models
-                {"id": "mistralai/mistral-large", "name": "Mistral Large", "context_length": 128000},
-                {"id": "mistralai/mistral-medium", "name": "Mistral Medium", "context_length": 32768},
-                {"id": "mistralai/mixtral-8x22b-instruct", "name": "Mixtral 8x22B", "context_length": 65536},
-                {"id": "mistralai/devstral-small-2505", "name": "Devstral Small 2505", "context_length": 32768},
-                
-                # DeepSeek Models
-                {"id": "deepseek/deepseek-v3", "name": "DeepSeek V3", "context_length": 64000},
-                {"id": "deepseek/deepseek-chat", "name": "DeepSeek Chat", "context_length": 64000},
-                {"id": "deepseek/deepseek-coder", "name": "DeepSeek Coder", "context_length": 16384},
-                
-                # Qwen Models
-                {"id": "qwen/qwen-2.5-72b-instruct", "name": "Qwen 2.5 72B", "context_length": 128000},
-                {"id": "qwen/qwen-2.5-coder-32b-instruct", "name": "Qwen 2.5 Coder", "context_length": 32768},
-                
-                # xAI Models
-                {"id": "xai/grok-2", "name": "Grok 2", "context_length": 131072},
-                {"id": "xai/grok-2-vision", "name": "Grok 2 Vision", "context_length": 32768},
-            ]
-        }
-        
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = mock_latest_models
-            
-            models = await client.list_models(enhance_info=False)
-            
-            # Verify we got all major providers
-            model_ids = [m["id"] for m in models]
-            
-            # Check OpenAI models
-            assert "openai/gpt-4o" in model_ids
-            assert "openai/o1" in model_ids
-            
-            # Check Anthropic models
-            assert "anthropic/claude-3.5-sonnet" in model_ids
-            assert "anthropic/claude-3-opus" in model_ids
-            
-            # Check Google models
-            assert "google/gemini-2.5-pro" in model_ids
-            assert "google/gemini-2.5-flash" in model_ids
-            
-            # Check Meta models
-            assert "meta-llama/llama-3.3-70b-instruct" in model_ids
-            
-            # Check other providers
-            assert "mistralai/mistral-large" in model_ids
-            assert "deepseek/deepseek-v3" in model_ids
-            assert "qwen/qwen-2.5-72b-instruct" in model_ids
-            assert "xai/grok-2" in model_ids
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_model_list_includes_metadata(self, mock_api_key):
-        """Test that model list includes important metadata."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
-        
-        mock_detailed_model = {
-            "data": [{
-                "id": "openai/gpt-4o",
-                "name": "GPT-4o",
-                "description": "OpenAI's most advanced multimodal model",
-                "context_length": 128000,
-                "architecture": {
-                    "modality": "text+image->text",
-                    "tokenizer": "GPT"
-                },
-                "pricing": {
-                    "prompt": "0.000005",
-                    "completion": "0.000015"
-                },
-                "top_provider": {
-                    "max_completion_tokens": 4096,
-                    "is_moderated": True
-                },
-                "supported_parameters": [
-                    "temperature", "max_tokens", "top_p", "tools", 
-                    "tool_choice", "response_format", "seed"
-                ]
-            }]
-        }
-        
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = mock_detailed_model
-            
-            models = await client.list_models(enhance_info=False)
-            model = models[0]
-            
-            # Verify metadata fields
-            assert "id" in model
-            assert "name" in model
-            assert "context_length" in model
-            assert "pricing" in model
-            assert "supported_parameters" in model
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_filter_models_by_provider(self, mock_api_key):
-        """Test filtering models by provider."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
-        
-        all_models = {
-            "data": [
-                {"id": "openai/gpt-4o", "name": "GPT-4o"},
-                {"id": "openai/gpt-4-turbo", "name": "GPT-4 Turbo"},
-                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5"},
-                {"id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
-            ]
-        }
-        
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = all_models
-            
-            # Test getting all models
-            models = await client.list_models(enhance_info=False)
-            assert len(models) == 4
-            
-            # Test filtering (simulated - actual API may handle differently)
-            openai_models = [m for m in models if m["id"].startswith("openai/")]
-            assert len(openai_models) == 2
-            assert all(m["id"].startswith("openai/") for m in openai_models)
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio 
-    async def test_model_validation_with_latest_models(self, mock_api_key):
-        """Test that the latest models are properly validated."""
-        client = OpenRouterClient(api_key=mock_api_key)
-        
-        # Test valid latest models
-        valid_models = [
-            "openai/gpt-4o",
-            "anthropic/claude-3.5-sonnet",
-            "google/gemini-2.5-pro",
-            "meta-llama/llama-3.3-70b-instruct",
-            "deepseek/deepseek-v3",
-            "xai/grok-2"
-        ]
-        
-        for model in valid_models:
-            client._validate_model(model)  # Should not raise
-        
-        # Test invalid models
-        with pytest.raises(ValueError):
-            client._validate_model("")
-        
-        with pytest.raises(ValueError):
-            client._validate_model(None)
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_multimodal_model_support(self, mock_api_key):
-        """Test that multimodal models are properly identified."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
-        
-        multimodal_models = {
+    @pytest.fixture
+    def mock_openrouter_models(self):
+        """Mock OpenRouter API response with latest 2025 models."""
+        return {
             "data": [
                 {
-                    "id": "openai/gpt-4o",
-                    "name": "GPT-4o",
+                    "id": "openai/gpt-5",
+                    "name": "GPT-5",
+                    "description": "OpenAI's most advanced model with enhanced reasoning",
+                    "context_length": 200000,
                     "architecture": {
-                        "modality": "text+image->text",
-                        "input_modalities": ["text", "image"],
-                        "output_modalities": ["text"]
-                    }
-                },
-                {
-                    "id": "google/gemini-2.5-pro",
-                    "name": "Gemini 2.5 Pro",
-                    "architecture": {
-                        "modality": "text+image->text",
-                        "input_modalities": ["text", "image", "file"],
-                        "output_modalities": ["text"]
-                    }
-                },
-                {
-                    "id": "meta-llama/llama-3.2-90b-vision-instruct",
-                    "name": "Llama 3.2 90B Vision",
-                    "architecture": {
-                        "modality": "text+image->text",
-                        "input_modalities": ["text", "image"],
-                        "output_modalities": ["text"]
-                    }
-                },
-                {
-                    "id": "xai/grok-2-vision",
-                    "name": "Grok 2 Vision",
-                    "architecture": {
-                        "modality": "text+image->text",
-                        "input_modalities": ["text", "image"],
-                        "output_modalities": ["text"]
-                    }
-                }
-            ]
-        }
-        
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = multimodal_models
-            
-            models = await client.list_models(enhance_info=False)
-            
-            # Check that all models support multimodal input
-            for model in models:
-                arch = model.get("architecture", {})
-                assert "image" in arch.get("input_modalities", [])
-                assert "text+image->text" in arch.get("modality", "")
-    
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_model_pricing_information(self, mock_api_key):
-        """Test that model pricing information is available."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
-        
-        models_with_pricing = {
-            "data": [
-                {
-                    "id": "openai/gpt-4o",
-                    "name": "GPT-4o",
+                        "modality": "text",
+                        "tokenizer": "cl100k_base",
+                        "instruct_type": "chatml"
+                    },
                     "pricing": {
                         "prompt": "0.000005",
-                        "completion": "0.000015",
-                        "image": "0.00765"
+                        "completion": "0.000015"
+                    },
+                    "top_provider": {
+                        "provider": "OpenAI"
                     }
                 },
                 {
-                    "id": "anthropic/claude-3.5-sonnet",
-                    "name": "Claude 3.5 Sonnet", 
+                    "id": "anthropic/claude-4",
+                    "name": "Claude 4",
+                    "description": "Anthropic's breakthrough AI with improved reliability",
+                    "context_length": 200000,
+                    "architecture": {
+                        "modality": "text",
+                        "tokenizer": "claude",
+                        "instruct_type": "claude"
+                    },
                     "pricing": {
-                        "prompt": "0.000003",
-                        "completion": "0.000015",
-                        "image": "0.0048"
+                        "prompt": "0.000015",
+                        "completion": "0.000075"
+                    },
+                    "top_provider": {
+                        "provider": "Anthropic"
                     }
                 },
                 {
-                    "id": "google/gemini-2.5-flash",
-                    "name": "Gemini 2.5 Flash",
+                    "id": "google/gemini-2-5-pro",
+                    "name": "Gemini 2.5 Pro",
+                    "description": "Google's advanced multimodal AI with 1M+ context",
+                    "context_length": 1000000,
+                    "architecture": {
+                        "modality": "text+image",
+                        "tokenizer": "gemini",
+                        "instruct_type": "gemini"
+                    },
                     "pricing": {
-                        "prompt": "0.0000003",
-                        "completion": "0.0000025",
-                        "image": "0.001238"
+                        "prompt": "0.0000025",
+                        "completion": "0.00001"
+                    },
+                    "top_provider": {
+                        "provider": "Google"
+                    }
+                },
+                {
+                    "id": "deepseek/deepseek-v3",
+                    "name": "DeepSeek V3",
+                    "description": "671B parameter MoE model with 37B active parameters",
+                    "context_length": 128000,
+                    "architecture": {
+                        "modality": "text",
+                        "tokenizer": "deepseek",
+                        "instruct_type": "chatml"
+                    },
+                    "pricing": {
+                        "prompt": "0.000001",
+                        "completion": "0.000002"
+                    },
+                    "top_provider": {
+                        "provider": "DeepSeek"
+                    }
+                },
+                {
+                    "id": "openai/o1",
+                    "name": "OpenAI o1",
+                    "description": "Advanced reasoning model for complex tasks",
+                    "context_length": 128000,
+                    "architecture": {
+                        "modality": "text",
+                        "tokenizer": "o200k_base",
+                        "instruct_type": "chatml"
+                    },
+                    "pricing": {
+                        "prompt": "0.000015",
+                        "completion": "0.00006"
+                    },
+                    "top_provider": {
+                        "provider": "OpenAI"
                     }
                 }
             ]
         }
+
+    @pytest.fixture
+    def cache_config(self):
+        """Configuration for model cache."""
+        return {
+            "ttl_hours": 1,
+            "max_memory_items": 1000,
+            "cache_file": "test_model_cache.json"
+        }
+
+    def test_model_cache_initialization(self, cache_config):
+        """Test that model cache initializes properly."""
+        from src.openrouter_mcp.models.cache import ModelCache
         
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = models_with_pricing
+        cache = ModelCache(**cache_config)
+        
+        assert cache.ttl_seconds == 3600  # 1 hour
+        assert cache.max_memory_items == 1000
+        assert cache.cache_file == "test_model_cache.json"
+        assert cache._memory_cache == []  # Memory cache is a list, not dict
+        assert cache._last_update is None
+
+    def test_cache_is_expired_initially(self, cache_config):
+        """Test that cache is considered expired initially."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        assert cache.is_expired() == True
+
+    def test_cache_expiry_logic(self, cache_config):
+        """Test cache expiry based on TTL."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        # Simulate cache update
+        cache._last_update = datetime.now()
+        assert cache.is_expired() == False
+        
+        # Simulate expired cache
+        cache._last_update = datetime.now() - timedelta(hours=2)
+        assert cache.is_expired() == True
+
+    @pytest.mark.asyncio
+    async def test_fetch_models_from_api(self, mock_openrouter_models, cache_config):
+        """Test fetching models from OpenRouter API."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
+            mock_client = MagicMock()
+            mock_client_getter.return_value = mock_client
             
-            models = await client.list_models(enhance_info=False)
-            
-            # Verify pricing information
-            for model in models:
-                assert "pricing" in model
-                assert "prompt" in model["pricing"]
-                assert "completion" in model["pricing"]
+            async def mock_aenter(self):
+                return mock_client
                 
-                # Convert to float to verify they're valid numbers
-                prompt_price = float(model["pricing"]["prompt"])
-                completion_price = float(model["pricing"]["completion"])
-                assert prompt_price >= 0
-                assert completion_price >= 0
-    
-    @pytest.mark.unit
+            async def mock_aexit(self, *args):
+                return None
+                
+            mock_client.__aenter__ = mock_aenter
+            mock_client.__aexit__ = mock_aexit
+            async def mock_list_models():
+                return mock_openrouter_models["data"]
+            mock_client.list_models = mock_list_models
+            
+            models = await cache._fetch_models_from_api()
+            
+            assert len(models) == 5
+            assert models[0]["id"] == "openai/gpt-5"
+            assert models[1]["id"] == "anthropic/claude-4"
+            assert models[2]["id"] == "google/gemini-2-5-pro"
+            # Verify the mock was called (no direct assert for function)
+
+    def test_save_to_file_cache(self, mock_openrouter_models, cache_config):
+        """Test saving models to file cache."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        models = mock_openrouter_models["data"]
+        
+        with patch('builtins.open', mock_open()) as mock_file:
+            cache._save_to_file_cache(models)
+            
+            mock_file.assert_called_once_with(cache_config["cache_file"], 'w', encoding='utf-8')
+            # Verify JSON was written
+            handle = mock_file()
+            written_data = ''.join(call[0][0] for call in handle.write.call_args_list)
+            saved_data = json.loads(written_data)
+            
+            assert "models" in saved_data
+            assert "updated_at" in saved_data
+            assert len(saved_data["models"]) == 5
+
+    def test_load_from_file_cache_success(self, mock_openrouter_models, cache_config):
+        """Test loading models from file cache when file exists."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        # Mock file content
+        cache_data = {
+            "models": mock_openrouter_models["data"],
+            "updated_at": datetime.now().isoformat()
+        }
+        mock_file_content = json.dumps(cache_data)
+        
+        with patch('builtins.open', mock_open(read_data=mock_file_content)):
+            with patch('pathlib.Path.exists', return_value=True):
+                models, last_update = cache._load_from_file_cache()
+                
+                assert len(models) == 5
+                assert models[0]["id"] == "openai/gpt-5"
+                assert last_update is not None
+
+    def test_load_from_file_cache_file_not_exists(self, cache_config):
+        """Test loading from file cache when file doesn't exist."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        with patch('pathlib.Path.exists', return_value=False):
+            models, last_update = cache._load_from_file_cache()
+            
+            assert models == []
+            assert last_update is None
+
     @pytest.mark.asyncio
-    async def test_context_length_comparison(self, mock_api_key):
-        """Test comparing context lengths of different models."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
+    async def test_get_models_cache_hit(self, mock_openrouter_models, cache_config):
+        """Test getting models when cache is valid (cache hit)."""
+        from src.openrouter_mcp.models.cache import ModelCache
         
-        models_with_context = {
-            "data": [
-                {"id": "openai/gpt-4o", "name": "GPT-4o", "context_length": 128000},
-                {"id": "openai/o1", "name": "OpenAI o1", "context_length": 200000},
-                {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5", "context_length": 200000},
-                {"id": "google/gemini-2.5-pro", "name": "Gemini 2.5 Pro", "context_length": 1048576},
-                {"id": "google/gemini-pro-1.5", "name": "Gemini Pro 1.5", "context_length": 2000000},
-            ]
-        }
+        cache = ModelCache(**cache_config)
         
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = models_with_context
-            
-            models = await client.list_models(enhance_info=False)
-            
-            # Sort by context length
-            sorted_models = sorted(models, key=lambda x: x["context_length"], reverse=True)
-            
-            # Verify Gemini Pro 1.5 has the largest context
-            assert sorted_models[0]["id"] == "google/gemini-pro-1.5"
-            assert sorted_models[0]["context_length"] == 2000000
-            
-            # Verify relative ordering
-            assert sorted_models[1]["id"] == "google/gemini-2.5-pro"
-            assert sorted_models[-1]["context_length"] == 128000
+        # Simulate valid cache
+        cache._memory_cache = mock_openrouter_models["data"]
+        cache._last_update = datetime.now()
+        
+        models = await cache.get_models()
+        
+        assert len(models) == 5
+        assert models[0]["id"] == "openai/gpt-5"
 
-
-class TestModelCacheImplementation:
-    """Test implementation of model caching functionality."""
-    
-    @pytest.mark.unit
-    def test_cache_structure(self):
-        """Test the structure for caching model data."""
-        cache = {
-            "timestamp": datetime.now().isoformat(),
-            "ttl_seconds": 3600,  # 1 hour cache
-            "models": [],
-            "version": "1.0.0"
-        }
-        
-        assert "timestamp" in cache
-        assert "ttl_seconds" in cache
-        assert "models" in cache
-        assert cache["ttl_seconds"] == 3600
-    
-    @pytest.mark.unit
-    def test_cache_expiry_check(self):
-        """Test checking if cache has expired."""
-        # Create expired cache
-        expired_cache = {
-            "timestamp": (datetime.now() - timedelta(hours=2)).isoformat(),
-            "ttl_seconds": 3600,
-            "models": []
-        }
-        
-        # Create valid cache
-        valid_cache = {
-            "timestamp": (datetime.now() - timedelta(minutes=30)).isoformat(),
-            "ttl_seconds": 3600,
-            "models": []
-        }
-        
-        def is_cache_expired(cache_data):
-            timestamp = datetime.fromisoformat(cache_data["timestamp"])
-            ttl = timedelta(seconds=cache_data["ttl_seconds"])
-            return datetime.now() > timestamp + ttl
-        
-        assert is_cache_expired(expired_cache) == True
-        assert is_cache_expired(valid_cache) == False
-    
-    @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_cache_refresh_on_expiry(self, mock_api_key):
-        """Test that cache refreshes when expired."""
-        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
+    async def test_get_models_cache_miss(self, mock_openrouter_models, cache_config):
+        """Test getting models when cache is expired (cache miss)."""
+        from src.openrouter_mcp.models.cache import ModelCache
         
-        # Simulate cache mechanism
-        cache = {"data": None, "timestamp": None, "ttl": 3600}
+        cache = ModelCache(**cache_config)
         
-        async def get_models_with_cache():
-            if cache["data"] is None or \
-               cache["timestamp"] is None or \
-               time.time() - cache["timestamp"] > cache["ttl"]:
-                # Cache miss or expired - fetch from API
-                cache["data"] = await client.list_models(enhance_info=False)
-                cache["timestamp"] = time.time()
-            return cache["data"]
+        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
+            mock_client = MagicMock()
+            mock_client_getter.return_value = mock_client
+            
+            async def mock_aenter(self):
+                return mock_client
+                
+            async def mock_aexit(self, *args):
+                return None
+                
+            mock_client.__aenter__ = mock_aenter
+            mock_client.__aexit__ = mock_aexit
+            async def mock_list_models():
+                return mock_openrouter_models["data"]
+            mock_client.list_models = mock_list_models
+            
+            with patch.object(cache, '_save_to_file_cache') as mock_save:
+                models = await cache.get_models()
+                
+                assert len(models) == 5
+                assert models[0]["id"] == "openai/gpt-5"
+                mock_save.assert_called_once()
+                # Cache should have enhanced models, not raw data
+                assert len(cache._memory_cache) == 5
+                # Check that models are enhanced with metadata
+                assert "provider" in cache._memory_cache[0]
+                assert "category" in cache._memory_cache[0]
+
+    def test_get_model_metadata(self, mock_openrouter_models, cache_config):
+        """Test extracting enhanced model metadata."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        from src.openrouter_mcp.utils.metadata import batch_enhance_models
         
-        mock_response = {"data": [{"id": "test/model", "name": "Test Model"}]}
+        cache = ModelCache(**cache_config)
+        # Enhance models before adding to cache (mimics what happens in _fetch_models_from_api)
+        cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
         
-        with patch.object(client, '_make_request') as mock_request:
-            mock_request.return_value = mock_response
+        # Test GPT-5 metadata
+        gpt5_meta = cache.get_model_metadata("openai/gpt-5")
+        assert gpt5_meta["provider"] == "openai"  # lowercase after enhancement
+        assert gpt5_meta["capabilities"]["supports_vision"] == False
+        assert gpt5_meta["context_length"] == 200000
+        
+        # Test Gemini multimodal metadata
+        gemini_meta = cache.get_model_metadata("google/gemini-2-5-pro")
+        assert gemini_meta["provider"] == "google"  # lowercase after enhancement
+        # Gemini has text+image modality, so should support vision
+        assert gemini_meta["capabilities"]["supports_vision"] == True
+        assert gemini_meta["context_length"] == 1000000
+
+    def test_filter_models_by_capability(self, mock_openrouter_models, cache_config):
+        """Test filtering models by specific capabilities."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        from src.openrouter_mcp.utils.metadata import batch_enhance_models
+        
+        cache = ModelCache(**cache_config)
+        # Enhance models before adding to cache
+        cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
+        
+        # Filter vision-capable models
+        vision_models = cache.filter_models(vision_capable=True)
+        assert len(vision_models) == 1
+        assert vision_models[0]["id"] == "google/gemini-2-5-pro"
+        
+        # Filter by provider
+        openai_models = cache.filter_models(provider="OpenAI")
+        assert len(openai_models) == 2
+        assert all("openai" in model["id"] for model in openai_models)
+
+    def test_get_latest_models(self, mock_openrouter_models, cache_config):
+        """Test identifying latest/newest models."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        cache._memory_cache = mock_openrouter_models["data"]
+        
+        latest_models = cache.get_latest_models()
+        
+        # Should include models with version indicators
+        latest_ids = [model["id"] for model in latest_models]
+        assert "openai/gpt-5" in latest_ids
+        assert "anthropic/claude-4" in latest_ids
+        assert "deepseek/deepseek-v3" in latest_ids
+
+    @pytest.mark.asyncio
+    async def test_refresh_cache_force(self, mock_openrouter_models, cache_config):
+        """Test force refreshing cache even when not expired."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        
+        cache = ModelCache(**cache_config)
+        
+        # Set valid cache
+        cache._memory_cache = [{"id": "old/model", "name": "Old Model"}]
+        cache._last_update = datetime.now()
+        
+        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
+            mock_client = MagicMock()
+            mock_client_getter.return_value = mock_client
             
-            # First call - cache miss
-            models1 = await get_models_with_cache()
-            assert models1 == mock_response["data"]
-            assert mock_request.call_count == 1
+            async def mock_aenter(self):
+                return mock_client
+                
+            async def mock_aexit(self, *args):
+                return None
+                
+            mock_client.__aenter__ = mock_aenter
+            mock_client.__aexit__ = mock_aexit
+            async def mock_list_models():
+                return mock_openrouter_models["data"]
+            mock_client.list_models = mock_list_models
             
-            # Second call - cache hit
-            models2 = await get_models_with_cache()
-            assert models2 == mock_response["data"]
-            assert mock_request.call_count == 1  # No additional API call
-            
-            # Simulate cache expiry
-            cache["timestamp"] = time.time() - 3601
-            
-            # Third call - cache expired
-            models3 = await get_models_with_cache()
-            assert models3 == mock_response["data"]
-            assert mock_request.call_count == 2  # New API call made
+            with patch.object(cache, '_save_to_file_cache') as mock_save:
+                await cache.refresh_cache(force=True)
+                
+                assert len(cache._memory_cache) == 5
+                assert cache._memory_cache[0]["id"] == "openai/gpt-5"
+                mock_save.assert_called_once()
+
+    def test_cache_statistics(self, mock_openrouter_models, cache_config):
+        """Test getting cache statistics."""
+        from src.openrouter_mcp.models.cache import ModelCache
+        from src.openrouter_mcp.utils.metadata import batch_enhance_models
+        
+        cache = ModelCache(**cache_config)
+        # Enhance models before adding to cache
+        cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
+        cache._last_update = datetime.now()
+        
+        stats = cache.get_cache_stats()
+        
+        assert stats["total_models"] == 5
+        # Providers are lowercase after enhancement
+        assert set(stats["providers"]) == {"openai", "anthropic", "google", "deepseek"}
+        assert stats["vision_capable_count"] == 1
+        assert "last_updated" in stats
+        assert stats["cache_size_mb"] > 0
 
 
-# Run tests
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestModelCacheIntegration:
+    """Integration tests for model cache with OpenRouter client."""
+
+    @pytest.mark.asyncio
+    async def test_openrouter_client_with_cache(self):
+        """Test OpenRouter client integrated with model cache."""
+        # This test will be implemented after cache system is built
+        pass
+
+    @pytest.mark.asyncio
+    async def test_mcp_handlers_use_cached_models(self):
+        """Test that MCP handlers use cached model information."""
+        # This test will be implemented after cache integration
+        pass
+
+    def test_cache_persistence_across_restarts(self):
+        """Test that cache persists across application restarts."""
+        # This test will be implemented with file cache system
+        pass

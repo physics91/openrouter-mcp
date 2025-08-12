@@ -1,5 +1,11 @@
-"""Model-related functionality for OpenRouter MCP Server."""
+#!/usr/bin/env python3
+"""
+Models module for OpenRouter MCP Server.
 
-from .cache import ModelCache, EnhancedModelInfo
+This module provides dynamic model caching and management functionality
+to keep the latest AI models from OpenRouter API.
+"""
 
-__all__ = ["ModelCache", "EnhancedModelInfo"]
+from .cache import ModelCache
+
+__all__ = ["ModelCache"]

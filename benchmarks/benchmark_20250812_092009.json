@@ -1,0 +1,100 @@
+{
+  "prompt": "Test multiple runs",
+  "models": [
+    "openai/gpt-4"
+  ],
+  "results": {
+    "openai/gpt-4": [
+      {
+        "model_id": "openai/gpt-4",
+        "prompt": "Test multiple runs",
+        "response": "Response 0",
+        "response_time_ms": 0.03933906555175781,
+        "tokens_used": 20,
+        "cost": 0.0,
+        "timestamp": "2025-08-12T09:20:07.765165+00:00",
+        "error": null,
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "input_cost_per_1k_tokens": null,
+        "output_cost_per_1k_tokens": null,
+        "quality_score": null,
+        "response_length": null,
+        "contains_code_example": null,
+        "language_coherence_score": null,
+        "throughput_tokens_per_second": null
+      },
+      {
+        "model_id": "openai/gpt-4",
+        "prompt": "Test multiple runs",
+        "response": "Response 1",
+        "response_time_ms": 0.09059906005859375,
+        "tokens_used": 21,
+        "cost": 0.0,
+        "timestamp": "2025-08-12T09:20:08.266534+00:00",
+        "error": null,
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "input_cost_per_1k_tokens": null,
+        "output_cost_per_1k_tokens": null,
+        "quality_score": null,
+        "response_length": null,
+        "contains_code_example": null,
+        "language_coherence_score": null,
+        "throughput_tokens_per_second": null
+      },
+      {
+        "model_id": "openai/gpt-4",
+        "prompt": "Test multiple runs",
+        "response": "Response 2",
+        "response_time_ms": 0.08535385131835938,
+        "tokens_used": 22,
+        "cost": 0.0,
+        "timestamp": "2025-08-12T09:20:08.774913+00:00",
+        "error": null,
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "input_cost_per_1k_tokens": null,
+        "output_cost_per_1k_tokens": null,
+        "quality_score": null,
+        "response_length": null,
+        "contains_code_example": null,
+        "language_coherence_score": null,
+        "throughput_tokens_per_second": null
+      }
+    ]
+  },
+  "metrics": {
+    "openai/gpt-4": {
+      "avg_response_time_ms": 0.07176399230957031,
+      "avg_tokens_used": 21.0,
+      "avg_cost": 0.0,
+      "total_cost": 0.0,
+      "success_rate": 1.0,
+      "sample_count": 3,
+      "avg_quality_score": null,
+      "avg_throughput": null,
+      "avg_prompt_tokens": null,
+      "avg_completion_tokens": null,
+      "cost_per_quality_point": null
+    }
+  },
+  "rankings": {
+    "speed": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 0.07176399230957031,
+        "unit": "ms"
+      }
+    ],
+    "cost": [],
+    "reliability": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 100.0,
+        "unit": "%"
+      }
+    ]
+  },
+  "timestamp": "2025-08-12T09:20:09.780727+00:00"
+}

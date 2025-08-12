@@ -1,0 +1,29 @@
+{
+  "timestamp": "2025-08-12T09:14:48.677695+00:00",
+  "results": {
+    "test-model": {
+      "model_id": "test-model",
+      "success": true,
+      "response": "Hi there\\!",
+      "error_message": null,
+      "timestamp": "2025-08-12T09:14:48.677668+00:00",
+      "metrics": {
+        "avg_response_time": 1.5,
+        "min_response_time": 1.5,
+        "max_response_time": 1.5,
+        "avg_cost": 0.001,
+        "min_cost": 0.001,
+        "max_cost": 0.001,
+        "avg_prompt_tokens": 0,
+        "avg_completion_tokens": 0,
+        "avg_total_tokens": 10.0,
+        "quality_score": 0,
+        "throughput": 0,
+        "success_rate": 1.0,
+        "speed_score": 0.975,
+        "cost_score": 0,
+        "throughput_score": 0.0
+      }
+    }
+  }
+}

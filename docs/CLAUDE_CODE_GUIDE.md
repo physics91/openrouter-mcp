@@ -489,3 +489,8 @@ For more information:
 - [Claude Desktop Integration](CLAUDE_DESKTOP_GUIDE.md)
 - [Contributing Guide](../CONTRIBUTING.md)
 - [OpenRouter Documentation](https://openrouter.ai/docs)
+
+---
+
+**Last Updated**: 2025-01-12
+**Version**: 1.0.0

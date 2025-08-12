@@ -85,7 +85,7 @@ class TestOpenRouterClient:
         with patch.object(client, '_make_request') as mock_request:
             mock_request.return_value = mock_models_response
             
-            models = await client.list_models(enhance_info=False)
+            models = await client.list_models()
             
             assert len(models) == 2
             assert models[0]["id"] == "openai/gpt-4"

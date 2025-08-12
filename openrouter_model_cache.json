@@ -1,0 +1,40 @@
+{
+  "models": [
+    {
+      "id": "legacy/model-v1",
+      "name": "Legacy Model",
+      "context_length": 4096,
+      "provider": "unknown",
+      "category": "chat",
+      "capabilities": {
+        "supports_vision": false,
+        "supports_function_calling": false,
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "supports_json_mode": false,
+        "supports_tool_use": false,
+        "max_tokens": 4096,
+        "max_output_tokens": 4096,
+        "supports_multiple_images": false,
+        "supports_pdf": false
+      },
+      "version_info": {
+        "version": "v1",
+        "release_date": null,
+        "is_latest": false,
+        "family": "unknown",
+        "full_version": "v1"
+      },
+      "performance_tier": "economy",
+      "cost_tier": "free",
+      "quality_score": 4.0,
+      "tags": [
+        "chat",
+        "economy",
+        "free",
+        "unknown"
+      ]
+    }
+  ],
+  "updated_at": "2025-08-12T17:44:35.377904"
+}

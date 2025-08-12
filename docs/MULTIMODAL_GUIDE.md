@@ -330,3 +330,8 @@ For detailed API documentation, see the [API Documentation](API.md#vision-endpoi
 - Rate limits apply per OpenRouter plan
 - Vision capabilities vary by model
 - Some models may have token limits affecting image analysis depth
+
+---
+
+**Last Updated**: 2025-01-12
+**Version**: 1.0.0

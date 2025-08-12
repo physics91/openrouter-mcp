@@ -1,0 +1,133 @@
+{
+  "providers": {
+    "openai": {
+      "display_name": "OpenAI",
+      "website": "https://openai.com",
+      "description": "Creator of GPT models and DALL-E",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "supports_function_calling": true,
+        "supports_json_mode": true
+      },
+      "model_families": ["gpt-4", "gpt-3.5", "o1", "dall-e", "whisper"]
+    },
+    "anthropic": {
+      "display_name": "Anthropic",
+      "website": "https://anthropic.com",
+      "description": "Creator of Claude AI assistant",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "supports_tool_use": true,
+        "supports_vision": true
+      },
+      "model_families": ["claude-3", "claude-2", "claude-instant"]
+    },
+    "google": {
+      "display_name": "Google",
+      "website": "https://ai.google",
+      "description": "Creator of Gemini and PaLM models",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "supports_function_calling": true,
+        "supports_vision": true
+      },
+      "model_families": ["gemini", "palm", "bard"]
+    },
+    "meta": {
+      "display_name": "Meta",
+      "website": "https://ai.meta.com",
+      "description": "Creator of Llama models",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true
+      },
+      "model_families": ["llama-3", "llama-2", "codellama"]
+    },
+    "mistral": {
+      "display_name": "Mistral AI",
+      "website": "https://mistral.ai",
+      "description": "French AI company creating efficient models",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "supports_function_calling": true
+      },
+      "model_families": ["mistral", "mixtral"]
+    },
+    "deepseek": {
+      "display_name": "DeepSeek",
+      "website": "https://deepseek.com",
+      "description": "Chinese AI company focused on coding and reasoning",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true
+      },
+      "model_families": ["deepseek", "deepseek-coder"]
+    },
+    "xai": {
+      "display_name": "xAI",
+      "website": "https://x.ai",
+      "description": "Elon Musk's AI company, creator of Grok",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true
+      },
+      "model_families": ["grok"]
+    },
+    "cohere": {
+      "display_name": "Cohere",
+      "website": "https://cohere.com",
+      "description": "Enterprise-focused language AI",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true
+      },
+      "model_families": ["command", "embed"]
+    },
+    "perplexity": {
+      "display_name": "Perplexity",
+      "website": "https://perplexity.ai",
+      "description": "Search-focused AI models",
+      "default_capabilities": {
+        "supports_streaming": true,
+        "supports_system_prompt": true,
+        "has_web_access": true
+      },
+      "model_families": ["pplx", "sonar"]
+    }
+  },
+  "aliases": {
+    "gpt": "openai",
+    "claude": "anthropic",
+    "palm": "google",
+    "bard": "google",
+    "meta-llama": "meta",
+    "llama": "meta",
+    "mistralai": "mistral",
+    "deepseek-ai": "deepseek",
+    "x-ai": "xai",
+    "grok": "xai",
+    "command": "cohere",
+    "pplx": "perplexity"
+  },
+  "quality_tiers": {
+    "premium": {
+      "description": "Highest quality models with advanced capabilities",
+      "typical_cost": ">$0.01 per 1K tokens",
+      "examples": ["gpt-4", "claude-3-opus", "gemini-ultra"]
+    },
+    "standard": {
+      "description": "Good balance of quality and cost",
+      "typical_cost": "$0.001-$0.01 per 1K tokens",
+      "examples": ["gpt-3.5-turbo", "claude-3-sonnet", "gemini-pro"]
+    },
+    "economy": {
+      "description": "Cost-effective models for simpler tasks",
+      "typical_cost": "<$0.001 per 1K tokens",
+      "examples": ["claude-instant", "llama-2", "mistral-7b"]
+    }
+  }
+}

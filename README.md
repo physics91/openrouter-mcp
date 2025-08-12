@@ -19,11 +19,26 @@
   - Gemini 2.5 Pro/Flash (1M+ context)
   - DeepSeek V3, Grok 2, and more
 - ⚡ **Intelligent Caching**: Smart model list caching for improved performance
-  - In-memory and persistent file caching
-  - Configurable TTL with automatic refresh
-  - Enhanced model metadata and categorization
+  - Dual-layer memory + file caching with configurable TTL
+  - Automatic model metadata enhancement and categorization
+  - Advanced filtering by provider, category, capabilities, and performance tiers
+  - Statistics tracking and cache optimization
+- 🏷️ **Rich Metadata**: Comprehensive model information with intelligent extraction
+  - Automatic provider detection (OpenAI, Anthropic, Google, Meta, DeepSeek, XAI, etc.)
+  - Smart categorization (chat, image, audio, embedding, reasoning, code, multimodal)
+  - Advanced capability detection (vision, functions, tools, JSON mode, streaming)
+  - Performance tiers (premium/standard/economy) and cost analysis
+  - Version parsing with family identification and latest model detection
+  - Quality scoring system (0-10) based on context length, pricing, and capabilities
 - 🔄 **Streaming Support**: Real-time response streaming for better user experience
-- 📊 **Usage Tracking**: Monitor API usage, costs, and token consumption
+- 📊 **Advanced Model Benchmarking**: Comprehensive performance analysis system
+  - Side-by-side model comparison with detailed metrics (response time, cost, quality, throughput)
+  - Category-based model selection (chat, code, reasoning, multimodal)
+  - Weighted performance analysis for different use cases
+  - Multiple report formats (Markdown, CSV, JSON)
+  - Historical benchmark tracking and trend analysis
+  - 5 MCP tools for seamless integration with Claude Desktop
+- 💰 **Usage Tracking**: Monitor API usage, costs, and token consumption
 - 🛡️ **Error Handling**: Robust error handling with detailed logging
 - 🔧 **Easy Setup**: One-command installation with `npx`
 - 🖥️ **Claude Desktop Integration**: Seamless integration with Claude Desktop app
@@ -233,16 +248,23 @@ Chat with any available AI model.
 ```
 
 ### 2. `list_available_models`
-Get information about all available models.
+Get comprehensive information about all available models with enhanced metadata.
 
 **Parameters:**
 - `filter_by`: Optional filter by model name
+- `provider`: Filter by provider (openai, anthropic, google, etc.)
+- `category`: Filter by category (chat, image, reasoning, etc.)
+- `capabilities`: Filter by specific capabilities
+- `performance_tier`: Filter by tier (premium, standard, economy)
+- `min_quality_score`: Minimum quality score (0-10)
 
 **Returns:**
-- Model IDs, names, descriptions
-- Pricing information
-- Context window sizes
-- Capabilities
+- Model IDs, names, descriptions with enhanced metadata
+- Provider and category classification
+- Detailed pricing and context information
+- Capability flags (vision, functions, streaming, etc.)
+- Performance metrics and quality scores
+- Version information and latest model indicators
 
 ### 3. `get_usage_stats`
 Track your API usage and costs.
@@ -310,6 +332,71 @@ Get all vision-capable models.
 - `google/gemini-pro-vision`: Google's multimodal AI
 - `meta-llama/llama-3.2-90b-vision-instruct`: Meta's vision-capable Llama model
 
+### 6. `benchmark_models` 📊
+Compare multiple AI models with the same prompt.
+
+**Parameters:**
+- `models`: List of model IDs to benchmark
+- `prompt`: The prompt to send to each model
+- `temperature`: Temperature setting (0.0-2.0)
+- `max_tokens`: Maximum response tokens
+- `runs_per_model`: Number of runs per model for averaging
+
+**Returns:**
+- Performance metrics (response time, cost, tokens)
+- Model rankings by speed, cost, and reliability
+- Individual responses from each model
+
+### 7. `compare_model_categories` 🏆
+Compare the best models from different categories.
+
+**Parameters:**
+- `categories`: List of categories to compare
+- `prompt`: Test prompt
+- `models_per_category`: Number of top models per category
+
+**Returns:**
+- Category-wise comparison results
+- Best performers in each category
+
+### 8. `get_benchmark_history` 📚
+Retrieve historical benchmark results.
+
+**Parameters:**
+- `limit`: Maximum number of results to return
+- `days_back`: Number of days to look back
+- `model_filter`: Optional model ID filter
+
+**Returns:**
+- List of past benchmark results
+- Performance trends over time
+- Summary statistics
+
+### 9. `export_benchmark_report` 📄
+Export benchmark results in different formats.
+
+**Parameters:**
+- `benchmark_file`: Benchmark result file to export
+- `format`: Output format ("markdown", "csv", "json")
+- `output_file`: Optional custom output filename
+
+**Returns:**
+- Exported report file path
+- Export status and summary
+
+### 10. `compare_model_performance` ⚖️
+Advanced model comparison with weighted metrics.
+
+**Parameters:**
+- `models`: List of model IDs to compare
+- `weights`: Metric weights (speed, cost, quality, throughput)
+- `include_cost_analysis`: Include detailed cost analysis
+
+**Returns:**
+- Weighted performance rankings
+- Cost-effectiveness analysis
+- Usage recommendations for different scenarios
+
 ## 🔧 Configuration
 
 ### Environment Variables
@@ -326,6 +413,11 @@ OPENROUTER_HTTP_REFERER=https://localhost
 HOST=localhost
 PORT=8000
 LOG_LEVEL=info
+
+# Cache Configuration
+CACHE_TTL_HOURS=1
+CACHE_MAX_ITEMS=1000
+CACHE_FILE=openrouter_model_cache.json
 ```
 
 ### Configuration Options
@@ -338,6 +430,9 @@ LOG_LEVEL=info
 | `HOST` | Server bind address | "localhost" |
 | `PORT` | Server port | "8000" |
 | `LOG_LEVEL` | Logging level | "info" |
+| `CACHE_TTL_HOURS` | Model cache TTL in hours | "1" |
+| `CACHE_MAX_ITEMS` | Max items in memory cache | "1000" |
+| `CACHE_FILE` | Cache file path | "openrouter_model_cache.json" |
 
 ## 📊 Popular Models
 
@@ -457,11 +552,13 @@ openrouter-mcp/
 │   │   └── openrouter.py  # Main API client with vision support
 │   ├── handlers/          # MCP tool handlers
 │   │   ├── chat.py        # Text-only chat handlers
-│   │   └── multimodal.py  # Vision/multimodal handlers
+│   │   ├── multimodal.py  # Vision/multimodal handlers
+│   │   └── benchmark.py   # Model benchmarking handlers
 │   └── server.py          # Main server entry point
 ├── tests/                 # Test suite
 │   ├── test_chat.py       # Chat functionality tests
-│   └── test_multimodal.py # Multimodal functionality tests
+│   ├── test_multimodal.py # Multimodal functionality tests
+│   └── test_benchmark.py  # Benchmarking functionality tests
 ├── examples/              # Usage examples
 │   └── multimodal_example.py # Multimodal usage examples
 ├── docs/                  # Documentation
@@ -471,11 +568,29 @@ openrouter-mcp/
 
 ## 📚 Documentation
 
-- [API Documentation](docs/API.md) - Detailed API reference
-- [Multimodal/Vision Guide](docs/MULTIMODAL_GUIDE.md) - Complete vision capabilities guide
-- [Claude Desktop Integration](docs/CLAUDE_DESKTOP_GUIDE.md) - Complete Desktop setup guide
-- [Claude Code CLI Integration](docs/CLAUDE_CODE_GUIDE.md) - Terminal workflow integration
+### Quick Links
+- **[Documentation Index](docs/INDEX.md)** - Complete documentation overview
+- **[Installation Guide](docs/INSTALLATION.md)** - Detailed setup instructions
+- **[API Reference](docs/API.md)** - Complete API documentation
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[FAQ](docs/FAQ.md)** - Frequently asked questions
+
+### Integration Guides
+- [Claude Desktop Integration](docs/CLAUDE_DESKTOP_GUIDE.md) - Desktop app setup
+- [Claude Code CLI Integration](docs/CLAUDE_CODE_GUIDE.md) - Terminal workflow
+
+### Feature Guides
+- [Multimodal/Vision Guide](docs/MULTIMODAL_GUIDE.md) - Image analysis capabilities
+- [Benchmarking Guide](docs/BENCHMARK_GUIDE.md) - Model performance comparison
+- [Model Metadata Guide](docs/METADATA_GUIDE.md) - Enhanced filtering system
+- [Model Caching](docs/MODEL_CACHING.md) - Cache optimization
+
+### Development
+- [Architecture Overview](docs/ARCHITECTURE.md) - System design documentation
+- [Testing Guide](docs/TESTING.md) - TDD practices and test suite
 - [Contributing Guide](CONTRIBUTING.md) - Development guidelines
+
+### External Resources
 - [OpenRouter API Docs](https://openrouter.ai/docs) - Official OpenRouter documentation
 - [MCP Specification](https://modelcontextprotocol.io) - Model Context Protocol standard
 

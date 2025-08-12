@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # Import handlers to register MCP tools
 from .handlers import chat  # noqa: F401
 from .handlers import multimodal  # noqa: F401
+from .handlers import mcp_benchmark  # noqa: F401
 
 
 def validate_environment() -> None:

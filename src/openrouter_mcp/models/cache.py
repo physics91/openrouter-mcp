@@ -1,362 +1,525 @@
-"""Model caching functionality for OpenRouter MCP Server."""
+#!/usr/bin/env python3
+"""
+Dynamic model caching system for OpenRouter MCP Server.
+
+This module provides intelligent caching of AI model information from OpenRouter API,
+including memory and file-based caching with TTL support.
+"""
 
 import json
 import logging
-import os
-import time
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
+import re
+
+# Import metadata utilities
+from ..utils.metadata import (
+    enhance_model_metadata,
+    batch_enhance_models,
+    ModelCategory,
+    ModelProvider,
+    extract_provider_from_id,
+    determine_model_category
+)
+
+# Import client locally to avoid circular imports
+
 
 logger = logging.getLogger(__name__)
 
 
 class ModelCache:
-    """Manages caching of OpenRouter model information."""
+    """
+    Intelligent caching system for OpenRouter AI models.
+    
+    Features:
+    - Memory cache with configurable TTL
+    - File-based persistence across restarts  
+    - Smart model metadata extraction
+    - Provider and capability filtering
+    - Latest model identification
+    """
     
     def __init__(
         self,
-        cache_dir: Optional[Path] = None,
-        ttl_seconds: int = 3600,
-        enable_file_cache: bool = True
+        ttl_hours: int = 1,
+        max_memory_items: int = 1000,
+        cache_file: str = "openrouter_model_cache.json"
     ):
-        """Initialize the model cache.
+        """
+        Initialize model cache.
         
         Args:
-            cache_dir: Directory to store cache files. Defaults to system temp.
-            ttl_seconds: Time-to-live for cache in seconds. Default 1 hour.
-            enable_file_cache: Whether to enable file-based caching.
+            ttl_hours: Time-to-live for cache in hours
+            max_memory_items: Maximum items to keep in memory
+            cache_file: Path to cache file for persistence
         """
-        self.ttl_seconds = ttl_seconds
-        self.enable_file_cache = enable_file_cache
-        self._memory_cache: Optional[Dict[str, Any]] = None
-        self._cache_timestamp: Optional[float] = None
+        self.ttl_seconds = ttl_hours * 3600
+        self.max_memory_items = max_memory_items
+        self.cache_file = cache_file
         
-        if enable_file_cache:
-            if cache_dir is None:
-                # Use system temp directory
-                import tempfile
-                self.cache_dir = Path(tempfile.gettempdir()) / "openrouter_mcp_cache"
-            else:
-                self.cache_dir = Path(cache_dir)
-            
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            self.cache_file = self.cache_dir / "models_cache.json"
-            logger.info(f"Model cache initialized at: {self.cache_file}")
-        else:
-            self.cache_dir = None
-            self.cache_file = None
-            logger.info("Model cache initialized (memory only)")
+        # Internal cache storage
+        self._memory_cache: List[Dict[str, Any]] = []
+        self._last_update: Optional[datetime] = None
+        
+        # Load existing cache on initialization
+        self._load_cache_on_startup()
+        
+        logger.info(f"ModelCache initialized with {ttl_hours}h TTL, file: {cache_file}")
     
-    def is_expired(self, timestamp: float) -> bool:
-        """Check if cache has expired based on timestamp.
-        
-        Args:
-            timestamp: Unix timestamp of cache creation.
-            
-        Returns:
-            True if cache is expired, False otherwise.
-        """
-        return time.time() - timestamp > self.ttl_seconds
+    def _load_cache_on_startup(self) -> None:
+        """Load cache from file during initialization."""
+        try:
+            models, last_update = self._load_from_file_cache()
+            if models:
+                self._memory_cache = models
+                self._last_update = last_update
+                logger.info(f"Loaded {len(models)} models from cache file")
+        except Exception as e:
+            logger.warning(f"Failed to load cache on startup: {e}")
     
-    def get(self) -> Optional[List[Dict[str, Any]]]:
-        """Get cached models if available and not expired.
+    def is_expired(self) -> bool:
+        """Check if cache is expired based on TTL."""
+        if self._last_update is None:
+            return True
         
-        Returns:
-            List of model dictionaries or None if cache miss/expired.
-        """
-        # Check memory cache first
-        if self._memory_cache and self._cache_timestamp:
-            if not self.is_expired(self._cache_timestamp):
-                logger.debug("Model cache hit (memory)")
-                return self._memory_cache.get("models", [])
-        
-        # Check file cache if enabled
-        if self.enable_file_cache and self.cache_file and self.cache_file.exists():
-            try:
-                with open(self.cache_file, 'r', encoding='utf-8') as f:
-                    cache_data = json.load(f)
+        expiry_time = self._last_update + timedelta(seconds=self.ttl_seconds)
+        return datetime.now() > expiry_time
+    
+    async def _fetch_models_from_api(self) -> List[Dict[str, Any]]:
+        """Fetch latest models from OpenRouter API and enhance with metadata."""
+        try:
+            # Import client locally to avoid circular imports
+            from ..client.openrouter import OpenRouterClient
+            client = OpenRouterClient.from_env()
+            async with client:
+                raw_models = await client.list_models()
+                logger.info(f"Fetched {len(raw_models)} models from OpenRouter API")
                 
-                timestamp = cache_data.get("timestamp", 0)
-                if not self.is_expired(timestamp):
-                    models = cache_data.get("models", [])
-                    # Update memory cache
-                    self._memory_cache = cache_data
-                    self._cache_timestamp = timestamp
-                    logger.debug("Model cache hit (file)")
-                    return models
-                else:
-                    logger.debug("Model cache expired (file)")
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Failed to read cache file: {e}")
+                # Enhance models with metadata
+                enhanced_models = batch_enhance_models(raw_models)
+                logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
+                
+                return enhanced_models
+        except Exception as e:
+            logger.error(f"Failed to fetch models from API: {e}")
+            raise
+    
+    def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
+        """Save models to file cache."""
+        try:
+            cache_data = {
+                "models": models,
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, indent=2, ensure_ascii=False)
+                
+            logger.debug(f"Saved {len(models)} models to cache file: {self.cache_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save models to file cache: {e}")
+    
+    def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+        """Load models from file cache."""
+        cache_path = Path(self.cache_file)
         
-        logger.debug("Model cache miss")
+        if not cache_path.exists():
+            return [], None
+        
+        try:
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            models = cache_data.get("models", [])
+            updated_at_str = cache_data.get("updated_at")
+            
+            updated_at = None
+            if updated_at_str:
+                updated_at = datetime.fromisoformat(updated_at_str)
+            
+            logger.debug(f"Loaded {len(models)} models from cache file")
+            return models, updated_at
+            
+        except Exception as e:
+            logger.error(f"Failed to load models from file cache: {e}")
+            return [], None
+    
+    async def get_models(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get models with intelligent caching.
+        
+        Args:
+            force_refresh: Force refresh from API even if cache is valid
+            
+        Returns:
+            List of model dictionaries
+        """
+        # Return cached models if valid and not forcing refresh
+        if not force_refresh and not self.is_expired() and self._memory_cache:
+            logger.debug("Returning cached models (cache hit)")
+            return list(self._memory_cache)  # Return a copy
+        
+        # Cache miss - fetch from API
+        try:
+            models = await self._fetch_models_from_api()
+            
+            # Update cache
+            self._memory_cache = models
+            self._last_update = datetime.now()
+            
+            # Persist to file
+            self._save_to_file_cache(models)
+            
+            logger.info(f"Cache updated with {len(models)} models")
+            return models
+            
+        except Exception as e:
+            # Fallback to file cache if API fails
+            logger.warning(f"API fetch failed, trying file cache: {e}")
+            models, _ = self._load_from_file_cache()
+            
+            if models:
+                logger.info(f"Using {len(models)} models from file cache fallback")
+                return models
+            else:
+                logger.error("No cached models available and API failed")
+                return []
+    
+    async def refresh_cache(self, force: bool = False) -> None:
+        """
+        Explicitly refresh the cache.
+        
+        Args:
+            force: Force refresh even if cache is not expired
+        """
+        if force or self.is_expired():
+            await self.get_models(force_refresh=True)
+            logger.info("Cache manually refreshed")
+        else:
+            logger.debug("Cache refresh skipped - not expired")
+    
+    def get_model_metadata(self, model_id: str) -> Dict[str, Any]:
+        """
+        Get enhanced metadata for a specific model.
+        
+        Args:
+            model_id: Model identifier (e.g., 'openai/gpt-5')
+            
+        Returns:
+            Dictionary with enhanced model metadata
+        """
+        # Find model in cache
+        model = None
+        if isinstance(self._memory_cache, list):
+            for m in self._memory_cache:
+                if m.get("id") == model_id:
+                    model = m
+                    break
+        
+        if not model:
+            return {"error": f"Model {model_id} not found in cache"}
+        
+        # Return the already enhanced metadata
+        # (models are enhanced when fetched from API)
+        return model
+    
+    def filter_models_by_metadata(
+        self,
+        provider: Optional[Union[str, ModelProvider]] = None,
+        category: Optional[Union[str, ModelCategory]] = None,
+        capabilities: Optional[Dict[str, Any]] = None,
+        performance_tier: Optional[str] = None,
+        cost_tier: Optional[str] = None,
+        min_quality_score: Optional[float] = None,
+        tags: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter models by enhanced metadata attributes.
+        
+        Args:
+            provider: Filter by provider
+            category: Filter by category
+            capabilities: Filter by specific capabilities
+            performance_tier: Filter by performance tier
+            cost_tier: Filter by cost tier
+            min_quality_score: Minimum quality score
+            tags: Filter by tags
+            
+        Returns:
+            Filtered list of models
+        """
+        if not isinstance(self._memory_cache, list):
+            return []
+        
+        filtered = []
+        
+        for model in self._memory_cache:
+            # Provider filter
+            if provider is not None:
+                model_provider = model.get("provider", "unknown")
+                # Normalize both values to strings for comparison
+                provider_str = provider.value if hasattr(provider, 'value') else str(provider).lower()
+                model_provider_str = model_provider.value if hasattr(model_provider, 'value') else str(model_provider).lower()
+                
+                if model_provider_str != provider_str:
+                    continue
+            
+            # Category filter
+            if category is not None:
+                model_category = model.get("category", "unknown")
+                # Normalize both values to strings for comparison
+                category_str = category.value if hasattr(category, 'value') else str(category).lower()
+                model_category_str = model_category.value if hasattr(model_category, 'value') else str(model_category).lower()
+                
+                if model_category_str != category_str:
+                    continue
+            
+            # Capabilities filter
+            if capabilities:
+                model_caps = model.get("capabilities", {})
+                match = True
+                for key, value in capabilities.items():
+                    if key == "min_context_length":
+                        if model_caps.get("max_tokens", 0) < value:
+                            match = False
+                            break
+                    elif model_caps.get(key) != value:
+                        match = False
+                        break
+                if not match:
+                    continue
+            
+            # Performance tier filter
+            if performance_tier and model.get("performance_tier") != performance_tier:
+                continue
+            
+            # Cost tier filter
+            if cost_tier and model.get("cost_tier") != cost_tier:
+                continue
+            
+            # Quality score filter
+            if min_quality_score is not None:
+                if model.get("quality_score", 0) < min_quality_score:
+                    continue
+            
+            # Tags filter
+            if tags:
+                model_tags = set(model.get("tags", []))
+                if not any(tag in model_tags for tag in tags):
+                    continue
+            
+            filtered.append(model)
+        
+        return filtered
+    
+    def get_models_by_performance_tier(self) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get models grouped by performance tier.
+        
+        Returns:
+            Dictionary with tiers as keys and model lists as values
+        """
+        if not isinstance(self._memory_cache, list):
+            return {}
+        
+        tiers = {"premium": [], "standard": [], "economy": []}
+        
+        for model in self._memory_cache:
+            tier = model.get("performance_tier", "standard")
+            if tier in tiers:
+                tiers[tier].append(model)
+        
+        return tiers
+    
+    def filter_models(
+        self,
+        provider: Optional[str] = None,
+        vision_capable: Optional[bool] = None,
+        reasoning_model: Optional[bool] = None,
+        long_context: Optional[bool] = None,
+        free_only: Optional[bool] = None,
+        min_context: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter models by capabilities and attributes.
+        
+        Args:
+            provider: Filter by provider name
+            vision_capable: Filter vision-capable models
+            reasoning_model: Filter reasoning models
+            long_context: Filter long context models (>100k tokens)
+            free_only: Filter free models only
+            min_context: Minimum context length
+            
+        Returns:
+            Filtered list of models
+        """
+        if not isinstance(self._memory_cache, list):
+            return []
+        
+        filtered = []
+        
+        for model in self._memory_cache:
+            model_id = model.get("id", "")
+            metadata = self.get_model_metadata(model_id)
+            
+            # Apply filters
+            if provider and metadata.get("provider", "").lower() != provider.lower():
+                continue
+                
+            if vision_capable is not None:
+                caps = metadata.get("capabilities", {})
+                if caps.get("supports_vision", False) != vision_capable:
+                    continue
+                
+            if reasoning_model is not None:
+                # Check if model is a reasoning model based on id or description
+                is_reasoning = "o1" in model_id or "reasoning" in metadata.get("description", "").lower()
+                if is_reasoning != reasoning_model:
+                    continue
+                
+            if long_context is not None:
+                # Long context = > 100k tokens
+                is_long = metadata.get("context_length", 0) > 100000
+                if is_long != long_context:
+                    continue
+                
+            if free_only is not None:
+                # Check if model is free based on cost_tier
+                is_free = metadata.get("cost_tier") == "free"
+                if is_free != free_only:
+                    continue
+                
+            if min_context is not None and metadata.get("context_length", 0) < min_context:
+                continue
+            
+            filtered.append(model)
+        
+        return filtered
+    
+    def get_latest_models(self) -> List[Dict[str, Any]]:
+        """
+        Get the latest/newest models based on version identifiers.
+        
+        Returns:
+            List of latest model versions
+        """
+        if not isinstance(self._memory_cache, list):
+            return []
+        
+        # Patterns that indicate latest models
+        latest_patterns = [
+            r"gpt-5",      # GPT-5
+            r"claude-4",   # Claude 4  
+            r"gemini-2\.5", # Gemini 2.5
+            r"deepseek-v3", # DeepSeek V3
+            r"o1",         # OpenAI o1 series
+            r"grok-3",     # Grok 3
+            r"llama.*4",   # Llama 4 series
+        ]
+        
+        latest_models = []
+        
+        for model in self._memory_cache:
+            model_id = model.get("id", "").lower()
+            
+            # Check if model matches latest patterns
+            for pattern in latest_patterns:
+                if re.search(pattern, model_id):
+                    latest_models.append(model)
+                    break
+        
+        return latest_models
+    
+    async def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed information for a specific model.
+        
+        Args:
+            model_id: The model identifier
+            
+        Returns:
+            Model information dictionary or None if not found
+        """
+        models = await self.get_models()
+        
+        for model in models:
+            if model.get("id") == model_id:
+                return model
+        
         return None
     
-    def set(self, models: List[Dict[str, Any]]) -> None:
-        """Save models to cache.
+    async def get_models_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """
+        Get models filtered by category.
         
         Args:
-            models: List of model dictionaries to cache.
+            category: Category name (e.g., "chat", "reasoning", "code")
+            
+        Returns:
+            List of models in the specified category
         """
-        timestamp = time.time()
-        cache_data = {
-            "timestamp": timestamp,
-            "ttl_seconds": self.ttl_seconds,
-            "models": models,
-            "version": "1.0.0",
-            "cached_at": datetime.now().isoformat()
-        }
+        models = await self.get_models()
         
-        # Update memory cache
-        self._memory_cache = cache_data
-        self._cache_timestamp = timestamp
-        
-        # Save to file if enabled
-        if self.enable_file_cache and self.cache_file:
-            try:
-                with open(self.cache_file, 'w', encoding='utf-8') as f:
-                    json.dump(cache_data, f, indent=2)
-                logger.debug(f"Model cache saved to {self.cache_file}")
-            except IOError as e:
-                logger.warning(f"Failed to write cache file: {e}")
+        return [
+            model for model in models
+            if model.get("category", "").lower() == category.lower()
+        ]
     
-    def clear(self) -> None:
-        """Clear all cached data."""
-        self._memory_cache = None
-        self._cache_timestamp = None
-        
-        if self.enable_file_cache and self.cache_file and self.cache_file.exists():
-            try:
-                self.cache_file.unlink()
-                logger.debug("Model cache file deleted")
-            except IOError as e:
-                logger.warning(f"Failed to delete cache file: {e}")
-    
-    def get_info(self) -> Dict[str, Any]:
-        """Get information about the current cache state.
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics and metadata.
         
         Returns:
-            Dictionary with cache information.
+            Dictionary with cache statistics
         """
-        info = {
-            "enabled": True,
-            "file_cache_enabled": self.enable_file_cache,
-            "ttl_seconds": self.ttl_seconds,
-            "memory_cache_exists": self._memory_cache is not None,
-            "file_cache_exists": False,
-            "is_expired": True,
-            "cached_at": None,
-            "expires_at": None,
-            "model_count": 0
+        if not isinstance(self._memory_cache, list):
+            return {"total_models": 0, "error": "Cache not initialized"}
+        
+        # Count providers
+        providers = set()
+        vision_count = 0
+        reasoning_count = 0
+        
+        for model in self._memory_cache:
+            metadata = self.get_model_metadata(model.get("id", ""))
+            
+            provider = metadata.get("provider")
+            if provider and provider != "Unknown":
+                providers.add(provider)
+            
+            caps = metadata.get("capabilities", {})
+            if caps.get("supports_vision", False):
+                vision_count += 1
+                
+            # Check if model is a reasoning model
+            model_id = model.get("id", "").lower()
+            if "o1" in model_id or "reasoning" in metadata.get("description", "").lower():
+                reasoning_count += 1
+        
+        # Calculate cache size
+        try:
+            cache_json = json.dumps(self._memory_cache, ensure_ascii=False)
+            cache_size_bytes = sys.getsizeof(cache_json)
+            cache_size_mb = cache_size_bytes / (1024 * 1024)
+        except Exception as e:
+            logger.warning(f"Failed to calculate cache size: {e}")
+            cache_size_mb = 0.0
+        
+        return {
+            "total_models": len(self._memory_cache),
+            "providers": sorted(list(providers)),
+            "vision_capable_count": vision_count,
+            "reasoning_model_count": reasoning_count,
+            "cache_size_mb": round(cache_size_mb, 4),
+            "last_updated": self._last_update.isoformat() if self._last_update else None,
+            "is_expired": self.is_expired(),
+            "ttl_seconds": self.ttl_seconds
         }
-        
-        if self._memory_cache and self._cache_timestamp:
-            info["is_expired"] = self.is_expired(self._cache_timestamp)
-            info["cached_at"] = datetime.fromtimestamp(self._cache_timestamp).isoformat()
-            info["expires_at"] = datetime.fromtimestamp(
-                self._cache_timestamp + self.ttl_seconds
-            ).isoformat()
-            info["model_count"] = len(self._memory_cache.get("models", []))
-        
-        if self.enable_file_cache and self.cache_file:
-            info["cache_file"] = str(self.cache_file)
-            info["file_cache_exists"] = self.cache_file.exists()
-        
-        return info
 
 
-class EnhancedModelInfo:
-    """Enhanced model information with categorization and metadata."""
-    
-    # Latest models as of January 2025
-    LATEST_MODELS = {
-        "openai": [
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-            "openai/gpt-4-turbo",
-            "openai/gpt-4-turbo-preview",
-            "openai/o1",
-            "openai/o1-mini",
-            "openai/o1-preview",
-        ],
-        "anthropic": [
-            "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3-opus",
-            "anthropic/claude-3-haiku",
-            "anthropic/claude-3-sonnet",
-        ],
-        "google": [
-            "google/gemini-2.5-pro",
-            "google/gemini-2.5-pro-preview",
-            "google/gemini-2.5-flash",
-            "google/gemini-2.5-flash-lite",
-            "google/gemini-pro-1.5",
-            "google/gemini-pro",
-            "google/gemini-pro-vision",
-        ],
-        "meta": [
-            "meta-llama/llama-3.3-70b-instruct",
-            "meta-llama/llama-3.2-90b-vision-instruct",
-            "meta-llama/llama-3.2-11b-vision-instruct",
-            "meta-llama/llama-3.2-3b-instruct",
-            "meta-llama/llama-3.2-1b-instruct",
-            "meta-llama/llama-3.1-405b-instruct",
-            "meta-llama/llama-3.1-70b-instruct",
-            "meta-llama/llama-3.1-8b-instruct",
-        ],
-        "mistral": [
-            "mistralai/mistral-large",
-            "mistralai/mistral-medium",
-            "mistralai/mixtral-8x22b-instruct",
-            "mistralai/mixtral-8x7b-instruct",
-            "mistralai/mistral-7b-instruct",
-            "mistralai/devstral-small-2505",
-            "mistralai/codestral-latest",
-        ],
-        "deepseek": [
-            "deepseek/deepseek-v3",
-            "deepseek/deepseek-chat",
-            "deepseek/deepseek-coder",
-            "deepseek/deepseek-v2.5",
-        ],
-        "qwen": [
-            "qwen/qwen-2.5-72b-instruct",
-            "qwen/qwen-2.5-32b-instruct",
-            "qwen/qwen-2.5-14b-instruct",
-            "qwen/qwen-2.5-7b-instruct",
-            "qwen/qwen-2.5-coder-32b-instruct",
-            "qwen/qwen-2-vl-72b-instruct",
-        ],
-        "xai": [
-            "xai/grok-2",
-            "xai/grok-2-vision",
-            "xai/grok-beta",
-        ],
-        "cohere": [
-            "cohere/command-r-plus",
-            "cohere/command-r",
-            "cohere/command",
-        ],
-        "perplexity": [
-            "perplexity/llama-3.1-sonar-large-128k-online",
-            "perplexity/llama-3.1-sonar-small-128k-online",
-            "perplexity/llama-3.1-sonar-huge-128k-online",
-        ]
-    }
-    
-    # Model categories
-    CATEGORIES = {
-        "multimodal": [
-            "openai/gpt-4o",
-            "openai/gpt-4o-mini",
-            "google/gemini-2.5-pro",
-            "google/gemini-2.5-flash",
-            "google/gemini-pro-vision",
-            "meta-llama/llama-3.2-90b-vision-instruct",
-            "meta-llama/llama-3.2-11b-vision-instruct",
-            "xai/grok-2-vision",
-        ],
-        "coding": [
-            "deepseek/deepseek-coder",
-            "qwen/qwen-2.5-coder-32b-instruct",
-            "mistralai/codestral-latest",
-            "mistralai/devstral-small-2505",
-        ],
-        "reasoning": [
-            "openai/o1",
-            "openai/o1-mini",
-            "openai/o1-preview",
-            "google/gemini-2.5-pro",
-            "deepseek/deepseek-v3",
-        ],
-        "online": [
-            "perplexity/llama-3.1-sonar-large-128k-online",
-            "perplexity/llama-3.1-sonar-small-128k-online",
-            "perplexity/llama-3.1-sonar-huge-128k-online",
-        ],
-        "large_context": [
-            "google/gemini-2.5-pro",  # 1M+ context
-            "google/gemini-2.5-flash",  # 1M+ context
-            "google/gemini-pro-1.5",  # 2M context
-            "anthropic/claude-3.5-sonnet",  # 200K context
-            "anthropic/claude-3-opus",  # 200K context
-            "openai/o1",  # 200K context
-        ]
-    }
-    
-    @classmethod
-    def get_provider(cls, model_id: str) -> Optional[str]:
-        """Extract provider from model ID.
-        
-        Args:
-            model_id: Model identifier (e.g., "openai/gpt-4o")
-            
-        Returns:
-            Provider name or None if not found.
-        """
-        if "/" in model_id:
-            return model_id.split("/")[0]
-        return None
-    
-    @classmethod
-    def is_latest_model(cls, model_id: str) -> bool:
-        """Check if a model is in the latest models list.
-        
-        Args:
-            model_id: Model identifier to check.
-            
-        Returns:
-            True if model is in latest list, False otherwise.
-        """
-        for provider_models in cls.LATEST_MODELS.values():
-            if model_id in provider_models:
-                return True
-        return False
-    
-    @classmethod
-    def get_categories(cls, model_id: str) -> List[str]:
-        """Get categories for a model.
-        
-        Args:
-            model_id: Model identifier.
-            
-        Returns:
-            List of category names the model belongs to.
-        """
-        categories = []
-        for category, models in cls.CATEGORIES.items():
-            if model_id in models:
-                categories.append(category)
-        return categories
-    
-    @classmethod
-    def enhance_model_info(cls, model: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhance model information with additional metadata.
-        
-        Args:
-            model: Original model dictionary from API.
-            
-        Returns:
-            Enhanced model dictionary with additional fields.
-        """
-        enhanced = model.copy()
-        model_id = model.get("id", "")
-        
-        # Add provider info
-        enhanced["provider"] = cls.get_provider(model_id)
-        
-        # Add latest flag
-        enhanced["is_latest"] = cls.is_latest_model(model_id)
-        
-        # Add categories
-        enhanced["categories"] = cls.get_categories(model_id)
-        
-        # Add multimodal flag for convenience
-        enhanced["is_multimodal"] = "multimodal" in enhanced["categories"]
-        
-        # Add large context flag (>100K tokens)
-        context_length = model.get("context_length", 0)
-        enhanced["is_large_context"] = context_length > 100000
-        
-        return enhanced
+# Client access moved to _fetch_models_from_api to avoid circular imports

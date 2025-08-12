@@ -1,0 +1,80 @@
+{
+  "prompt": "Test error handling",
+  "models": [
+    "openai/gpt-4",
+    "anthropic/claude-3-opus"
+  ],
+  "results": {
+    "openai/gpt-4": [
+      {
+        "model_id": "openai/gpt-4",
+        "prompt": "Test error handling",
+        "response": "Success",
+        "response_time_ms": 0.09870529174804688,
+        "tokens_used": 20,
+        "cost": 9.000000000000001e-10,
+        "timestamp": "2025-08-12T08:44:28.891180+00:00",
+        "error": null
+      }
+    ],
+    "anthropic/claude-3-opus": [
+      {
+        "model_id": "anthropic/claude-3-opus",
+        "prompt": "Test error handling",
+        "response": null,
+        "response_time_ms": 0.240325927734375,
+        "tokens_used": 0,
+        "cost": 0.0,
+        "timestamp": "2025-08-12T08:44:29.901635+00:00",
+        "error": "API Error"
+      }
+    ]
+  },
+  "metrics": {
+    "openai/gpt-4": {
+      "avg_response_time_ms": 0.09870529174804688,
+      "avg_tokens_used": 20.0,
+      "avg_cost": 9.000000000000001e-10,
+      "total_cost": 9.000000000000001e-10,
+      "success_rate": 1.0,
+      "sample_count": 1
+    },
+    "anthropic/claude-3-opus": {
+      "avg_response_time_ms": 0,
+      "avg_tokens_used": 0,
+      "avg_cost": 0,
+      "total_cost": 0,
+      "success_rate": 0.0,
+      "sample_count": 1
+    }
+  },
+  "rankings": {
+    "speed": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 0.09870529174804688,
+        "unit": "ms"
+      }
+    ],
+    "cost": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 9.000000000000001e-10,
+        "unit": "$"
+      }
+    ],
+    "reliability": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 100.0,
+        "unit": "%"
+      },
+      {
+        "model": "anthropic/claude-3-opus",
+        "metric": 0.0,
+        "unit": "%"
+      }
+    ]
+  },
+  "timestamp": "2025-08-12T08:44:30.906338+00:00"
+}

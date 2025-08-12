@@ -1,0 +1,90 @@
+{
+  "prompt": "Compare these models",
+  "models": [
+    "openai/gpt-4",
+    "anthropic/claude-3-opus"
+  ],
+  "results": {
+    "openai/gpt-4": [
+      {
+        "model_id": "openai/gpt-4",
+        "prompt": "Compare these models",
+        "response": "GPT-4 response",
+        "response_time_ms": 0.07748603820800781,
+        "tokens_used": 30,
+        "cost": 1.35e-09,
+        "timestamp": "2025-08-12T08:44:09.571509+00:00",
+        "error": null
+      }
+    ],
+    "anthropic/claude-3-opus": [
+      {
+        "model_id": "anthropic/claude-3-opus",
+        "prompt": "Compare these models",
+        "response": "Claude response",
+        "response_time_ms": 0.1354217529296875,
+        "tokens_used": 25,
+        "cost": 1.125e-09,
+        "timestamp": "2025-08-12T08:44:10.580853+00:00",
+        "error": null
+      }
+    ]
+  },
+  "metrics": {
+    "openai/gpt-4": {
+      "avg_response_time_ms": 0.07748603820800781,
+      "avg_tokens_used": 30.0,
+      "avg_cost": 1.35e-09,
+      "total_cost": 1.35e-09,
+      "success_rate": 1.0,
+      "sample_count": 1
+    },
+    "anthropic/claude-3-opus": {
+      "avg_response_time_ms": 0.1354217529296875,
+      "avg_tokens_used": 25.0,
+      "avg_cost": 1.125e-09,
+      "total_cost": 1.125e-09,
+      "success_rate": 1.0,
+      "sample_count": 1
+    }
+  },
+  "rankings": {
+    "speed": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 0.07748603820800781,
+        "unit": "ms"
+      },
+      {
+        "model": "anthropic/claude-3-opus",
+        "metric": 0.1354217529296875,
+        "unit": "ms"
+      }
+    ],
+    "cost": [
+      {
+        "model": "anthropic/claude-3-opus",
+        "metric": 1.125e-09,
+        "unit": "$"
+      },
+      {
+        "model": "openai/gpt-4",
+        "metric": 1.35e-09,
+        "unit": "$"
+      }
+    ],
+    "reliability": [
+      {
+        "model": "openai/gpt-4",
+        "metric": 100.0,
+        "unit": "%"
+      },
+      {
+        "model": "anthropic/claude-3-opus",
+        "metric": 100.0,
+        "unit": "%"
+      }
+    ]
+  },
+  "timestamp": "2025-08-12T08:44:11.582355+00:00"
+}

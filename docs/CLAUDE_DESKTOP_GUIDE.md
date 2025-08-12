@@ -468,8 +468,22 @@ With OpenRouter MCP integrated into Claude Desktop, you can:
 3. **Track costs and usage** across models
 4. **Build complex workflows** combining multiple AI models
 
+## Related Documentation
+
+- [Installation Guide](INSTALLATION.md) - Complete setup instructions
+- [API Documentation](API.md) - Available MCP tools
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+- [Benchmarking Guide](BENCHMARK_GUIDE.md) - Model performance comparison
+- [FAQ](FAQ.md) - Frequently asked questions
+
+For a complete documentation overview, see the [Documentation Index](INDEX.md).
+
 For more information:
-- [API Documentation](API.md)
 - [Main README](../README.md)
 - [Contributing Guide](../CONTRIBUTING.md)
 - [OpenRouter Documentation](https://openrouter.ai/docs)
+
+---
+
+**Last Updated**: 2025-01-12
+**Version**: 1.0.0

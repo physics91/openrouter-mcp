@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "openrouter-mcp": {
+      "command": "python",
+      "args": ["-m", "src.openrouter_mcp.server"],
+      "cwd": "G:\\ai-dev\\Openrouter-mcp",
+      "env": {
+        "OPENROUTER_API_KEY": "your-openrouter-api-key-here",
+        "OPENROUTER_APP_NAME": "claude-code-mcp",
+        "OPENROUTER_HTTP_REFERER": "https://localhost:3000",
+        "HOST": "localhost",
+        "PORT": "8000",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
