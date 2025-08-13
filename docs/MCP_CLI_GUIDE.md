@@ -258,6 +258,42 @@ User: Read files from my Desktop
 Claude: I'll access your Desktop using the filesystem MCP tool...
 ```
 
+### Using Collective Intelligence Tools
+
+The OpenRouter MCP Server includes 5 advanced collective intelligence tools for enhanced AI collaboration:
+
+```bash
+# Example: Multi-model consensus for complex decisions
+User: "Use collective intelligence to analyze the pros and cons of remote work with 3 different models"
+Claude: I'll use the collective_chat_completion tool to get consensus from multiple AI models...
+
+# Example: Ensemble reasoning for complex problems
+User: "Apply ensemble reasoning to design a sustainable energy solution for a small city"
+Claude: I'll use ensemble_reasoning to decompose this complex problem and assign different aspects to specialized models...
+
+# Example: Adaptive model selection for optimal performance
+User: "Automatically select the best model for writing a Python function to process large datasets"
+Claude: I'll use adaptive_model_selection to find the most suitable model for this coding task...
+
+# Example: Cross-model validation for accuracy
+User: "Validate this scientific statement across multiple models: 'Quantum computers will replace classical computers within 10 years'"
+Claude: I'll use cross_model_validation to verify this claim across multiple AI models...
+
+# Example: Collaborative problem solving
+User: "Solve this business challenge collaboratively: How to reduce customer churn by 30% in 6 months"
+Claude: I'll use collaborative_problem_solving to get multiple models working together on this challenge...
+```
+
+### Performance Benefits
+
+The collective intelligence tools provide significant advantages:
+
+- **Higher Accuracy**: Multi-model consensus reduces individual model biases
+- **Better Quality**: Cross-validation ensures response reliability  
+- **Optimal Performance**: Adaptive selection chooses the best model for each task
+- **Complex Problem Solving**: Ensemble reasoning handles multi-faceted challenges
+- **Reliability**: Collaborative approaches provide robust, well-reasoned solutions
+
 ## Support
 
 For issues or questions:

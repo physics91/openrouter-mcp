@@ -1,5 +1,9 @@
 # 🎉 OpenRouter MCP Server 완전 설치 성공!
 
+**버전**: 1.2.0 (@physics91/openrouter-mcp)  
+**배포일**: 2025년 8월 13일  
+**집단 지성 시스템**: ✅ 완전 통합
+
 ## ✅ 성공적으로 완료된 설정
 
 ### 1. **NPX 기반 MCP 서버 (Claude Desktop용)**

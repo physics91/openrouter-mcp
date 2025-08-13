@@ -2,12 +2,19 @@
 
 🚀 A powerful Model Context Protocol (MCP) server that provides seamless access to multiple AI models through OpenRouter's unified API.
 
-[![NPM Version](https://img.shields.io/npm/v/openrouter-mcp.svg)](https://www.npmjs.com/package/openrouter-mcp)
+[![NPM Version](https://img.shields.io/npm/v/@physics91/openrouter-mcp.svg)](https://www.npmjs.com/package/@physics91/openrouter-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 ## ✨ Features
 
+- 🧠 **Collective Intelligence System**: Advanced multi-model collaboration and consensus building
+  - 5 specialized MCP tools for ensemble reasoning and intelligent decision-making
+  - Multi-model consensus with automated agreement analysis and quality scoring
+  - Ensemble reasoning using specialized models for different task aspects
+  - Adaptive model selection based on task context, requirements, and performance metrics
+  - Cross-model validation for content quality assurance and accuracy verification
+  - Collaborative problem-solving through iterative multi-model interaction
 - 🤖 **Multi-Model Access**: Chat with GPT-4o, Claude 3.5, Llama 3.3, Gemini 2.5, and 200+ other AI models
 - 🖼️ **Vision/Multimodal Support**: Analyze images and visual content with vision-capable models
   - Support for base64-encoded images and image URLs
@@ -50,17 +57,17 @@
 
 ```bash
 # Initialize configuration
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp init
 
 # Start the server
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp start
 ```
 
 ### Option 2: Global Installation
 
 ```bash
 # Install globally
-npm install -g openrouter-mcp
+npm install -g @physics91/openrouter-mcp
 
 # Initialize and start
 openrouter-mcp init
@@ -85,7 +92,7 @@ openrouter-mcp start
 ### 2. Initialize the Server
 
 ```bash
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp init
 ```
 
 This will:
@@ -96,7 +103,7 @@ This will:
 ### 3. Start the Server
 
 ```bash
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp start
 ```
 
 The server will start on `localhost:8000` by default.
@@ -396,6 +403,104 @@ Advanced model comparison with weighted metrics.
 - Weighted performance rankings
 - Cost-effectiveness analysis
 - Usage recommendations for different scenarios
+
+---
+
+## 🧠 Collective Intelligence Tools
+
+The following advanced tools leverage multiple AI models for enhanced accuracy and insights:
+
+### 11. `collective_chat_completion` 🤝
+Generate chat completion using collective intelligence with multiple models to reach consensus.
+
+**Parameters:**
+- `prompt`: The prompt to process collectively
+- `models`: Optional list of specific models to use
+- `strategy`: Consensus strategy ("majority_vote", "weighted_average", "confidence_threshold")
+- `min_models`: Minimum number of models to use (default: 3)
+- `max_models`: Maximum number of models to use (default: 5)
+- `temperature`: Sampling temperature (default: 0.7)
+- `system_prompt`: Optional system prompt for all models
+
+**Returns:**
+- `consensus_response`: The agreed-upon response
+- `agreement_level`: Level of agreement between models
+- `confidence_score`: Confidence in the consensus
+- `participating_models`: List of models that participated
+- `individual_responses`: Responses from each model
+- `quality_metrics`: Accuracy, consistency, and completeness scores
+
+### 12. `ensemble_reasoning` 🎯
+Perform ensemble reasoning using specialized models for different aspects of complex problems.
+
+**Parameters:**
+- `problem`: Problem to solve with ensemble reasoning
+- `task_type`: Type of task ("reasoning", "analysis", "creative", "factual", "code_generation")
+- `decompose`: Whether to decompose the problem into subtasks
+- `models`: Optional list of specific models to use
+- `temperature`: Sampling temperature (default: 0.7)
+
+**Returns:**
+- `final_result`: The combined reasoning result
+- `subtask_results`: Results from individual subtasks
+- `model_assignments`: Which models handled which subtasks
+- `reasoning_quality`: Quality metrics for the reasoning process
+- `processing_time`: Total processing time
+- `strategy_used`: Decomposition strategy used
+
+### 13. `adaptive_model_selection` 🎛️
+Intelligently select the best model for a given task using adaptive routing.
+
+**Parameters:**
+- `query`: Query for adaptive model selection
+- `task_type`: Type of task ("reasoning", "creative", "factual", "code_generation", "analysis")
+- `performance_requirements`: Performance requirements (accuracy, speed thresholds)
+- `constraints`: Task constraints (max cost, timeout, etc.)
+
+**Returns:**
+- `selected_model`: The chosen model ID
+- `selection_reasoning`: Why this model was selected
+- `confidence`: Confidence in the selection (0-1)
+- `alternative_models`: Other viable options with scores
+- `routing_metrics`: Performance metrics used in selection
+- `expected_performance`: Predicted performance characteristics
+
+### 14. `cross_model_validation` ✅
+Validate content quality and accuracy across multiple models for quality assurance.
+
+**Parameters:**
+- `content`: Content to validate across models
+- `validation_criteria`: Specific validation criteria (e.g., "factual_accuracy", "technical_correctness")
+- `models`: Optional list of models to use for validation
+- `threshold`: Validation threshold (0-1, default: 0.7)
+
+**Returns:**
+- `validation_result`: Overall validation result ("VALID" or "INVALID")
+- `validation_score`: Numerical validation score (0-1)
+- `validation_issues`: Issues found by multiple models
+- `model_validations`: Individual validation results from each model
+- `recommendations`: Suggested improvements
+- `confidence`: Confidence in the validation result
+
+### 15. `collaborative_problem_solving` 🤖
+Solve complex problems through collaborative multi-model interaction and iterative refinement.
+
+**Parameters:**
+- `problem`: Problem to solve collaboratively
+- `requirements`: Problem requirements and constraints
+- `constraints`: Additional constraints (budget, time, resources)
+- `max_iterations`: Maximum number of iteration rounds (default: 3)
+- `models`: Optional list of specific models to use
+
+**Returns:**
+- `final_solution`: The collaborative solution
+- `solution_path`: Step-by-step solution development
+- `alternative_solutions`: Alternative approaches considered
+- `collaboration_quality`: Quality metrics for the collaboration
+- `component_contributions`: Individual model contributions
+- `convergence_metrics`: How the solution evolved over iterations
+
+---
 
 ## 🔧 Configuration
 
