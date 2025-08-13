@@ -29,12 +29,12 @@
       "cost_tier": "free",
       "quality_score": 4.0,
       "tags": [
-        "chat",
-        "economy",
         "free",
-        "unknown"
+        "chat",
+        "unknown",
+        "economy"
       ]
     }
   ],
-  "updated_at": "2025-08-12T17:44:35.377904"
+  "updated_at": "2025-08-13T10:33:33.850759"
 }

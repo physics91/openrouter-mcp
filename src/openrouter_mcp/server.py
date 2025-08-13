@@ -40,9 +40,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import handlers to register MCP tools
-from .handlers import chat  # noqa: F401
-from .handlers import multimodal  # noqa: F401
-from .handlers import mcp_benchmark  # noqa: F401
+try:
+    from .handlers import chat  # noqa: F401
+    from .handlers import multimodal  # noqa: F401
+    from .handlers import mcp_benchmark  # noqa: F401
+    from .handlers import collective_intelligence  # noqa: F401
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from openrouter_mcp.handlers import chat  # noqa: F401
+    from openrouter_mcp.handlers import multimodal  # noqa: F401
+    from openrouter_mcp.handlers import mcp_benchmark  # noqa: F401
+    from openrouter_mcp.handlers import collective_intelligence  # noqa: F401
 
 
 def validate_environment() -> None:
@@ -83,21 +93,10 @@ def main():
     try:
         app = create_app()
         
-        # Get configuration from environment
-        host = os.getenv("HOST", "localhost")
-        port = int(os.getenv("PORT", "8000"))
-        log_level = os.getenv("LOG_LEVEL", "info").lower()
+        logger.info("Starting OpenRouter MCP Server via stdio")
         
-        logger.info(f"Starting OpenRouter MCP Server on {host}:{port}")
-        
-        # Start the server
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            log_level=log_level,
-            access_log=True
-        )
+        # Start the FastMCP server in stdio mode
+        app.run()
         
     except KeyboardInterrupt:
         logger.info("Server shutdown requested by user")

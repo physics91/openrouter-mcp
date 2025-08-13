@@ -1,0 +1,572 @@
+{
+  "benchmark_summary": {
+    "timestamp": "2025-08-13T10:47:10.073036",
+    "total_duration_seconds": 59.708921,
+    "tools_tested": [
+      "ensemble_reasoning",
+      "adaptive_model_selection",
+      "cross_model_validation"
+    ],
+    "load_levels_tested": [
+      1,
+      5,
+      10
+    ],
+    "scenarios_tested": 5,
+    "total_test_runs": 9,
+    "test_description": "Fixed benchmark with proper CrossValidator integration"
+  },
+  "performance_analysis": {
+    "ensemble_reasoning": {
+      "scalability": {
+        "score": 0.7170077555673059,
+        "throughput_trend": "increasing",
+        "response_time_trend": "increasing",
+        "max_throughput": 0.6987171340427314,
+        "throughput_at_load_10": 0.6987171340427314,
+        "scalability_rating": "Good"
+      },
+      "reliability": {
+        "avg_success_rate": 1.0,
+        "min_success_rate": 1.0,
+        "max_success_rate": 1.0,
+        "error_rate_trend": "stable",
+        "stability_score": 1.0,
+        "reliability_rating": "Excellent"
+      },
+      "efficiency": {
+        "avg_response_time": 10.265877318382262,
+        "response_time_consistency": 0.8939627635278534,
+        "best_response_time": 9.020675897598267,
+        "worst_response_time": 11.037069392204284,
+        "p95_avg": 12.54392925898234,
+        "efficiency_rating": "Poor"
+      },
+      "resource_usage": {
+        "avg_memory_mb": 37.65832331730769,
+        "max_memory_mb": 37.77324628496503,
+        "memory_efficiency": 0.9952377164353853,
+        "avg_cpu_percent": 0.16686868686868686,
+        "max_cpu_percent": 0.21818181818181817,
+        "cpu_efficiency": 2.3490389244908023,
+        "resource_rating": "Excellent"
+      },
+      "tool_specific_insights": {
+        "decomposition_overhead": "High due to task decomposition and multiple model calls",
+        "best_use_case": "Complex tasks requiring multiple perspectives",
+        "optimization_potential": "Could benefit from parallel sub-task execution"
+      }
+    },
+    "adaptive_model_selection": {
+      "scalability": {
+        "score": 0.989034495839391,
+        "throughput_trend": "increasing",
+        "response_time_trend": "stable",
+        "max_throughput": 91.75579065270085,
+        "throughput_at_load_10": 91.75579065270085,
+        "scalability_rating": "Excellent"
+      },
+      "reliability": {
+        "avg_success_rate": 1.0,
+        "min_success_rate": 1.0,
+        "max_success_rate": 1.0,
+        "error_rate_trend": "stable",
+        "stability_score": 1.0,
+        "reliability_rating": "Excellent"
+      },
+      "efficiency": {
+        "avg_response_time": 0.10892275969187419,
+        "response_time_consistency": 0.9894952697708961,
+        "best_response_time": 0.10805249214172363,
+        "worst_response_time": 0.11021881103515625,
+        "p95_avg": 0.10907522837320964,
+        "efficiency_rating": "Excellent"
+      },
+      "resource_usage": {
+        "avg_memory_mb": 37.653645833333336,
+        "max_memory_mb": 37.666015625,
+        "memory_efficiency": 0.9993259009592947,
+        "avg_cpu_percent": 0.0,
+        "max_cpu_percent": 0.0,
+        "cpu_efficiency": 4874.187057315378,
+        "resource_rating": "Excellent"
+      },
+      "tool_specific_insights": {
+        "routing_efficiency": "Excellent model selection performance",
+        "best_use_case": "High-throughput scenarios with diverse task types",
+        "optimization_potential": "Already well-optimized for speed"
+      }
+    },
+    "cross_model_validation": {
+      "scalability": {
+        "score": 0.9894383464440978,
+        "throughput_trend": "increasing",
+        "response_time_trend": "stable",
+        "max_throughput": 2.45303027290177,
+        "throughput_at_load_10": 2.45303027290177,
+        "scalability_rating": "Excellent"
+      },
+      "reliability": {
+        "avg_success_rate": 1.0,
+        "min_success_rate": 1.0,
+        "max_success_rate": 1.0,
+        "error_rate_trend": "stable",
+        "stability_score": 1.0,
+        "reliability_rating": "Excellent"
+      },
+      "efficiency": {
+        "avg_response_time": 3.8922371943791707,
+        "response_time_consistency": 0.9755026242195952,
+        "best_response_time": 3.8362616539001464,
+        "worst_response_time": 4.0023322105407715,
+        "p95_avg": 4.051379998524983,
+        "efficiency_rating": "Fair"
+      },
+      "resource_usage": {
+        "avg_memory_mb": 37.830684705284554,
+        "max_memory_mb": 37.94121570121951,
+        "memory_efficiency": 0.9948160740876527,
+        "avg_cpu_percent": 0.6396747967479675,
+        "max_cpu_percent": 1.1390243902439023,
+        "cpu_efficiency": 82.23346121139178,
+        "resource_rating": "Excellent"
+      },
+      "tool_specific_insights": {
+        "validation_overhead": "Moderate overhead from cross-model verification",
+        "best_use_case": "Quality-critical applications requiring verification",
+        "optimization_potential": "Could benefit from selective validation strategies"
+      }
+    }
+  },
+  "comparison_analysis": {
+    "performance_ranking": {
+      "throughput": [
+        [
+          "adaptive_model_selection",
+          91.75579065270085,
+          91.75579065270085
+        ],
+        [
+          "cross_model_validation",
+          2.45303027290177,
+          2.45303027290177
+        ],
+        [
+          "ensemble_reasoning",
+          0.6987171340427314,
+          0.6987171340427314
+        ]
+      ],
+      "avg_response_time": [
+        [
+          "adaptive_model_selection",
+          0.9021224430397964,
+          0.10849697589874267
+        ],
+        [
+          "cross_model_validation",
+          0.2066919529749275,
+          3.8381177186965942
+        ],
+        [
+          "ensemble_reasoning",
+          0.0830766997694341,
+          11.037069392204284
+        ]
+      ],
+      "success_rate": [
+        [
+          "ensemble_reasoning",
+          1.0,
+          1.0
+        ],
+        [
+          "adaptive_model_selection",
+          1.0,
+          1.0
+        ],
+        [
+          "cross_model_validation",
+          1.0,
+          1.0
+        ]
+      ],
+      "memory_usage_mb": [
+        [
+          "adaptive_model_selection",
+          0.025862504419861595,
+          37.666015625
+        ],
+        [
+          "ensemble_reasoning",
+          0.02579097949783396,
+          37.77324628496503
+        ],
+        [
+          "cross_model_validation",
+          0.025679732437543887,
+          37.94121570121951
+        ]
+      ]
+    },
+    "trade_off_analysis": {
+      "speed_vs_complexity": {
+        "fastest": "adaptive_model_selection",
+        "most_comprehensive": "ensemble_reasoning",
+        "balanced": "cross_model_validation"
+      },
+      "resource_vs_quality": {
+        "most_efficient": "adaptive_model_selection",
+        "highest_quality": "cross_model_validation",
+        "best_balance": "ensemble_reasoning"
+      }
+    },
+    "use_case_matrix": {
+      "real_time_applications": {
+        "recommended": "adaptive_model_selection",
+        "alternative": "cross_model_validation",
+        "avoid": "ensemble_reasoning"
+      },
+      "batch_processing": {
+        "recommended": "ensemble_reasoning",
+        "alternative": "cross_model_validation",
+        "acceptable": "adaptive_model_selection"
+      },
+      "quality_critical": {
+        "recommended": "cross_model_validation",
+        "alternative": "ensemble_reasoning",
+        "acceptable": "adaptive_model_selection"
+      },
+      "high_volume": {
+        "recommended": "adaptive_model_selection",
+        "alternative": "cross_model_validation",
+        "avoid": "ensemble_reasoning"
+      }
+    }
+  },
+  "recommendations": {
+    "overall_winner": {
+      "tool": "adaptive_model_selection",
+      "score": 0.9185436735726024,
+      "justification": "adaptive_model_selection provides the best balance of performance, reliability, and efficiency"
+    },
+    "use_case_recommendations": {
+      "microservices": {
+        "tool": "adaptive_model_selection",
+        "reason": "Low latency and high throughput for API endpoints"
+      },
+      "data_processing": {
+        "tool": "ensemble_reasoning",
+        "reason": "Comprehensive analysis for complex data tasks"
+      },
+      "content_moderation": {
+        "tool": "cross_model_validation",
+        "reason": "Quality assurance through multi-model validation"
+      },
+      "chatbots": {
+        "tool": "adaptive_model_selection",
+        "reason": "Fast response times for conversational interfaces"
+      },
+      "research_analysis": {
+        "tool": "ensemble_reasoning",
+        "reason": "Multi-perspective analysis for research tasks"
+      }
+    },
+    "performance_optimization": {
+      "ensemble_reasoning": [
+        "Implement response caching",
+        "Consider asynchronous processing",
+        "Add connection pooling",
+        "Implement request batching"
+      ],
+      "adaptive_model_selection": [],
+      "cross_model_validation": [
+        "Implement response caching",
+        "Consider asynchronous processing",
+        "Add connection pooling",
+        "Implement request batching"
+      ]
+    },
+    "architecture_suggestions": [
+      "Implement a tool selection strategy based on task characteristics",
+      "Use adaptive_model_selection for real-time scenarios",
+      "Use ensemble_reasoning for complex analytical tasks",
+      "Use cross_model_validation for quality-critical applications",
+      "Consider hybrid approaches combining multiple tools",
+      "Implement comprehensive monitoring and alerting",
+      "Add performance metrics collection and analysis",
+      "Use load balancing for high-availability deployments"
+    ],
+    "production_readiness": {
+      "ensemble_reasoning": {
+        "score": 50,
+        "status": "Needs Improvement",
+        "issues": [
+          "High response time",
+          "Low throughput"
+        ]
+      },
+      "adaptive_model_selection": {
+        "score": 100,
+        "status": "Ready",
+        "issues": []
+      },
+      "cross_model_validation": {
+        "score": 100,
+        "status": "Ready",
+        "issues": []
+      }
+    }
+  },
+  "detailed_metrics": {
+    "ensemble_reasoning": {
+      "load_1": {
+        "response_times": {
+          "avg": 9.020675897598267,
+          "min": 9.020675897598267,
+          "max": 9.020675897598267,
+          "p95": 9.020675897598267,
+          "p99": 9.020675897598267,
+          "samples": 1
+        },
+        "throughput": 0.11085434036893742,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 1,
+          "failed_requests": 0,
+          "total_requests": 1
+        },
+        "resources": {
+          "memory_usage_mb": 37.593359375,
+          "cpu_usage_percent": 0.17333333333333334
+        },
+        "test_info": {
+          "load_level": 1,
+          "test_duration": 9.020846605300903,
+          "timestamp": "2025-08-13T10:46:19.404169"
+        }
+      },
+      "load_5": {
+        "response_times": {
+          "avg": 10.739886665344239,
+          "min": 4.139791965484619,
+          "max": 14.299646854400635,
+          "p95": 14.299646854400635,
+          "p99": 14.299646854400635,
+          "samples": 5
+        },
+        "throughput": 0.3496493423000691,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 5,
+          "failed_requests": 0,
+          "total_requests": 5
+        },
+        "resources": {
+          "memory_usage_mb": 37.60836429195804,
+          "cpu_usage_percent": 0.10909090909090909
+        },
+        "test_info": {
+          "load_level": 5,
+          "test_duration": 14.300041198730469,
+          "timestamp": "2025-08-13T10:46:34.776308"
+        }
+      },
+      "load_10": {
+        "response_times": {
+          "avg": 11.037069392204284,
+          "min": 4.146177053451538,
+          "max": 14.31146502494812,
+          "p95": 14.31146502494812,
+          "p99": 14.31146502494812,
+          "samples": 10
+        },
+        "throughput": 0.6987171340427314,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 10,
+          "failed_requests": 0,
+          "total_requests": 10
+        },
+        "resources": {
+          "memory_usage_mb": 37.77324628496503,
+          "cpu_usage_percent": 0.21818181818181817
+        },
+        "test_info": {
+          "load_level": 10,
+          "test_duration": 14.311943292617798,
+          "timestamp": "2025-08-13T10:46:50.143723"
+        }
+      }
+    },
+    "adaptive_model_selection": {
+      "load_1": {
+        "response_times": {
+          "avg": 0.10805249214172363,
+          "min": 0.10805249214172363,
+          "max": 0.10805249214172363,
+          "p95": 0.10805249214172363,
+          "p99": 0.10805249214172363,
+          "samples": 1
+        },
+        "throughput": 9.242850752221848,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 1,
+          "failed_requests": 0,
+          "total_requests": 1
+        },
+        "resources": {
+          "memory_usage_mb": 37.640625,
+          "cpu_usage_percent": 0.0
+        },
+        "test_info": {
+          "load_level": 1,
+          "test_duration": 0.10819172859191895,
+          "timestamp": "2025-08-13T10:46:51.361375"
+        }
+      },
+      "load_5": {
+        "response_times": {
+          "avg": 0.11021881103515625,
+          "min": 0.11001420021057129,
+          "max": 0.11039137840270996,
+          "p95": 0.11039137840270996,
+          "p99": 0.11039137840270996,
+          "samples": 5
+        },
+        "throughput": 45.226970314538654,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 5,
+          "failed_requests": 0,
+          "total_requests": 5
+        },
+        "resources": {
+          "memory_usage_mb": 37.654296875,
+          "cpu_usage_percent": 0.0
+        },
+        "test_info": {
+          "load_level": 5,
+          "test_duration": 0.11055350303649902,
+          "timestamp": "2025-08-13T10:46:52.564362"
+        }
+      },
+      "load_10": {
+        "response_times": {
+          "avg": 0.10849697589874267,
+          "min": 0.10814619064331055,
+          "max": 0.10878181457519531,
+          "p95": 0.10878181457519531,
+          "p99": 0.10878181457519531,
+          "samples": 10
+        },
+        "throughput": 91.75579065270085,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 10,
+          "failed_requests": 0,
+          "total_requests": 10
+        },
+        "resources": {
+          "memory_usage_mb": 37.666015625,
+          "cpu_usage_percent": 0.0
+        },
+        "test_info": {
+          "load_level": 10,
+          "test_duration": 0.10898494720458984,
+          "timestamp": "2025-08-13T10:46:53.776752"
+        }
+      }
+    },
+    "cross_model_validation": {
+      "load_1": {
+        "response_times": {
+          "avg": 4.0023322105407715,
+          "min": 4.0023322105407715,
+          "max": 4.0023322105407715,
+          "p95": 4.0023322105407715,
+          "p99": 4.0023322105407715,
+          "samples": 1
+        },
+        "throughput": 0.24984451374006508,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 1,
+          "failed_requests": 0,
+          "total_requests": 1
+        },
+        "resources": {
+          "memory_usage_mb": 37.74453125,
+          "cpu_usage_percent": 0.78
+        },
+        "test_info": {
+          "load_level": 1,
+          "test_duration": 4.002489328384399,
+          "timestamp": "2025-08-13T10:46:58.802916"
+        }
+      },
+      "load_5": {
+        "response_times": {
+          "avg": 3.8362616539001464,
+          "min": 3.640076160430908,
+          "max": 4.075528383255005,
+          "p95": 4.075528383255005,
+          "p99": 4.075528383255005,
+          "samples": 5
+        },
+        "throughput": 1.2267780923959604,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 5,
+          "failed_requests": 0,
+          "total_requests": 5
+        },
+        "resources": {
+          "memory_usage_mb": 37.80630716463415,
+          "cpu_usage_percent": 1.1390243902439023
+        },
+        "test_info": {
+          "load_level": 5,
+          "test_duration": 4.075716733932495,
+          "timestamp": "2025-08-13T10:47:03.937007"
+        }
+      },
+      "load_10": {
+        "response_times": {
+          "avg": 3.8381177186965942,
+          "min": 3.6384191513061523,
+          "max": 4.076279401779175,
+          "p95": 4.076279401779175,
+          "p99": 4.076279401779175,
+          "samples": 10
+        },
+        "throughput": 2.45303027290177,
+        "reliability": {
+          "success_rate": 1.0,
+          "error_rate": 0.0,
+          "successful_requests": 10,
+          "failed_requests": 0,
+          "total_requests": 10
+        },
+        "resources": {
+          "memory_usage_mb": 37.94121570121951,
+          "cpu_usage_percent": 0.0
+        },
+        "test_info": {
+          "load_level": 10,
+          "test_duration": 4.076590538024902,
+          "timestamp": "2025-08-13T10:47:09.066073"
+        }
+      }
+    }
+  }
+}

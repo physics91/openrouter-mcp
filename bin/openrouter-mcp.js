@@ -125,13 +125,25 @@ async function checkApiKey() {
     return true;
   }
   
-  // Check .env file
-  const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    if (envContent.includes('OPENROUTER_API_KEY=')) {
-      console.log(chalk.green('✓ OpenRouter API key found in .env file'));
-      return true;
+  // Check .env file in multiple locations
+  const possibleEnvPaths = [
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '.env'),
+    path.join(os.homedir(), '.openrouter-mcp.env')
+  ];
+  
+  for (const envPath of possibleEnvPaths) {
+    if (fs.existsSync(envPath) && fs.statSync(envPath).isFile()) {
+      try {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        if (envContent.includes('OPENROUTER_API_KEY=')) {
+          console.log(chalk.green(`✓ OpenRouter API key found in ${envPath}`));
+          return true;
+        }
+      } catch (error) {
+        // Ignore read errors and continue
+        continue;
+      }
     }
   }
   

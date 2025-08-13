@@ -1,0 +1,11 @@
+[bandit]
+exclude_dirs = tests,docs,examples
+skips = B101,B601
+
+[bandit.assert_used]
+# Allow assert statements in test code
+skips = B101
+
+[bandit.hardcoded_password_string]
+# Allow hardcoded passwords in test code
+skips = B106

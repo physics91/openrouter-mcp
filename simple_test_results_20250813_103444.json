@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-08-13T10:34:44.651228",
+  "total_tests": 5,
+  "successful_tests": 4,
+  "success_rate": 80.0,
+  "tests": [
+    {
+      "test": "collective_intelligence_imports",
+      "success": true,
+      "modules_imported": {
+        "ConsensusEngine": true,
+        "EnsembleReasoner": true,
+        "AdaptiveRouter": true,
+        "CrossValidator": true,
+        "CollaborativeSolver": true
+      },
+      "error": null
+    },
+    {
+      "test": "task_context_creation",
+      "success": true,
+      "task_type": "reasoning",
+      "content_matches": true,
+      "error": null
+    },
+    {
+      "test": "model_provider_creation",
+      "success": true,
+      "has_process_task": true,
+      "has_get_available_models": true,
+      "error": null
+    },
+    {
+      "test": "consensus_engine_init",
+      "success": true,
+      "has_process_method": true,
+      "config_strategy": "majority_vote",
+      "error": null
+    },
+    {
+      "test": "openrouter_basic",
+      "success": false,
+      "error": "API call failed: User not found."
+    }
+  ],
+  "api_key_present": true,
+  "overall_status": "READY"
+}

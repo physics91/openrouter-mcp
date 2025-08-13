@@ -3,7 +3,14 @@
     "allow": [
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(npx openrouter-mcp:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "mcp__brave-search__brave_web_search",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": []

@@ -1,0 +1,44 @@
+[MASTER]
+init-hook='import sys; sys.path.append("src")'
+load-plugins=pylint.extensions.docparams
+
+[MESSAGES CONTROL]
+disable=
+    C0111,  # missing-docstring
+    C0103,  # invalid-name
+    R0903,  # too-few-public-methods
+    R0913,  # too-many-arguments
+    R0914,  # too-many-locals
+    R0915,  # too-many-statements
+    W0613,  # unused-argument
+    W0221,  # arguments-differ
+    E1101,  # no-member (false positives with dynamic attributes)
+
+[FORMAT]
+max-line-length=100
+indent-string='    '
+
+[DESIGN]
+max-args=10
+max-locals=20
+max-returns=8
+max-branches=15
+max-statements=60
+max-parents=7
+max-attributes=10
+min-public-methods=1
+max-public-methods=25
+
+[SIMILARITIES]
+min-similarity-lines=6
+ignore-comments=yes
+ignore-docstrings=yes
+
+[VARIABLES]
+dummy-variables-rgx=_.*|dummy.*
+
+[CLASSES]
+defining-attr-methods=__init__,__new__,setUp
+
+[IMPORTS]
+deprecated-modules=optparse,tkinter.tix
