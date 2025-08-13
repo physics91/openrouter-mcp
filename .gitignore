@@ -73,3 +73,15 @@ test_real_api.py
 # Temporary files
 *.tmp
 *.temp
+
+# Benchmark and cache files
+*_cache.json
+*_results_*.json
+*_report_*.json
+*_report_*.md
+benchmark_*.json
+test_results_*.json
+performance_*.json
+mock_test_*.json
+fixed_performance_*.json
+simple_test_*.json
