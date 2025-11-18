@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import re
+import portalocker
 
 # Import metadata utilities
 from ..utils.metadata import (
@@ -44,29 +45,37 @@ class ModelCache:
     
     def __init__(
         self,
-        ttl_hours: int = 1,
+        ttl_hours: float = 1.0,
         max_memory_items: int = 1000,
-        cache_file: str = "openrouter_model_cache.json"
+        cache_file: str = "openrouter_model_cache.json",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None
     ):
         """
         Initialize model cache.
-        
+
         Args:
-            ttl_hours: Time-to-live for cache in hours
+            ttl_hours: Time-to-live for cache in hours (supports fractional values, e.g., 0.0833 for 5 minutes)
             max_memory_items: Maximum items to keep in memory
             cache_file: Path to cache file for persistence
+            api_key: Optional API key for fetching models (falls back to env var)
+            base_url: Optional base URL for API (falls back to env var)
         """
-        self.ttl_seconds = ttl_hours * 3600
+        self.ttl_seconds = int(ttl_hours * 3600)
         self.max_memory_items = max_memory_items
         self.cache_file = cache_file
-        
+
+        # Store credentials for API calls (with fallback to environment)
+        self._api_key = api_key
+        self._base_url = base_url
+
         # Internal cache storage
         self._memory_cache: List[Dict[str, Any]] = []
         self._last_update: Optional[datetime] = None
-        
+
         # Load existing cache on initialization
         self._load_cache_on_startup()
-        
+
         logger.info(f"ModelCache initialized with {ttl_hours}h TTL, file: {cache_file}")
     
     def _load_cache_on_startup(self) -> None:
@@ -89,61 +98,148 @@ class ModelCache:
         return datetime.now() > expiry_time
     
     async def _fetch_models_from_api(self) -> List[Dict[str, Any]]:
-        """Fetch latest models from OpenRouter API and enhance with metadata."""
+        """
+        Fetch latest models from OpenRouter API and enhance with metadata.
+
+        IMPORTANT: This method makes RAW API calls without using the cache
+        to break the recursion cycle between ModelCache and OpenRouterClient.
+
+        Uses credentials passed during initialization, falling back to environment
+        variables if not provided.
+        """
         try:
-            # Import client locally to avoid circular imports
-            from ..client.openrouter import OpenRouterClient
-            client = OpenRouterClient.from_env()
-            async with client:
-                raw_models = await client.list_models()
-                logger.info(f"Fetched {len(raw_models)} models from OpenRouter API")
-                
+            import httpx
+            import os
+
+            # Get API credentials - use instance vars first, then fall back to environment
+            api_key = self._api_key or os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "API key is required. Provide via api_key parameter or "
+                    "OPENROUTER_API_KEY environment variable"
+                )
+
+            base_url = self._base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+            # Make direct HTTP request to avoid cache recursion
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+
+            # Add optional tracking headers
+            app_name = os.getenv("OPENROUTER_APP_NAME")
+            if app_name:
+                headers["X-Title"] = app_name
+
+            http_referer = os.getenv("OPENROUTER_HTTP_REFERER")
+            if http_referer:
+                headers["HTTP-Referer"] = http_referer
+
+            # Direct API call without client
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.get(
+                    f"{base_url}/models",
+                    headers=headers
+                )
+                response.raise_for_status()
+
+                data = response.json()
+                raw_models = data.get("data", [])
+
+                logger.info(f"Fetched {len(raw_models)} models from OpenRouter API (raw)")
+
                 # Enhance models with metadata
                 enhanced_models = batch_enhance_models(raw_models)
                 logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
-                
+
                 return enhanced_models
+
         except Exception as e:
             logger.error(f"Failed to fetch models from API: {e}")
             raise
     
     def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
-        """Save models to file cache."""
+        """
+        Save models to file cache with file locking to prevent concurrent write corruption.
+
+        Uses portalocker to acquire an exclusive lock before writing, ensuring that
+        multiple processes/threads don't corrupt the cache file.
+
+        Args:
+            models: List of model dictionaries to cache
+
+        Raises:
+            portalocker.LockException: If unable to acquire lock within timeout
+        """
         try:
             cache_data = {
                 "models": models,
                 "updated_at": datetime.now().isoformat()
             }
-            
-            with open(self.cache_file, 'w', encoding='utf-8') as f:
+
+            # Use file locking to prevent concurrent write corruption
+            # LOCK_EX = exclusive lock, timeout=5 seconds
+            with portalocker.Lock(
+                self.cache_file,
+                mode='w',
+                encoding='utf-8',
+                timeout=5,
+                flags=portalocker.LOCK_EX
+            ) as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
-                
-            logger.debug(f"Saved {len(models)} models to cache file: {self.cache_file}")
-            
+                # Ensure data is written to disk
+                f.flush()
+
+            logger.debug(f"Saved {len(models)} models to cache file: {self.cache_file} (with file lock)")
+
+        except portalocker.LockException as e:
+            logger.error(f"Failed to acquire file lock for cache write: {e}")
+            logger.warning("Cache write skipped due to lock timeout - another process may be writing")
         except Exception as e:
             logger.error(f"Failed to save models to file cache: {e}")
     
     def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
-        """Load models from file cache."""
+        """
+        Load models from file cache with shared lock to prevent reading during writes.
+
+        Uses portalocker to acquire a shared lock before reading, ensuring data
+        consistency when multiple processes are accessing the cache.
+
+        Returns:
+            Tuple of (models list, last update datetime)
+        """
         cache_path = Path(self.cache_file)
-        
+
         if not cache_path.exists():
             return [], None
-        
+
         try:
-            with open(self.cache_file, 'r', encoding='utf-8') as f:
+            # Use shared lock (LOCK_SH) for reading - allows concurrent reads
+            # but blocks if someone has an exclusive write lock
+            with portalocker.Lock(
+                self.cache_file,
+                mode='r',
+                encoding='utf-8',
+                timeout=3,
+                flags=portalocker.LOCK_SH
+            ) as f:
                 cache_data = json.load(f)
-            
+
             models = cache_data.get("models", [])
             updated_at_str = cache_data.get("updated_at")
-            
+
             updated_at = None
             if updated_at_str:
                 updated_at = datetime.fromisoformat(updated_at_str)
-            
-            logger.debug(f"Loaded {len(models)} models from cache file")
+
+            logger.debug(f"Loaded {len(models)} models from cache file (with shared lock)")
             return models, updated_at
-            
+
+        except portalocker.LockException as e:
+            logger.warning(f"Failed to acquire shared lock for cache read: {e}")
+            logger.warning("Cache read failed - file may be locked for writing")
+            return [], None
         except Exception as e:
             logger.error(f"Failed to load models from file cache: {e}")
             return [], None

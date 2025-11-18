@@ -24,10 +24,33 @@ from .adaptive_router import AdaptiveRouter, RoutingDecision, RoutingMetrics
 from .cross_validator import CrossValidator, ValidationResult, ValidationConfig
 from .collaborative_solver import CollaborativeSolver, SolvingSession, SolvingResult
 from .base import TaskContext, TaskType, ModelInfo, ProcessingResult, ModelProvider
+from .operational_controls import (
+    OperationalConfig,
+    ConcurrencyConfig,
+    QuotaConfig,
+    StorageConfig,
+    FailureConfig,
+    ConcurrencyLimiter,
+    QuotaTracker,
+    FailureController,
+    StorageManager,
+    TaskCancellationManager
+)
+from .lifecycle_manager import (
+    CollectiveIntelligenceLifecycleManager,
+    get_lifecycle_manager,
+    shutdown_lifecycle_manager
+)
+from .semantic_similarity import (
+    SemanticSimilarityCalculator,
+    ResponseGrouper,
+    SimilarityScore,
+    calculate_response_similarity
+)
 
 __all__ = [
     'ConsensusEngine',
-    'ConsensusResult', 
+    'ConsensusResult',
     'ConsensusConfig',
     'ConsensusStrategy',
     'AgreementLevel',
@@ -48,6 +71,23 @@ __all__ = [
     'ModelInfo',
     'ProcessingResult',
     'ModelProvider',
+    'OperationalConfig',
+    'ConcurrencyConfig',
+    'QuotaConfig',
+    'StorageConfig',
+    'FailureConfig',
+    'ConcurrencyLimiter',
+    'QuotaTracker',
+    'FailureController',
+    'StorageManager',
+    'TaskCancellationManager',
+    'CollectiveIntelligenceLifecycleManager',
+    'get_lifecycle_manager',
+    'shutdown_lifecycle_manager',
+    'SemanticSimilarityCalculator',
+    'ResponseGrouper',
+    'SimilarityScore',
+    'calculate_response_similarity',
 ]
 
 __version__ = "1.0.0"
