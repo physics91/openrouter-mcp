@@ -11,7 +11,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
-from fastmcp import FastMCP
 
 from ..client.openrouter import OpenRouterClient
 from ..collective_intelligence import (
@@ -27,47 +26,50 @@ from ..collective_intelligence import (
     TaskType,
     ModelInfo,
     ProcessingResult,
-    ModelProvider
+    ModelProvider,
+    get_lifecycle_manager
 )
 from ..collective_intelligence.base import ModelCapability
-
-# Create the MCP instance
-mcp = FastMCP("Collective Intelligence MCP Server")
+# Import shared MCP instance from registry to prevent duplicate registration
+from ..mcp_registry import mcp
 
 logger = logging.getLogger(__name__)
 
 
 class OpenRouterModelProvider:
     """OpenRouter implementation of ModelProvider protocol."""
-    
+
     def __init__(self, client: OpenRouterClient):
+        """
+        Initialize the model provider.
+
+        Args:
+            client: OpenRouterClient instance that already has cache configured
+        """
         self.client = client
-        self._model_cache: Optional[List[ModelInfo]] = None
-        self._cache_timestamp: Optional[datetime] = None
-        self._cache_ttl_seconds = 300  # 5 minutes
-    
+
     async def process_task(
-        self, 
-        task: TaskContext, 
+        self,
+        task: TaskContext,
         model_id: str,
         **kwargs
     ) -> ProcessingResult:
         """Process a task using the specified model."""
         start_time = datetime.now()
-        
+
         try:
             # Prepare messages for the model
             messages = [
                 {"role": "user", "content": task.content}
             ]
-            
+
             # Add system message if requirements specify behavior
             if task.requirements.get("system_prompt"):
                 messages.insert(0, {
-                    "role": "system", 
+                    "role": "system",
                     "content": task.requirements["system_prompt"]
                 })
-            
+
             # Call OpenRouter API
             response = await self.client.chat_completion(
                 model=model_id,
@@ -76,22 +78,22 @@ class OpenRouterModelProvider:
                 max_tokens=kwargs.get("max_tokens"),
                 stream=False
             )
-            
+
             processing_time = (datetime.now() - start_time).total_seconds()
-            
+
             # Extract response content
             content = ""
             if response.get("choices") and len(response["choices"]) > 0:
                 content = response["choices"][0]["message"]["content"]
-            
+
             # Calculate confidence (simplified heuristic)
             confidence = self._calculate_confidence(response, content)
-            
+
             # Extract usage information
             usage = response.get("usage", {})
             tokens_used = usage.get("total_tokens", 0)
             cost = self._estimate_cost(model_id, tokens_used)
-            
+
             return ProcessingResult(
                 task_id=task.task_id,
                 model_id=model_id,
@@ -105,24 +107,22 @@ class OpenRouterModelProvider:
                     "response_metadata": response.get("model", {})
                 }
             )
-            
+
         except Exception as e:
             logger.error(f"Task processing failed for model {model_id}: {str(e)}")
             raise
-    
+
     async def get_available_models(self) -> List[ModelInfo]:
-        """Get list of available models with caching."""
-        now = datetime.now()
-        
-        # Check cache validity
-        if (self._model_cache and self._cache_timestamp and 
-            (now - self._cache_timestamp).total_seconds() < self._cache_ttl_seconds):
-            return self._model_cache
-        
+        """
+        Get list of available models.
+
+        This method delegates to the client's cache system, eliminating
+        the redundant local cache and preventing unnecessary API calls.
+        """
         try:
-            # Fetch models from OpenRouter
-            raw_models = await self.client.list_models()
-            
+            # Use client's built-in cache system
+            raw_models = await self.client.list_models(use_cache=True)
+
             # Convert to ModelInfo objects
             models = []
             for raw_model in raw_models:
@@ -134,22 +134,17 @@ class OpenRouterModelProvider:
                     cost_per_token=self._extract_cost(raw_model.get("pricing", {})),
                     metadata=raw_model
                 )
-                
+
                 # Add capability estimates based on model properties
                 model_info.capabilities = self._estimate_capabilities(raw_model)
-                
+
                 models.append(model_info)
-            
-            # Update cache
-            self._model_cache = models
-            self._cache_timestamp = now
-            
+
             return models
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch models: {str(e)}")
-            # Return cached models if available, otherwise empty list
-            return self._model_cache or []
+            return []
     
     def _calculate_confidence(self, response: Dict[str, Any], content: str) -> float:
         """Calculate confidence score based on response characteristics."""
@@ -301,8 +296,7 @@ def create_task_context(
     )
 
 
-@mcp.tool()
-async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
+async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Dict[str, Any]:
     """
     Generate chat completion using collective intelligence with multiple models.
     
@@ -330,26 +324,31 @@ async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str
         result = await collective_chat_completion(request)
     """
     logger.info(f"Processing collective chat completion with strategy: {request.strategy}")
-    
+
     try:
         # Setup
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
-        
+
+        # Get lifecycle manager and configure it
+        lifecycle_manager = await get_lifecycle_manager()
+        lifecycle_manager.configure(model_provider)
+
         # Configure consensus engine
         try:
             strategy = ConsensusStrategy(request.strategy.lower())
         except ValueError:
             strategy = ConsensusStrategy.MAJORITY_VOTE
-        
+
         config = ConsensusConfig(
             strategy=strategy,
             min_models=request.min_models,
             max_models=request.max_models,
             timeout_seconds=60.0
         )
-        
-        consensus_engine = ConsensusEngine(model_provider, config)
+
+        # Get singleton consensus engine from lifecycle manager
+        consensus_engine = await lifecycle_manager.get_consensus_engine(config)
         
         # Create task context
         requirements = {}
@@ -394,7 +393,12 @@ async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str
 
 
 @mcp.tool()
-async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
+async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
+    """MCP tool wrapper for collective chat completion."""
+    return await _collective_chat_completion_impl(request)
+
+
+async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[str, Any]:
     """
     Perform ensemble reasoning using specialized models for different aspects.
     
@@ -420,13 +424,18 @@ async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any
         result = await ensemble_reasoning(request)
     """
     logger.info(f"Processing ensemble reasoning for task type: {request.task_type}")
-    
+
     try:
         # Setup
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
-        
-        ensemble_reasoner = EnsembleReasoner(model_provider)
+
+        # Get lifecycle manager and configure it
+        lifecycle_manager = await get_lifecycle_manager()
+        lifecycle_manager.configure(model_provider)
+
+        # Get singleton ensemble reasoner from lifecycle manager
+        ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
         
         # Create task context
         task = create_task_context(
@@ -471,7 +480,12 @@ async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any
 
 
 @mcp.tool()
-async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
+async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
+    """MCP tool wrapper for ensemble reasoning."""
+    return await _ensemble_reasoning_impl(request)
+
+
+async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[str, Any]:
     """
     Intelligently select the best model for a given task using adaptive routing.
     
@@ -498,13 +512,18 @@ async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, A
         result = await adaptive_model_selection(request)
     """
     logger.info(f"Processing adaptive model selection for task: {request.task_type}")
-    
+
     try:
         # Setup
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
-        
-        adaptive_router = AdaptiveRouter(model_provider)
+
+        # Get lifecycle manager and configure it
+        lifecycle_manager = await get_lifecycle_manager()
+        lifecycle_manager.configure(model_provider)
+
+        # Get singleton adaptive router from lifecycle manager
+        adaptive_router = await lifecycle_manager.get_adaptive_router()
         
         # Create task context
         task = create_task_context(
@@ -541,8 +560,13 @@ async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, A
         raise
 
 
-@mcp.tool() 
-async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
+@mcp.tool()
+async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
+    """MCP tool wrapper for adaptive model selection."""
+    return await _adaptive_model_selection_impl(request)
+
+
+async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[str, Any]:
     """
     Validate content quality and accuracy across multiple models.
     
@@ -569,13 +593,18 @@ async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, A
         result = await cross_model_validation(request)
     """
     logger.info("Processing cross-model validation")
-    
+
     try:
         # Setup
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
-        
-        cross_validator = CrossValidator(model_provider)
+
+        # Get lifecycle manager and configure it
+        lifecycle_manager = await get_lifecycle_manager()
+        lifecycle_manager.configure(model_provider)
+
+        # Get singleton cross validator from lifecycle manager
+        cross_validator = await lifecycle_manager.get_cross_validator()
         
         # Create a dummy result to validate
         dummy_result = ProcessingResult(
@@ -632,7 +661,12 @@ async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, A
 
 
 @mcp.tool()
-async def collaborative_problem_solving(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
+async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
+    """MCP tool wrapper for cross-model validation."""
+    return await _cross_model_validation_impl(request)
+
+
+async def _collaborative_problem_solving_impl(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
     """
     Solve complex problems through collaborative multi-model interaction.
     
@@ -659,13 +693,18 @@ async def collaborative_problem_solving(request: CollaborativeSolvingRequest) ->
         result = await collaborative_problem_solving(request)
     """
     logger.info("Processing collaborative problem solving")
-    
+
     try:
         # Setup
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
-        
-        collaborative_solver = CollaborativeSolver(model_provider)
+
+        # Get lifecycle manager and configure it
+        lifecycle_manager = await get_lifecycle_manager()
+        lifecycle_manager.configure(model_provider)
+
+        # Get singleton collaborative solver from lifecycle manager
+        collaborative_solver = await lifecycle_manager.get_collaborative_solver()
         
         # Create task context
         task = create_task_context(
@@ -700,3 +739,9 @@ async def collaborative_problem_solving(request: CollaborativeSolvingRequest) ->
     except Exception as e:
         logger.error(f"Collaborative problem solving failed: {str(e)}")
         raise
+
+
+@mcp.tool()
+async def collaborative_problem_solving(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
+    """MCP tool wrapper for collaborative problem solving."""
+    return await _collaborative_problem_solving_impl(request)

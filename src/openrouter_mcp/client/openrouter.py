@@ -1,9 +1,11 @@
 import os
 import logging
+import hashlib
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 import httpx
 import json as json_lib
 from contextlib import asynccontextmanager
+from copy import deepcopy
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
@@ -27,6 +29,230 @@ class RateLimitError(OpenRouterError):
 class InvalidRequestError(OpenRouterError):
     """Raised when request is invalid."""
     pass
+
+
+class SensitiveDataSanitizer:
+    """Sanitizes sensitive data from logs to prevent security leaks.
+
+    This class provides methods to mask, truncate, or hash sensitive information
+    such as API keys, authorization tokens, and user prompts before logging.
+    """
+
+    @staticmethod
+    def mask_api_key(api_key: str, visible_chars: int = 4) -> str:
+        """Mask API key, showing only first few characters.
+
+        Args:
+            api_key: The API key to mask
+            visible_chars: Number of characters to show at the start
+
+        Returns:
+            Masked API key string
+        """
+        if not api_key or len(api_key) <= visible_chars:
+            return "***MASKED***"
+        return f"{api_key[:visible_chars]}...***MASKED***"
+
+    @staticmethod
+    def sanitize_headers(headers: Dict[str, str]) -> Dict[str, str]:
+        """Sanitize headers by masking sensitive values.
+
+        Args:
+            headers: Original headers dictionary
+
+        Returns:
+            Sanitized copy of headers with masked sensitive values
+        """
+        sanitized = headers.copy()
+        sensitive_headers = ["authorization", "x-api-key", "api-key"]
+
+        for key in sanitized.keys():
+            if key.lower() in sensitive_headers:
+                if sanitized[key].lower().startswith("bearer "):
+                    api_key = sanitized[key][7:]  # Remove "Bearer " prefix
+                    sanitized[key] = f"Bearer {SensitiveDataSanitizer.mask_api_key(api_key)}"
+                else:
+                    sanitized[key] = SensitiveDataSanitizer.mask_api_key(sanitized[key])
+
+        return sanitized
+
+    @staticmethod
+    def hash_content(content: str, algorithm: str = "sha256") -> str:
+        """Create a hash of content for safe logging.
+
+        Args:
+            content: Content to hash
+            algorithm: Hash algorithm to use (sha256, sha1, md5)
+
+        Returns:
+            Hexadecimal hash string
+        """
+        if not content:
+            return "EMPTY"
+
+        hasher = hashlib.new(algorithm)
+        hasher.update(content.encode('utf-8'))
+        return f"{algorithm}:{hasher.hexdigest()[:16]}..."
+
+    @staticmethod
+    def truncate_content(content: str, max_length: int = 100) -> str:
+        """Truncate content to prevent logging large payloads.
+
+        Args:
+            content: Content to truncate
+            max_length: Maximum length to preserve
+
+        Returns:
+            Truncated content with indicator if truncated
+        """
+        if not content:
+            return "EMPTY"
+
+        if len(content) <= max_length:
+            return content
+
+        return f"{content[:max_length]}... [TRUNCATED: {len(content)} chars total]"
+
+    @staticmethod
+    def sanitize_messages(
+        messages: List[Dict[str, Any]],
+        mode: str = "hash"
+    ) -> List[Dict[str, Any]]:
+        """Sanitize message content for logging.
+
+        Args:
+            messages: List of message dictionaries
+            mode: Sanitization mode - 'hash', 'truncate', or 'metadata'
+
+        Returns:
+            Sanitized copy of messages
+        """
+        sanitized = []
+
+        for msg in messages:
+            sanitized_msg = {"role": msg.get("role", "unknown")}
+            content = msg.get("content", "")
+
+            if mode == "hash":
+                if isinstance(content, str):
+                    sanitized_msg["content_hash"] = SensitiveDataSanitizer.hash_content(content)
+                    sanitized_msg["content_length"] = len(content)
+                elif isinstance(content, list):
+                    # Multimodal content
+                    sanitized_msg["content_type"] = "multimodal"
+                    sanitized_msg["content_parts"] = len(content)
+            elif mode == "truncate":
+                if isinstance(content, str):
+                    sanitized_msg["content"] = SensitiveDataSanitizer.truncate_content(content, 50)
+                elif isinstance(content, list):
+                    sanitized_msg["content_type"] = "multimodal"
+                    sanitized_msg["content_parts"] = len(content)
+            elif mode == "metadata":
+                if isinstance(content, str):
+                    sanitized_msg["content_length"] = len(content)
+                    sanitized_msg["content_type"] = "text"
+                elif isinstance(content, list):
+                    sanitized_msg["content_type"] = "multimodal"
+                    sanitized_msg["content_parts"] = len(content)
+
+            sanitized.append(sanitized_msg)
+
+        return sanitized
+
+    @staticmethod
+    def sanitize_payload(
+        payload: Dict[str, Any],
+        enable_verbose: bool = False
+    ) -> Dict[str, Any]:
+        """Sanitize request payload for logging.
+
+        Args:
+            payload: Original payload dictionary
+            enable_verbose: If True, include truncated content; if False, only metadata
+
+        Returns:
+            Sanitized copy of payload safe for logging
+        """
+        sanitized = {
+            "model": payload.get("model", "unknown"),
+            "temperature": payload.get("temperature"),
+            "max_tokens": payload.get("max_tokens"),
+            "stream": payload.get("stream", False)
+        }
+
+        # Sanitize messages based on verbosity setting
+        if "messages" in payload:
+            if enable_verbose:
+                sanitized["messages"] = SensitiveDataSanitizer.sanitize_messages(
+                    payload["messages"], mode="truncate"
+                )
+            else:
+                sanitized["messages"] = SensitiveDataSanitizer.sanitize_messages(
+                    payload["messages"], mode="metadata"
+                )
+
+        # Include non-sensitive additional parameters
+        safe_params = ["top_p", "frequency_penalty", "presence_penalty", "n"]
+        for param in safe_params:
+            if param in payload:
+                sanitized[param] = payload[param]
+
+        return sanitized
+
+    @staticmethod
+    def sanitize_response(
+        response: Dict[str, Any],
+        enable_verbose: bool = False
+    ) -> Dict[str, Any]:
+        """Sanitize API response for logging.
+
+        Args:
+            response: Original response dictionary
+            enable_verbose: If True, include truncated content; if False, only metadata
+
+        Returns:
+            Sanitized copy of response safe for logging
+        """
+        sanitized = {
+            "id": response.get("id", "unknown"),
+            "model": response.get("model", "unknown"),
+            "created": response.get("created")
+        }
+
+        # Sanitize choices
+        if "choices" in response:
+            choices = response["choices"]
+            sanitized["choices_count"] = len(choices)
+
+            if enable_verbose and choices:
+                # Show truncated version of first choice
+                first_choice = choices[0]
+                message = first_choice.get("message", {})
+                content = message.get("content", "")
+
+                sanitized["first_choice"] = {
+                    "role": message.get("role", "unknown"),
+                    "content": SensitiveDataSanitizer.truncate_content(content, 100),
+                    "finish_reason": first_choice.get("finish_reason")
+                }
+            else:
+                # Only metadata
+                if choices:
+                    first_choice = choices[0]
+                    message = first_choice.get("message", {})
+                    content = message.get("content", "")
+
+                    sanitized["first_choice_metadata"] = {
+                        "role": message.get("role", "unknown"),
+                        "content_length": len(content) if isinstance(content, str) else 0,
+                        "finish_reason": first_choice.get("finish_reason")
+                    }
+
+        # Include usage information (not sensitive)
+        if "usage" in response:
+            sanitized["usage"] = response["usage"]
+
+        return sanitized
 
 
 class OpenRouterClient:
@@ -53,10 +279,11 @@ class OpenRouterClient:
         timeout: float = 30.0,
         logger: Optional[logging.Logger] = None,
         enable_cache: bool = True,
-        cache_ttl: int = 3600
+        cache_ttl: int = 3600,
+        enable_verbose_logging: bool = False
     ) -> None:
         """Initialize OpenRouter client.
-        
+
         Args:
             api_key: OpenRouter API key
             base_url: Base URL for OpenRouter API
@@ -66,13 +293,17 @@ class OpenRouterClient:
             logger: Custom logger instance
             enable_cache: Whether to enable model caching
             cache_ttl: Cache time-to-live in seconds
-            
+            enable_verbose_logging: If True, log truncated request/response content.
+                                   If False (default), only log metadata.
+                                   WARNING: Even with this enabled, sensitive data is sanitized,
+                                   but truncated prompts/responses may still contain PII.
+
         Raises:
             ValueError: If API key is empty or None
         """
         if not api_key or api_key.strip() == "":
             raise ValueError("API key is required")
-        
+
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.app_name = app_name
@@ -80,14 +311,27 @@ class OpenRouterClient:
         self.timeout = timeout
         self.logger = logger or logging.getLogger(__name__)
         self.enable_cache = enable_cache
-        
+        self.enable_verbose_logging = enable_verbose_logging
+
+        # Log warning if verbose logging is enabled
+        if self.enable_verbose_logging:
+            self.logger.warning(
+                "Verbose logging is enabled. Truncated request/response content will be logged. "
+                "This may include sensitive information. Use only for debugging."
+            )
+
         self._client = httpx.AsyncClient(timeout=timeout)
-        
-        # Initialize model cache
+
+        # Initialize model cache with client credentials
         if enable_cache:
-            # Convert seconds to hours for ModelCache
-            ttl_hours = max(1, cache_ttl // 3600)  # Minimum 1 hour
-            self._model_cache = ModelCache(ttl_hours=ttl_hours)
+            # Convert seconds to hours for ModelCache (using float for sub-hour precision)
+            # Minimum 0.08334 hours (exactly 300 seconds = 5 minutes) to prevent too-frequent refreshes
+            ttl_hours = max(0.08334, cache_ttl / 3600.0)
+            self._model_cache = ModelCache(
+                ttl_hours=ttl_hours,
+                api_key=self.api_key,
+                base_url=self.base_url
+            )
         else:
             self._model_cache = None
     
@@ -147,28 +391,38 @@ class OpenRouterClient:
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Make HTTP request to OpenRouter API.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path
             json: JSON payload for POST/PUT requests
             params: URL parameters
-            
+
         Returns:
             Response data as dictionary
-            
+
         Raises:
             OpenRouterError: For API errors, network issues, or unexpected errors
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-        
+
+        # Sanitize headers for logging
+        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
         self.logger.debug(f"Making {method} request to {url}")
+        self.logger.debug(f"Request headers: {sanitized_headers}")
+
+        # Sanitize payload for logging based on verbosity setting
         if json:
-            self.logger.debug(f"Request payload: {json}")
+            sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
+                json, enable_verbose=self.enable_verbose_logging
+            )
+            self.logger.debug(f"Request payload: {sanitized_payload}")
+
         if params:
+            # URL params are generally not sensitive, but log them carefully
             self.logger.debug(f"Request params: {params}")
-        
+
         try:
             response = await self._client.request(
                 method=method,
@@ -177,15 +431,31 @@ class OpenRouterClient:
                 json=json,
                 params=params
             )
-            
+
             self.logger.debug(f"Response status: {response.status_code}")
             response.raise_for_status()
-            
+
             response_data = response.json()
-            self.logger.debug(f"Response data keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'non-dict response'}")
-            
+
+            # Sanitize response for logging
+            if isinstance(response_data, dict):
+                if "choices" in response_data or "data" in response_data:
+                    # This looks like a completion or model list response
+                    if "choices" in response_data:
+                        sanitized_response = SensitiveDataSanitizer.sanitize_response(
+                            response_data, enable_verbose=self.enable_verbose_logging
+                        )
+                        self.logger.debug(f"Response data: {sanitized_response}")
+                    else:
+                        # For non-completion responses (like model lists), log keys only
+                        self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+                else:
+                    self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+            else:
+                self.logger.debug("Response data type: non-dict response")
+
             return response_data
-        
+
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
             await self._handle_http_error(e.response)
@@ -205,23 +475,30 @@ class OpenRouterClient:
         json_data: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Make streaming request to OpenRouter API.
-        
+
         Args:
             endpoint: API endpoint path
             json_data: JSON payload for the request
-            
+
         Yields:
             Streaming response chunks as dictionaries
-            
+
         Raises:
             OpenRouterError: For API errors, network issues, or unexpected errors
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-        
+
+        # Sanitize headers and payload for logging
+        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
         self.logger.debug(f"Making streaming POST request to {url}")
-        self.logger.debug(f"Stream payload: {json_data}")
-        
+        self.logger.debug(f"Request headers: {sanitized_headers}")
+
+        sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
+            json_data, enable_verbose=self.enable_verbose_logging
+        )
+        self.logger.debug(f"Stream payload: {sanitized_payload}")
+
         try:
             async with self._client.stream(
                 "POST",
@@ -231,7 +508,7 @@ class OpenRouterClient:
             ) as response:
                 self.logger.debug(f"Stream response status: {response.status_code}")
                 response.raise_for_status()
-                
+
                 chunk_count = 0
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
@@ -242,12 +519,22 @@ class OpenRouterClient:
                         try:
                             chunk = json_lib.loads(data)
                             chunk_count += 1
-                            self.logger.debug(f"Yielding chunk {chunk_count}")
+
+                            # Log chunk metadata only (don't log content even in verbose mode for streaming)
+                            if chunk_count % 10 == 1:  # Log every 10th chunk to reduce noise
+                                self.logger.debug(
+                                    f"Streaming chunk {chunk_count} "
+                                    f"(keys: {list(chunk.keys()) if isinstance(chunk, dict) else 'non-dict'})"
+                                )
+
                             yield chunk
                         except json_lib.JSONDecodeError as e:
-                            self.logger.warning(f"Failed to parse stream chunk: {data[:100]}...")
+                            # Don't log the actual data content - could contain sensitive info
+                            self.logger.warning(
+                                f"Failed to parse stream chunk (length: {len(data)}): {str(e)}"
+                            )
                             continue
-        
+
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
             await self._handle_http_error(e.response)
@@ -281,17 +568,19 @@ class OpenRouterClient:
     async def list_models(
         self,
         filter_by: Optional[str] = None,
-        use_cache: bool = True
+        use_cache: bool = True,
+        _bypass_cache: bool = False
     ) -> List[Dict[str, Any]]:
         """List available models from OpenRouter.
-        
+
         Retrieves a list of all available AI models, optionally filtered by name.
         Each model includes information about pricing, context length, and capabilities.
-        
+
         Args:
             filter_by: Optional string to filter model names (case-insensitive)
             use_cache: Whether to use cached models if available
-            
+            _bypass_cache: Internal flag to bypass cache (prevents recursion)
+
         Returns:
             List of dictionaries containing model information with keys:
             - id: Model identifier (e.g., "openai/gpt-4")
@@ -300,27 +589,27 @@ class OpenRouterClient:
             - pricing: Dictionary with prompt/completion pricing
             - context_length: Maximum context window size
             - architecture: Model architecture details
-            
+
         Raises:
             OpenRouterError: If the API request fails
-            
+
         Example:
             >>> models = await client.list_models()
             >>> gpt_models = await client.list_models(filter_by="gpt")
         """
-        # Use cache system if enabled
-        if use_cache and self._model_cache:
+        # Use cache system if enabled and not explicitly bypassed
+        if use_cache and self._model_cache and not _bypass_cache:
             try:
                 all_models = await self._model_cache.get_models()
                 if all_models:
                     self.logger.info(f"Retrieved {len(all_models)} models from cache")
-                    
+
                     # Apply filter if specified
                     if filter_by:
                         filter_lower = filter_by.lower()
                         filtered_models = [
-                            model for model in all_models 
-                            if filter_lower in model.get("name", "").lower() 
+                            model for model in all_models
+                            if filter_lower in model.get("name", "").lower()
                             or filter_lower in model.get("id", "").lower()
                         ]
                         self.logger.info(f"Filtered to {len(filtered_models)} models")
@@ -330,17 +619,17 @@ class OpenRouterClient:
             except Exception as e:
                 self.logger.warning(f"Failed to get cached models: {e}")
                 # Continue to API fetch
-        
+
         # Fallback: Fetch directly from API if cache is disabled or failed
         self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
-        
+
         params = {}
         if filter_by:
             params["filter"] = filter_by
-            
+
         response = await self._make_request("GET", "/models", params=params)
         models = response.get("data", [])
-        
+
         self.logger.info(f"Retrieved {len(models)} models from API")
         return models
     

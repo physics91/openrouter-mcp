@@ -361,7 +361,7 @@ npx openrouter-mcp start --verbose
 cat ~/.claude/claude_code_config.json
 
 # Test MCP connection
-claude-code "test connection"
+claude "test connection"
 ```
 
 2. **Update configuration**:

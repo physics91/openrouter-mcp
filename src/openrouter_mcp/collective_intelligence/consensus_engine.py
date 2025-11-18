@@ -14,12 +14,21 @@ import statistics
 import logging
 
 from .base import (
-    CollectiveIntelligenceComponent, 
-    TaskContext, 
+    CollectiveIntelligenceComponent,
+    TaskContext,
     ProcessingResult,
     ModelProvider,
     QualityMetrics
 )
+from .operational_controls import (
+    OperationalConfig,
+    ConcurrencyLimiter,
+    QuotaTracker,
+    FailureController,
+    StorageManager,
+    TaskCancellationManager
+)
+from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +59,12 @@ class ConsensusConfig:
     max_models: int = 5
     confidence_threshold: float = 0.7
     agreement_threshold: float = 0.6
+    similarity_threshold: float = 0.7  # Semantic similarity threshold for grouping
     timeout_seconds: float = 30.0
     retry_attempts: int = 2
     model_weights: Dict[str, float] = field(default_factory=dict)
     exclude_models: Set[str] = field(default_factory=set)
+    operational_config: Optional[OperationalConfig] = None
 
 
 @dataclass
@@ -90,48 +101,117 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     def __init__(self, model_provider: ModelProvider, config: Optional[ConsensusConfig] = None):
         super().__init__(model_provider)
         self.config = config or ConsensusConfig()
-        self.consensus_history: List[ConsensusResult] = []
+
+        # Initialize operational controls
+        op_config = self.config.operational_config or OperationalConfig.conservative()
+        self.concurrency_limiter = ConcurrencyLimiter(op_config.concurrency)
+        self.quota_tracker = QuotaTracker(op_config.quota)
+        self.failure_controller = FailureController(op_config.failure)
+        self.storage_manager = StorageManager(op_config.storage)
+        self.cancellation_manager = TaskCancellationManager()
+        self.operational_config = op_config
+
         self.model_reliability: Dict[str, float] = {}
+
+        # Initialize semantic similarity components
+        self.similarity_calculator = SemanticSimilarityCalculator()
+        self.response_grouper = ResponseGrouper(
+            similarity_threshold=self.config.similarity_threshold,
+            calculator=self.similarity_calculator
+        )
     
     async def process(self, task: TaskContext, **kwargs) -> ConsensusResult:
         """
         Build consensus among multiple models for the given task.
-        
+
         Args:
             task: The task to process
             **kwargs: Additional configuration options
-            
+
         Returns:
             ConsensusResult containing the consensus and metadata
+
+        Raises:
+            RuntimeError: If quota exceeded or operational limits hit
+            ValueError: If insufficient valid responses
+            asyncio.CancelledError: If execution cancelled due to failures
         """
         start_time = datetime.now()
-        
+        request_id = task.task_id
+
+        # Acquire task execution slot
+        if not await self.concurrency_limiter.acquire_task_slot(request_id):
+            raise RuntimeError(f"Failed to acquire execution slot for {request_id} - system at capacity")
+
         try:
+            # Check circuit breaker
+            if not await self.failure_controller.check_circuit_breaker("consensus_engine"):
+                raise RuntimeError("Circuit breaker open for ConsensusEngine - too many recent failures")
+
             # Select models for consensus
             models = await self._select_models(task)
-            logger.info(f"Selected {len(models)} models for consensus: {[m.model_id for m in models]}")
-            
-            # Get responses from all models
-            model_responses = await self._get_model_responses(task, models)
-            
+            logger.info(f"Selected {len(models)} models for consensus: {models}")
+
+            # Check quota before proceeding
+            can_proceed, reason = await self.quota_tracker.check_and_increment(
+                request_id,
+                tokens=len(task.content) * len(models),  # Rough estimate
+                cost=0.0  # Would be calculated from model pricing
+            )
+            if not can_proceed:
+                raise RuntimeError(f"Quota check failed: {reason}")
+
+            # Get responses from all models with cancellation support
+            model_responses = await self._get_model_responses(task, models, request_id)
+
             # Build consensus
             consensus_result = await self._build_consensus(task, model_responses)
-            
-            # Update metrics and history
+
+            # Update metrics and history with TTL management
             processing_time = (datetime.now() - start_time).total_seconds()
             consensus_result.processing_time = processing_time
-            
+
             self._update_model_reliability(model_responses, consensus_result)
-            self.consensus_history.append(consensus_result)
-            
+            await self.storage_manager.add_item(request_id, consensus_result)
+
+            # Record success for circuit breaker
+            self.failure_controller.record_circuit_breaker_success("consensus_engine")
+
             logger.info(f"Consensus completed: {consensus_result.agreement_level.value}, "
                        f"confidence: {consensus_result.confidence_score:.3f}")
-            
+
             return consensus_result
-            
-        except Exception as e:
-            logger.error(f"Consensus building failed: {str(e)}")
+
+        except asyncio.CancelledError:
+            logger.warning(f"Consensus building cancelled for {request_id}")
+            self.failure_controller.record_circuit_breaker_failure("consensus_engine")
             raise
+
+        except Exception as e:
+            logger.error(f"Consensus building failed for {request_id}: {str(e)}", exc_info=True)
+
+            # Record failure and check if we should cancel pending tasks
+            should_cancel = await self.failure_controller.record_failure(
+                request_id,
+                str(e),
+                is_critical=isinstance(e, (RuntimeError, ValueError))
+            )
+
+            if should_cancel:
+                cancelled = await self.cancellation_manager.cancel_all_tasks(
+                    request_id,
+                    f"Cancelling due to failure: {str(e)}"
+                )
+                logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
+
+            self.failure_controller.record_circuit_breaker_failure("consensus_engine")
+            raise
+
+        finally:
+            # Always release the execution slot
+            self.concurrency_limiter.release_task_slot(request_id)
+            # Reset quota tracking for this request
+            self.quota_tracker.reset_request(request_id)
     
     async def _select_models(self, task: TaskContext) -> List[str]:
         """Select appropriate models for consensus building."""
@@ -182,49 +262,93 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return min(1.0, base_score)
     
     async def _get_model_responses(
-        self, 
-        task: TaskContext, 
-        model_ids: List[str]
+        self,
+        task: TaskContext,
+        model_ids: List[str],
+        request_id: str
     ) -> List[ModelResponse]:
-        """Get responses from all selected models concurrently."""
-        
+        """Get responses from all selected models with concurrency control."""
+
         async def get_single_response(model_id: str) -> Optional[ModelResponse]:
+            # Acquire model API slot
+            if not await self.concurrency_limiter.acquire_model_slot():
+                logger.warning(f"Failed to acquire model slot for {model_id}")
+                return None
+
+            api_task = None
             try:
+                # Check quota for this specific API call
+                can_proceed, reason = await self.quota_tracker.check_and_increment(
+                    request_id,
+                    tokens=len(task.content),  # Rough estimate
+                    cost=0.0  # Would be calculated from model pricing
+                )
+                if not can_proceed:
+                    logger.warning(f"Quota exceeded for {model_id}: {reason}")
+                    return None
+
+                # Create the API call task
+                api_task = asyncio.create_task(
+                    self.model_provider.process_task(task, model_id)
+                )
+
+                # Register for cancellation
+                await self.cancellation_manager.register_task(request_id, api_task)
+
+                # Wait with timeout
                 result = await asyncio.wait_for(
-                    self.model_provider.process_task(task, model_id),
+                    api_task,
                     timeout=self.config.timeout_seconds
                 )
-                
+
                 weight = self.config.model_weights.get(model_id, 1.0)
                 reliability = self.model_reliability.get(model_id, 1.0)
-                
+
                 return ModelResponse(
                     model_id=model_id,
                     result=result,
                     weight=weight,
                     reliability_score=reliability
                 )
-                
+
+            except asyncio.CancelledError:
+                logger.info(f"Model {model_id} call cancelled")
+                return None
+
+            except asyncio.TimeoutError:
+                logger.warning(f"Model {model_id} timed out after {self.config.timeout_seconds}s")
+                if api_task and not api_task.done():
+                    api_task.cancel()
+                return None
+
             except Exception as e:
                 logger.warning(f"Model {model_id} failed to respond: {str(e)}")
                 return None
-        
-        # Execute all model calls concurrently
+
+            finally:
+                # Always release model slot and unregister task
+                self.concurrency_limiter.release_model_slot()
+                if api_task:
+                    await self.cancellation_manager.unregister_task(request_id, api_task)
+
+        # Execute all model calls with controlled concurrency
         tasks = [get_single_response(model_id) for model_id in model_ids]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Filter out failed responses
         valid_responses = [
-            response for response in responses 
-            if isinstance(response, ModelResponse)
+            response for response in responses
+            if isinstance(response, ModelResponse) and response is not None
         ]
-        
+
+        logger.info(f"Got {len(valid_responses)}/{len(model_ids)} valid responses")
+
         if len(valid_responses) < self.config.min_models:
             raise ValueError(
                 f"Insufficient responses for consensus: got {len(valid_responses)}, "
                 f"need at least {self.config.min_models}"
             )
-        
+
         return valid_responses
     
     async def _build_consensus(
@@ -346,24 +470,48 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return self._majority_vote_consensus(task, high_confidence_responses)
     
     def _group_similar_responses(self, responses: List[ModelResponse]) -> List[List[ModelResponse]]:
-        """Group similar responses together (simplified implementation)."""
-        # This is a very simplified grouping based on response length similarity
-        # In practice, this would use semantic similarity
-        
+        """
+        Group similar responses together using semantic similarity.
+
+        This method replaces the old length-based heuristic with actual semantic
+        similarity detection, enabling better consensus by grouping responses that
+        convey the same meaning even with different formatting or phrasing.
+
+        Args:
+            responses: List of model responses to group
+
+        Returns:
+            List of groups, where each group contains semantically similar responses
+        """
+        if not responses:
+            return []
+
+        if len(responses) == 1:
+            return [responses]
+
+        # Extract response texts
+        texts = [r.result.content for r in responses]
+
+        # Group responses using semantic similarity
+        group_indices = self.response_grouper.group_responses(texts)
+
+        # Convert index groups back to ModelResponse groups
         groups = []
-        for response in responses:
-            added_to_group = False
-            for group in groups:
-                # Simple similarity check based on content length
-                if any(abs(len(response.result.content) - len(r.result.content)) < 50 
-                       for r in group):
-                    group.append(response)
-                    added_to_group = True
-                    break
-            
-            if not added_to_group:
-                groups.append([response])
-        
+        for index_group in group_indices:
+            response_group = [responses[idx] for idx in index_group]
+            groups.append(response_group)
+
+        # Log grouping results for transparency
+        logger.info(
+            f"Grouped {len(responses)} responses into {len(groups)} semantic groups "
+            f"(threshold={self.config.similarity_threshold})"
+        )
+        for i, group in enumerate(groups):
+            logger.debug(
+                f"Group {i+1}: {len(group)} responses from models: "
+                f"{[r.model_id for r in group]}"
+            )
+
         return groups
     
     def _calculate_agreement_level(self, agreement_ratio: float) -> AgreementLevel:
@@ -450,11 +598,36 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             self.model_reliability[response.model_id] = new_reliability
     
     def get_consensus_history(self, limit: Optional[int] = None) -> List[ConsensusResult]:
-        """Get historical consensus results."""
-        if limit:
-            return self.consensus_history[-limit:]
-        return self.consensus_history.copy()
-    
+        """Get historical consensus results with TTL enforcement."""
+        return self.storage_manager.get_items(limit)
+
     def get_model_reliability_scores(self) -> Dict[str, float]:
         """Get current model reliability scores."""
         return self.model_reliability.copy()
+
+    def get_operational_metrics(self) -> Dict[str, Any]:
+        """Get operational metrics and limits status."""
+        return {
+            'active_tasks': self.concurrency_limiter.get_active_count(),
+            'at_capacity': self.concurrency_limiter.is_at_capacity(),
+            'history_size': self.storage_manager.get_count(),
+            'max_history_size': self.operational_config.storage.max_history_size,
+            'concurrency_config': {
+                'max_concurrent_tasks': self.operational_config.concurrency.max_concurrent_tasks,
+                'max_concurrent_models': self.operational_config.concurrency.max_concurrent_models,
+            },
+            'quota_config': {
+                'max_api_calls_per_request': self.operational_config.quota.max_api_calls_per_request,
+                'max_tokens_per_request': self.operational_config.quota.max_tokens_per_request,
+                'max_cost_per_request': self.operational_config.quota.max_cost_per_request,
+            }
+        }
+
+    async def shutdown(self) -> None:
+        """Gracefully shutdown the consensus engine."""
+        logger.info("Shutting down ConsensusEngine...")
+        await self.storage_manager.shutdown()
+        # Cancel any remaining tasks
+        for request_id in list(self.cancellation_manager.pending_tasks.keys()):
+            await self.cancellation_manager.cancel_all_tasks(request_id, "Shutdown requested")
+        logger.info("ConsensusEngine shutdown complete")

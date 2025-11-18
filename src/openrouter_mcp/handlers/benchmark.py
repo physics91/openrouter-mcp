@@ -963,34 +963,52 @@ class BenchmarkReportExporter:
     
     async def export_markdown(self, results: Dict[str, Any], output_path: str):
         """Export benchmark results to Markdown format."""
+        # Support both BenchmarkResult (with error) and EnhancedBenchmarkResult (with success)
+        def is_successful(r):
+            if hasattr(r, 'success'):
+                return r.success
+            return r.error is None if hasattr(r, 'error') else True
+
         lines = [
             "# Benchmark Report",
             f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "",
             "## Summary",
             f"- Models tested: {len(results)}",
-            f"- Successful tests: {sum(1 for r in results.values() if r.success)}",
+            f"- Successful tests: {sum(1 for r in results.values() if is_successful(r))}",
             "",
             "## Results",
             ""
         ]
-        
+
         for model_id, result in results.items():
+            success = is_successful(result)
             lines.extend([
                 f"### {model_id}",
                 "",
-                f"- **Success**: {'✅' if result.success else '❌'}",
+                f"- **Success**: {'✅' if success else '❌'}",
             ])
-            
-            if result.success and hasattr(result, 'metrics'):
-                lines.extend([
-                    f"- **Response Time**: {result.metrics.avg_response_time:.2f}s",
-                    f"- **Cost**: ${result.metrics.avg_cost:.6f}",
-                    f"- **Quality Score**: {result.metrics.quality_score:.2f}",
-                    f"- **Throughput**: {result.metrics.throughput:.2f} tokens/s",
-                ])
-            
-            if result.response:
+
+            # Add basic metrics for BenchmarkResult
+            if success and hasattr(result, 'response_time_ms'):
+                lines.append(f"- **Response Time**: {result.response_time_ms:.2f}ms")
+            if hasattr(result, 'cost'):
+                lines.append(f"- **Cost**: ${result.cost:.6f}")
+            if hasattr(result, 'tokens_used'):
+                lines.append(f"- **Tokens Used**: {result.tokens_used}")
+
+            # Add enhanced metrics if available
+            if hasattr(result, 'metrics') and result.metrics:
+                if hasattr(result.metrics, 'avg_response_time'):
+                    lines.append(f"- **Avg Response Time**: {result.metrics.avg_response_time:.2f}s")
+                if hasattr(result.metrics, 'avg_cost'):
+                    lines.append(f"- **Avg Cost**: ${result.metrics.avg_cost:.6f}")
+                if hasattr(result.metrics, 'quality_score'):
+                    lines.append(f"- **Quality Score**: {result.metrics.quality_score:.2f}")
+                if hasattr(result.metrics, 'throughput'):
+                    lines.append(f"- **Throughput**: {result.metrics.throughput:.2f} tokens/s")
+
+            if hasattr(result, 'response') and result.response:
                 preview = result.response[:200] + "..." if len(result.response) > 200 else result.response
                 lines.extend([
                     "",
@@ -999,41 +1017,48 @@ class BenchmarkReportExporter:
                     preview,
                     f"```",
                 ])
-            
+
             lines.append("")
-        
+
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
-        
+
         self.logger.info(f"Markdown report exported to {output_path}")
+        return output_path
     
     async def export_csv(self, results: Dict[str, Any], output_path: str):
         """Export benchmark results to CSV format."""
         import csv
-        
+
         fieldnames = [
             'model_id', 'success', 'response_time', 'cost', 'quality_score',
             'throughput', 'tokens_used', 'response_length'
         ]
-        
+
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            
-            for model_id, result in results.items():
-                row = {
-                    'model_id': model_id,
-                    'success': result.success,
-                    'response_time': getattr(result.metrics, 'avg_response_time', 0) if hasattr(result, 'metrics') else 0,
-                    'cost': getattr(result.metrics, 'avg_cost', 0) if hasattr(result, 'metrics') else 0,
-                    'quality_score': getattr(result.metrics, 'quality_score', 0) if hasattr(result, 'metrics') else 0,
-                    'throughput': getattr(result.metrics, 'throughput', 0) if hasattr(result, 'metrics') else 0,
-                    'tokens_used': getattr(result.metrics, 'avg_total_tokens', 0) if hasattr(result, 'metrics') else 0,
-                    'response_length': len(result.response) if result.response else 0
-                }
-                writer.writerow(row)
-        
+
+            for model_id, result_list in results.items():
+                # Handle both single results and lists of results
+                if not isinstance(result_list, list):
+                    result_list = [result_list]
+
+                for result in result_list:
+                    row = {
+                        'model_id': model_id,
+                        'success': result.success if hasattr(result, 'success') else True,
+                        'response_time': result.response_time_ms if hasattr(result, 'response_time_ms') else 0,
+                        'cost': result.cost if hasattr(result, 'cost') else 0,
+                        'quality_score': 0,  # Not available in basic BenchmarkResult
+                        'throughput': 0,  # Not available in basic BenchmarkResult
+                        'tokens_used': result.tokens_used if hasattr(result, 'tokens_used') else 0,
+                        'response_length': len(result.response) if hasattr(result, 'response') and result.response else 0
+                    }
+                    writer.writerow(row)
+
         self.logger.info(f"CSV report exported to {output_path}")
+        return output_path
     
     async def export_json(self, results: Dict[str, Any], output_path: str):
         """Export benchmark results to JSON format."""
@@ -1041,15 +1066,27 @@ class BenchmarkReportExporter:
             'timestamp': datetime.now().isoformat(),
             'results': {}
         }
-        
+
         for model_id, result in results.items():
+            # Support both BenchmarkResult and EnhancedBenchmarkResult
+            success = result.success if hasattr(result, 'success') else (result.error is None if hasattr(result, 'error') else True)
+
             result_data = {
                 'model_id': model_id,
-                'success': result.success,
-                'response': result.response,
-                'error_message': getattr(result, 'error_message', None)
+                'success': success,
+                'response': getattr(result, 'response', None),
+                'error_message': getattr(result, 'error_message', getattr(result, 'error', None))
             }
-            
+
+            # Add basic metrics from BenchmarkResult
+            if hasattr(result, 'response_time_ms'):
+                result_data['response_time_ms'] = result.response_time_ms
+            if hasattr(result, 'cost'):
+                result_data['cost'] = result.cost
+            if hasattr(result, 'tokens_used'):
+                result_data['tokens_used'] = result.tokens_used
+
+            # Add enhanced metrics if available
             if hasattr(result, 'metrics') and result.metrics:
                 result_data['metrics'] = {
                     'avg_response_time': getattr(result.metrics, 'avg_response_time', 0),
@@ -1059,13 +1096,14 @@ class BenchmarkReportExporter:
                     'avg_total_tokens': getattr(result.metrics, 'avg_total_tokens', 0),
                     'success_rate': getattr(result.metrics, 'success_rate', 1.0)
                 }
-            
+
             export_data['results'][model_id] = result_data
-        
+
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, indent=2, ensure_ascii=False)
-        
+
         self.logger.info(f"JSON report exported to {output_path}")
+        return output_path
 
 
 @dataclass

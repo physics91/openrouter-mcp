@@ -5,6 +5,8 @@
 [![NPM Version](https://img.shields.io/npm/v/@physics91/openrouter-mcp.svg)](https://www.npmjs.com/package/@physics91/openrouter-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Test Coverage](https://img.shields.io/badge/Coverage-66%25-yellow.svg)](./docs/COVERAGE_REPORT.md)
+[![Tests](https://img.shields.io/badge/Tests-281%20passing-brightgreen.svg)](./tests/README.md)
 
 ## ✨ Features
 
@@ -213,17 +215,17 @@ Once configured, you can use OpenRouter models directly in your terminal:
 
 ```bash
 # Chat with different AI models
-claude-code "Use GPT-4 to explain this complex algorithm"
-claude-code "Have Claude Opus review my Python code"
-claude-code "Ask Llama 2 to suggest optimizations"
+claude "Use GPT-4 to explain this complex algorithm"
+claude "Have Claude Opus review my Python code"
+claude "Ask Llama 2 to suggest optimizations"
 
 # Model discovery and comparison
-claude-code "List all available AI models and their pricing"
-claude-code "Compare GPT-4 and Claude Sonnet for code generation"
+claude "List all available AI models and their pricing"
+claude "Compare GPT-4 and Claude Sonnet for code generation"
 
 # Usage tracking
-claude-code "Show my OpenRouter API usage for today"
-claude-code "Which AI models am I using most frequently?"
+claude "Show my OpenRouter API usage for today"
+claude "Which AI models am I using most frequently?"
 ```
 
 For detailed setup instructions, see [Claude Code CLI Integration Guide](docs/CLAUDE_CODE_GUIDE.md).

@@ -13,16 +13,12 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from fastmcp import FastMCP
-from fastmcp.exceptions import McpError
-
 from ..models.cache import ModelCache
 from .benchmark import EnhancedBenchmarkHandler, BenchmarkReportExporter, ModelPerformanceAnalyzer
+# Import shared MCP instance from registry to prevent duplicate registration
+from ..mcp_registry import mcp
 
 logger = logging.getLogger(__name__)
-
-# FastMCP 인스턴스 생성 (순환 import 방지)
-mcp = FastMCP("OpenRouter MCP Server - Benchmarking")
 
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
@@ -32,11 +28,11 @@ _model_cache: Optional[ModelCache] = None
 async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
     """벤치마크 핸들러 싱글톤 인스턴스 반환"""
     global _benchmark_handler, _model_cache
-    
+
     if _benchmark_handler is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
-            raise McpError("OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다")
+            raise ValueError("OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다")
         
         # 모델 캐시 초기화
         if _model_cache is None:
