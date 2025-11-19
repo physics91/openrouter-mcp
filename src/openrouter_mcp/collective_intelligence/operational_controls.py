@@ -394,7 +394,7 @@ class StorageManager:
                 await self._cleanup_oldest()
 
     async def cleanup_expired(self) -> int:
-        """Remove expired items based on TTL."""
+        """Remove expired items based on TTL and enforce size limits."""
         async with self._lock:
             cutoff_time = datetime.now() - timedelta(hours=self.config.history_ttl_hours)
             expired_ids = [
@@ -402,16 +402,28 @@ class StorageManager:
                 if timestamp < cutoff_time
             ]
 
+            # Remove expired items from timestamps
             for item_id in expired_ids:
                 del self.item_timestamps[item_id]
 
-            # Remove from deque
-            self.items = deque(
-                (item_id, item) for item_id, item in self.items
-                if item_id not in expired_ids
-            )
+            # Rebuild deque with only non-expired items, respecting maxlen
+            # This properly enforces the size limit
+            new_items = deque(maxlen=self.config.max_history_size)
+            for item_id, item in self.items:
+                if item_id not in expired_ids:
+                    new_items.append((item_id, item))
 
-            logger.info(f"Cleaned up {len(expired_ids)} expired items")
+            self.items = new_items
+
+            # Clean up orphaned timestamps (items that fell off the deque due to maxlen)
+            current_item_ids = {item_id for item_id, _ in self.items}
+            orphaned_ids = set(self.item_timestamps.keys()) - current_item_ids
+            for item_id in orphaned_ids:
+                del self.item_timestamps[item_id]
+
+            logger.info(
+                f"Cleaned up {len(expired_ids)} expired items and {len(orphaned_ids)} orphaned timestamps"
+            )
             return len(expired_ids)
 
     async def _cleanup_oldest(self) -> None:

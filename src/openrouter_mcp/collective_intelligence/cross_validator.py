@@ -7,6 +7,7 @@ and improve overall output quality through peer review processes.
 """
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -318,24 +319,26 @@ class CrossValidator(CollectiveIntelligenceComponent):
     Cross-model validation system that uses multiple models to validate
     and improve the quality of AI-generated content.
     """
-    
+
     def __init__(
         self,
         model_provider: ModelProvider,
-        config: Optional[ValidationConfig] = None
+        config: Optional[ValidationConfig] = None,
+        max_history_size: int = 1000
     ):
         super().__init__(model_provider)
         self.config = config or ValidationConfig()
-        
+
         # Specialized validators
         self.specialized_validators = {
             ValidationCriteria.FACTUAL_CORRECTNESS: FactCheckValidator(model_provider),
             ValidationCriteria.BIAS_NEUTRALITY: BiasDetectionValidator(model_provider)
         }
-        
-        # Validation history
-        self.validation_history: List[ValidationResult] = []
+
+        # Validation history with bounded size
+        self.validation_history: deque = deque(maxlen=max_history_size)
         self.validator_performance: Dict[str, Dict[str, float]] = {}
+        self.max_history_size = max_history_size
     
     async def process(
         self, 
@@ -1088,8 +1091,8 @@ class CrossValidator(CollectiveIntelligenceComponent):
     def get_validation_history(self, limit: Optional[int] = None) -> List[ValidationResult]:
         """Get historical validation results."""
         if limit:
-            return self.validation_history[-limit:]
-        return self.validation_history.copy()
+            return list(self.validation_history)[-limit:]
+        return list(self.validation_history)
     
     def get_validator_performance(self) -> Dict[str, Dict[str, float]]:
         """Get performance statistics for validator models."""

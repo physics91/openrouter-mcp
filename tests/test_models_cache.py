@@ -222,8 +222,8 @@ class TestModelCache:
             # Update cache to use temp file
             cache.cache_file = temp_cache_file
 
-            # Save to cache
-            cache._save_to_file_cache(models)
+            # Save to cache (use sync version for testing)
+            cache._save_to_file_cache_sync(models)
 
             # Verify file was created and contains correct data
             assert os.path.exists(temp_cache_file)
@@ -263,8 +263,8 @@ class TestModelCache:
             # Update cache to use temp file
             cache.cache_file = temp_cache_file
 
-            # Load from cache
-            models, last_update = cache._load_from_file_cache()
+            # Load from cache (use sync version for testing)
+            models, last_update = cache._load_from_file_cache_sync()
 
             assert len(models) == 5
             assert models[0]["id"] == "openai/gpt-5"
@@ -280,10 +280,10 @@ class TestModelCache:
         from src.openrouter_mcp.models.cache import ModelCache
         
         cache = ModelCache(**cache_config)
-        
+
         with patch('pathlib.Path.exists', return_value=False):
-            models, last_update = cache._load_from_file_cache()
-            
+            models, last_update = cache._load_from_file_cache_sync()
+
             assert models == []
             assert last_update is None
 

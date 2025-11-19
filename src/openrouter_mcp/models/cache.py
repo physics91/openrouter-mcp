@@ -6,12 +6,15 @@ This module provides intelligent caching of AI model information from OpenRouter
 including memory and file-based caching with TTL support.
 """
 
+import asyncio
 import json
 import logging
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 import re
 import portalocker
 
@@ -29,6 +32,78 @@ from ..utils.metadata import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class HTTPTransport:
+    """
+    Shared HTTP transport layer for making API requests.
+
+    This class encapsulates HTTP client logic and can be reused across
+    different components to avoid code duplication.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "https://openrouter.ai/api/v1",
+        timeout: float = 30.0
+    ):
+        """
+        Initialize HTTP transport.
+
+        Args:
+            api_key: OpenRouter API key
+            base_url: Base URL for API
+            timeout: Request timeout in seconds
+        """
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self._client: Optional[Any] = None
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Get HTTP headers for requests."""
+        import os
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # Add optional tracking headers
+        app_name = os.getenv("OPENROUTER_APP_NAME")
+        if app_name:
+            headers["X-Title"] = app_name
+
+        http_referer = os.getenv("OPENROUTER_HTTP_REFERER")
+        if http_referer:
+            headers["HTTP-Referer"] = http_referer
+
+        return headers
+
+    async def get(self, endpoint: str) -> Dict[str, Any]:
+        """
+        Make GET request to API.
+
+        Args:
+            endpoint: API endpoint path
+
+        Returns:
+            Response data as dictionary
+        """
+        import httpx
+
+        url = f"{self.base_url}{endpoint}"
+        headers = self._get_headers()
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+    def close(self):
+        """Close transport (for compatibility)."""
+        pass
 
 
 class ModelCache:
@@ -69,9 +144,17 @@ class ModelCache:
         self._api_key = api_key
         self._base_url = base_url
 
-        # Internal cache storage
+        # Internal cache storage with thread-safe access
         self._memory_cache: List[Dict[str, Any]] = []
         self._last_update: Optional[datetime] = None
+        self._cache_lock = threading.RLock()  # Reentrant lock for thread safety
+
+        # Thread pool executor for blocking I/O operations
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cache-io")
+
+        # Lazy initialization of HTTP transport (created on first API call)
+        self._transport: Optional[HTTPTransport] = None
+        self._transport_initialized = False
 
         # Load existing cache on initialization
         self._load_cache_on_startup()
@@ -79,21 +162,44 @@ class ModelCache:
         logger.info(f"ModelCache initialized with {ttl_hours}h TTL, file: {cache_file}")
     
     def _load_cache_on_startup(self) -> None:
-        """Load cache from file during initialization."""
+        """Load cache from file during initialization (synchronous)."""
         try:
-            models, last_update = self._load_from_file_cache()
+            models, last_update = self._load_from_file_cache_sync()
             if models:
-                self._memory_cache = models
-                self._last_update = last_update
+                with self._cache_lock:
+                    self._memory_cache = models
+                    self._last_update = last_update
                 logger.info(f"Loaded {len(models)} models from cache file")
         except Exception as e:
             logger.warning(f"Failed to load cache on startup: {e}")
     
+    def _ensure_transport(self) -> None:
+        """
+        Ensure HTTP transport is initialized.
+
+        This is called lazily on first API request to allow environment
+        variables to be set after cache initialization (useful for testing).
+        """
+        if self._transport_initialized:
+            return
+
+        import os
+        api_key = self._api_key or os.getenv("OPENROUTER_API_KEY")
+        base_url = self._base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+        if api_key:
+            self._transport = HTTPTransport(api_key=api_key, base_url=base_url)
+        else:
+            self._transport = None
+            logger.warning("ModelCache initialized without API key - API fetching will be unavailable")
+
+        self._transport_initialized = True
+
     def is_expired(self) -> bool:
         """Check if cache is expired based on TTL."""
         if self._last_update is None:
             return True
-        
+
         expiry_time = self._last_update + timedelta(seconds=self.ttl_seconds)
         return datetime.now() > expiry_time
     
@@ -101,68 +207,45 @@ class ModelCache:
         """
         Fetch latest models from OpenRouter API and enhance with metadata.
 
-        IMPORTANT: This method makes RAW API calls without using the cache
-        to break the recursion cycle between ModelCache and OpenRouterClient.
-
-        Uses credentials passed during initialization, falling back to environment
-        variables if not provided.
+        Uses shared HTTPTransport to avoid code duplication and maintains
+        the async-first design pattern.
         """
         try:
-            import httpx
-            import os
+            # Ensure transport is initialized (lazy initialization)
+            self._ensure_transport()
 
-            # Get API credentials - use instance vars first, then fall back to environment
-            api_key = self._api_key or os.getenv("OPENROUTER_API_KEY")
-            if not api_key:
+            if not self._transport:
                 raise ValueError(
                     "API key is required. Provide via api_key parameter or "
                     "OPENROUTER_API_KEY environment variable"
                 )
 
-            base_url = self._base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+            # Use shared transport layer
+            data = await self._transport.get("/models")
+            raw_models = data.get("data", [])
 
-            # Make direct HTTP request to avoid cache recursion
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
+            logger.info(f"Fetched {len(raw_models)} models from OpenRouter API (raw)")
 
-            # Add optional tracking headers
-            app_name = os.getenv("OPENROUTER_APP_NAME")
-            if app_name:
-                headers["X-Title"] = app_name
+            # Enhance models with metadata in thread executor (CPU-bound)
+            loop = asyncio.get_event_loop()
+            enhanced_models = await loop.run_in_executor(
+                self._executor,
+                batch_enhance_models,
+                raw_models
+            )
+            logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
 
-            http_referer = os.getenv("OPENROUTER_HTTP_REFERER")
-            if http_referer:
-                headers["HTTP-Referer"] = http_referer
-
-            # Direct API call without client
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
-                response = await http_client.get(
-                    f"{base_url}/models",
-                    headers=headers
-                )
-                response.raise_for_status()
-
-                data = response.json()
-                raw_models = data.get("data", [])
-
-                logger.info(f"Fetched {len(raw_models)} models from OpenRouter API (raw)")
-
-                # Enhance models with metadata
-                enhanced_models = batch_enhance_models(raw_models)
-                logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
-
-                return enhanced_models
+            return enhanced_models
 
         except Exception as e:
             logger.error(f"Failed to fetch models from API: {e}")
             raise
     
-    def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
+    def _save_to_file_cache_sync(self, models: List[Dict[str, Any]]) -> None:
         """
-        Save models to file cache with file locking to prevent concurrent write corruption.
+        Synchronous file save operation (runs in thread executor).
 
+        Save models to file cache with file locking to prevent concurrent write corruption.
         Uses portalocker to acquire an exclusive lock before writing, ensuring that
         multiple processes/threads don't corrupt the cache file.
 
@@ -198,11 +281,25 @@ class ModelCache:
             logger.warning("Cache write skipped due to lock timeout - another process may be writing")
         except Exception as e:
             logger.error(f"Failed to save models to file cache: {e}")
-    
-    def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
-        """
-        Load models from file cache with shared lock to prevent reading during writes.
 
+    async def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
+        """
+        Async wrapper for file save operation.
+
+        Offloads blocking file I/O to thread executor to keep async methods
+        truly non-blocking.
+
+        Args:
+            models: List of model dictionaries to cache
+        """
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(self._executor, self._save_to_file_cache_sync, models)
+    
+    def _load_from_file_cache_sync(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+        """
+        Synchronous file load operation (runs in thread executor).
+
+        Load models from file cache with shared lock to prevent reading during writes.
         Uses portalocker to acquire a shared lock before reading, ensuring data
         consistency when multiple processes are accessing the cache.
 
@@ -243,41 +340,101 @@ class ModelCache:
         except Exception as e:
             logger.error(f"Failed to load models from file cache: {e}")
             return [], None
+
+    async def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+        """
+        Async wrapper for file load operation.
+
+        Offloads blocking file I/O to thread executor to keep async methods
+        truly non-blocking.
+
+        Returns:
+            Tuple of (models list, last update datetime)
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, self._load_from_file_cache_sync)
     
-    async def get_models(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    def iter_models(self) -> Iterator[Dict[str, Any]]:
+        """
+        Iterate over cached models without copying.
+
+        Returns:
+            Iterator over model dictionaries
+
+        Note:
+            This is thread-safe for reading, but the cache should not be
+            modified during iteration.
+        """
+        with self._cache_lock:
+            # Return iterator over a shallow copy to prevent modification
+            # but avoid deep copying all model data
+            for model in self._memory_cache:
+                yield model
+
+    def get_models_slice(self, start: int = 0, end: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Get a slice of cached models without copying the entire cache.
+
+        Args:
+            start: Start index (inclusive)
+            end: End index (exclusive), None for end of list
+
+        Returns:
+            List slice of model dictionaries
+        """
+        with self._cache_lock:
+            return self._memory_cache[start:end]
+
+    def get_models_count(self) -> int:
+        """
+        Get the number of cached models.
+
+        Returns:
+            Count of cached models
+        """
+        with self._cache_lock:
+            return len(self._memory_cache)
+
+    async def get_models(self, force_refresh: bool = False, copy: bool = True) -> List[Dict[str, Any]]:
         """
         Get models with intelligent caching.
-        
+
         Args:
             force_refresh: Force refresh from API even if cache is valid
-            
+            copy: If True, return a copy of the cache; if False, return direct reference
+                  (WARNING: Setting copy=False requires the caller to not modify the list)
+
         Returns:
             List of model dictionaries
         """
         # Return cached models if valid and not forcing refresh
-        if not force_refresh and not self.is_expired() and self._memory_cache:
-            logger.debug("Returning cached models (cache hit)")
-            return list(self._memory_cache)  # Return a copy
-        
+        if not force_refresh and not self.is_expired():
+            with self._cache_lock:
+                if self._memory_cache:
+                    logger.debug("Returning cached models (cache hit)")
+                    # Return copy or reference based on parameter
+                    return list(self._memory_cache) if copy else self._memory_cache
+
         # Cache miss - fetch from API
         try:
             models = await self._fetch_models_from_api()
-            
-            # Update cache
-            self._memory_cache = models
-            self._last_update = datetime.now()
-            
-            # Persist to file
-            self._save_to_file_cache(models)
-            
+
+            # Update cache with thread safety
+            with self._cache_lock:
+                self._memory_cache = models
+                self._last_update = datetime.now()
+
+            # Persist to file (async, non-blocking)
+            await self._save_to_file_cache(models)
+
             logger.info(f"Cache updated with {len(models)} models")
             return models
-            
+
         except Exception as e:
             # Fallback to file cache if API fails
             logger.warning(f"API fetch failed, trying file cache: {e}")
-            models, _ = self._load_from_file_cache()
-            
+            models, _ = await self._load_from_file_cache()
+
             if models:
                 logger.info(f"Using {len(models)} models from file cache fallback")
                 return models
@@ -301,27 +458,23 @@ class ModelCache:
     def get_model_metadata(self, model_id: str) -> Dict[str, Any]:
         """
         Get enhanced metadata for a specific model.
-        
+
         Args:
             model_id: Model identifier (e.g., 'openai/gpt-5')
-            
+
         Returns:
             Dictionary with enhanced model metadata
         """
-        # Find model in cache
-        model = None
-        if isinstance(self._memory_cache, list):
-            for m in self._memory_cache:
-                if m.get("id") == model_id:
-                    model = m
-                    break
-        
-        if not model:
-            return {"error": f"Model {model_id} not found in cache"}
-        
-        # Return the already enhanced metadata
-        # (models are enhanced when fetched from API)
-        return model
+        # Find model in cache with thread safety
+        with self._cache_lock:
+            if isinstance(self._memory_cache, list):
+                for m in self._memory_cache:
+                    if m.get("id") == model_id:
+                        # Return the already enhanced metadata
+                        # (models are enhanced when fetched from API)
+                        return m
+
+        return {"error": f"Model {model_id} not found in cache"}
     
     def filter_models_by_metadata(
         self,
@@ -335,7 +488,7 @@ class ModelCache:
     ) -> List[Dict[str, Any]]:
         """
         Filter models by enhanced metadata attributes.
-        
+
         Args:
             provider: Filter by provider
             category: Filter by category
@@ -344,92 +497,94 @@ class ModelCache:
             cost_tier: Filter by cost tier
             min_quality_score: Minimum quality score
             tags: Filter by tags
-            
+
         Returns:
             Filtered list of models
         """
-        if not isinstance(self._memory_cache, list):
-            return []
-        
-        filtered = []
-        
-        for model in self._memory_cache:
-            # Provider filter
-            if provider is not None:
-                model_provider = model.get("provider", "unknown")
-                # Normalize both values to strings for comparison
-                provider_str = provider.value if hasattr(provider, 'value') else str(provider).lower()
-                model_provider_str = model_provider.value if hasattr(model_provider, 'value') else str(model_provider).lower()
-                
-                if model_provider_str != provider_str:
-                    continue
-            
-            # Category filter
-            if category is not None:
-                model_category = model.get("category", "unknown")
-                # Normalize both values to strings for comparison
-                category_str = category.value if hasattr(category, 'value') else str(category).lower()
-                model_category_str = model_category.value if hasattr(model_category, 'value') else str(model_category).lower()
-                
-                if model_category_str != category_str:
-                    continue
-            
-            # Capabilities filter
-            if capabilities:
-                model_caps = model.get("capabilities", {})
-                match = True
-                for key, value in capabilities.items():
-                    if key == "min_context_length":
-                        if model_caps.get("max_tokens", 0) < value:
+        with self._cache_lock:
+            if not isinstance(self._memory_cache, list):
+                return []
+
+            filtered = []
+
+            for model in self._memory_cache:
+                # Provider filter
+                if provider is not None:
+                    model_provider = model.get("provider", "unknown")
+                    # Normalize both values to strings for comparison
+                    provider_str = provider.value if hasattr(provider, 'value') else str(provider).lower()
+                    model_provider_str = model_provider.value if hasattr(model_provider, 'value') else str(model_provider).lower()
+
+                    if model_provider_str != provider_str:
+                        continue
+
+                # Category filter
+                if category is not None:
+                    model_category = model.get("category", "unknown")
+                    # Normalize both values to strings for comparison
+                    category_str = category.value if hasattr(category, 'value') else str(category).lower()
+                    model_category_str = model_category.value if hasattr(model_category, 'value') else str(model_category).lower()
+
+                    if model_category_str != category_str:
+                        continue
+
+                # Capabilities filter
+                if capabilities:
+                    model_caps = model.get("capabilities", {})
+                    match = True
+                    for key, value in capabilities.items():
+                        if key == "min_context_length":
+                            if model_caps.get("max_tokens", 0) < value:
+                                match = False
+                                break
+                        elif model_caps.get(key) != value:
                             match = False
                             break
-                    elif model_caps.get(key) != value:
-                        match = False
-                        break
-                if not match:
+                    if not match:
+                        continue
+
+                # Performance tier filter
+                if performance_tier and model.get("performance_tier") != performance_tier:
                     continue
-            
-            # Performance tier filter
-            if performance_tier and model.get("performance_tier") != performance_tier:
-                continue
-            
-            # Cost tier filter
-            if cost_tier and model.get("cost_tier") != cost_tier:
-                continue
-            
-            # Quality score filter
-            if min_quality_score is not None:
-                if model.get("quality_score", 0) < min_quality_score:
+
+                # Cost tier filter
+                if cost_tier and model.get("cost_tier") != cost_tier:
                     continue
-            
-            # Tags filter
-            if tags:
-                model_tags = set(model.get("tags", []))
-                if not any(tag in model_tags for tag in tags):
-                    continue
-            
-            filtered.append(model)
-        
-        return filtered
+
+                # Quality score filter
+                if min_quality_score is not None:
+                    if model.get("quality_score", 0) < min_quality_score:
+                        continue
+
+                # Tags filter
+                if tags:
+                    model_tags = set(model.get("tags", []))
+                    if not any(tag in model_tags for tag in tags):
+                        continue
+
+                filtered.append(model)
+
+            return filtered
     
     def get_models_by_performance_tier(self) -> Dict[str, List[Dict[str, Any]]]:
         """
         Get models grouped by performance tier.
-        
+
         Returns:
             Dictionary with tiers as keys and model lists as values
         """
-        if not isinstance(self._memory_cache, list):
-            return {}
-        
-        tiers = {"premium": [], "standard": [], "economy": []}
-        
-        for model in self._memory_cache:
-            tier = model.get("performance_tier", "standard")
-            if tier in tiers:
-                tiers[tier].append(model)
-        
-        return tiers
+        with self._cache_lock:
+            if not isinstance(self._memory_cache, list):
+                return {}
+
+            tiers = {"premium": [], "standard": [], "economy": []}
+
+            for model in self._memory_cache:
+                tier = model.get("performance_tier", "standard")
+                if tier in tiers:
+                    tiers[tier].append(model)
+
+            return tiers
     
     def filter_models(
         self,
@@ -442,7 +597,7 @@ class ModelCache:
     ) -> List[Dict[str, Any]]:
         """
         Filter models by capabilities and attributes.
-        
+
         Args:
             provider: Filter by provider name
             vision_capable: Filter vision-capable models
@@ -450,86 +605,88 @@ class ModelCache:
             long_context: Filter long context models (>100k tokens)
             free_only: Filter free models only
             min_context: Minimum context length
-            
+
         Returns:
             Filtered list of models
         """
-        if not isinstance(self._memory_cache, list):
-            return []
-        
-        filtered = []
-        
-        for model in self._memory_cache:
-            model_id = model.get("id", "")
-            metadata = self.get_model_metadata(model_id)
-            
-            # Apply filters
-            if provider and metadata.get("provider", "").lower() != provider.lower():
-                continue
-                
-            if vision_capable is not None:
-                caps = metadata.get("capabilities", {})
-                if caps.get("supports_vision", False) != vision_capable:
+        with self._cache_lock:
+            if not isinstance(self._memory_cache, list):
+                return []
+
+            filtered = []
+
+            for model in self._memory_cache:
+                model_id = model.get("id", "")
+                metadata = self.get_model_metadata(model_id)
+
+                # Apply filters
+                if provider and metadata.get("provider", "").lower() != provider.lower():
                     continue
-                
-            if reasoning_model is not None:
-                # Check if model is a reasoning model based on id or description
-                is_reasoning = "o1" in model_id or "reasoning" in metadata.get("description", "").lower()
-                if is_reasoning != reasoning_model:
+
+                if vision_capable is not None:
+                    caps = metadata.get("capabilities", {})
+                    if caps.get("supports_vision", False) != vision_capable:
+                        continue
+
+                if reasoning_model is not None:
+                    # Check if model is a reasoning model based on id or description
+                    is_reasoning = "o1" in model_id or "reasoning" in metadata.get("description", "").lower()
+                    if is_reasoning != reasoning_model:
+                        continue
+
+                if long_context is not None:
+                    # Long context = > 100k tokens
+                    is_long = metadata.get("context_length", 0) > 100000
+                    if is_long != long_context:
+                        continue
+
+                if free_only is not None:
+                    # Check if model is free based on cost_tier
+                    is_free = metadata.get("cost_tier") == "free"
+                    if is_free != free_only:
+                        continue
+
+                if min_context is not None and metadata.get("context_length", 0) < min_context:
                     continue
-                
-            if long_context is not None:
-                # Long context = > 100k tokens
-                is_long = metadata.get("context_length", 0) > 100000
-                if is_long != long_context:
-                    continue
-                
-            if free_only is not None:
-                # Check if model is free based on cost_tier
-                is_free = metadata.get("cost_tier") == "free"
-                if is_free != free_only:
-                    continue
-                
-            if min_context is not None and metadata.get("context_length", 0) < min_context:
-                continue
-            
-            filtered.append(model)
-        
-        return filtered
+
+                filtered.append(model)
+
+            return filtered
     
     def get_latest_models(self) -> List[Dict[str, Any]]:
         """
         Get the latest/newest models based on version identifiers.
-        
+
         Returns:
             List of latest model versions
         """
-        if not isinstance(self._memory_cache, list):
-            return []
-        
-        # Patterns that indicate latest models
-        latest_patterns = [
-            r"gpt-5",      # GPT-5
-            r"claude-4",   # Claude 4  
-            r"gemini-2\.5", # Gemini 2.5
-            r"deepseek-v3", # DeepSeek V3
-            r"o1",         # OpenAI o1 series
-            r"grok-3",     # Grok 3
-            r"llama.*4",   # Llama 4 series
-        ]
-        
-        latest_models = []
-        
-        for model in self._memory_cache:
-            model_id = model.get("id", "").lower()
-            
-            # Check if model matches latest patterns
-            for pattern in latest_patterns:
-                if re.search(pattern, model_id):
-                    latest_models.append(model)
-                    break
-        
-        return latest_models
+        with self._cache_lock:
+            if not isinstance(self._memory_cache, list):
+                return []
+
+            # Patterns that indicate latest models
+            latest_patterns = [
+                r"gpt-5",      # GPT-5
+                r"claude-4",   # Claude 4
+                r"gemini-2\.5", # Gemini 2.5
+                r"deepseek-v3", # DeepSeek V3
+                r"o1",         # OpenAI o1 series
+                r"grok-3",     # Grok 3
+                r"llama.*4",   # Llama 4 series
+            ]
+
+            latest_models = []
+
+            for model in self._memory_cache:
+                model_id = model.get("id", "").lower()
+
+                # Check if model matches latest patterns
+                for pattern in latest_patterns:
+                    if re.search(pattern, model_id):
+                        latest_models.append(model)
+                        break
+
+            return latest_models
     
     async def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -569,53 +726,75 @@ class ModelCache:
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics and metadata.
-        
+
         Returns:
             Dictionary with cache statistics
         """
-        if not isinstance(self._memory_cache, list):
-            return {"total_models": 0, "error": "Cache not initialized"}
-        
-        # Count providers
-        providers = set()
-        vision_count = 0
-        reasoning_count = 0
-        
-        for model in self._memory_cache:
-            metadata = self.get_model_metadata(model.get("id", ""))
-            
-            provider = metadata.get("provider")
-            if provider and provider != "Unknown":
-                providers.add(provider)
-            
-            caps = metadata.get("capabilities", {})
-            if caps.get("supports_vision", False):
-                vision_count += 1
-                
-            # Check if model is a reasoning model
-            model_id = model.get("id", "").lower()
-            if "o1" in model_id or "reasoning" in metadata.get("description", "").lower():
-                reasoning_count += 1
-        
-        # Calculate cache size
+        with self._cache_lock:
+            if not isinstance(self._memory_cache, list):
+                return {"total_models": 0, "error": "Cache not initialized"}
+
+            # Count providers
+            providers = set()
+            vision_count = 0
+            reasoning_count = 0
+
+            for model in self._memory_cache:
+                metadata = self.get_model_metadata(model.get("id", ""))
+
+                provider = metadata.get("provider")
+                if provider and provider != "Unknown":
+                    providers.add(provider)
+
+                caps = metadata.get("capabilities", {})
+                if caps.get("supports_vision", False):
+                    vision_count += 1
+
+                # Check if model is a reasoning model
+                model_id = model.get("id", "").lower()
+                if "o1" in model_id or "reasoning" in metadata.get("description", "").lower():
+                    reasoning_count += 1
+
+            # Calculate cache size
+            try:
+                cache_json = json.dumps(self._memory_cache, ensure_ascii=False)
+                cache_size_bytes = sys.getsizeof(cache_json)
+                cache_size_mb = cache_size_bytes / (1024 * 1024)
+            except Exception as e:
+                logger.warning(f"Failed to calculate cache size: {e}")
+                cache_size_mb = 0.0
+
+            return {
+                "total_models": len(self._memory_cache),
+                "providers": sorted(list(providers)),
+                "vision_capable_count": vision_count,
+                "reasoning_model_count": reasoning_count,
+                "cache_size_mb": round(cache_size_mb, 4),
+                "last_updated": self._last_update.isoformat() if self._last_update else None,
+                "is_expired": self.is_expired(),
+                "ttl_seconds": self.ttl_seconds
+            }
+
+    def shutdown(self) -> None:
+        """
+        Shutdown the cache and clean up resources.
+
+        This method should be called when the cache is no longer needed to
+        ensure proper cleanup of the thread pool executor.
+        """
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=True)
+            logger.info("ModelCache executor shut down")
+
+        if hasattr(self, '_transport') and self._transport is not None:
+            self._transport.close()
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
         try:
-            cache_json = json.dumps(self._memory_cache, ensure_ascii=False)
-            cache_size_bytes = sys.getsizeof(cache_json)
-            cache_size_mb = cache_size_bytes / (1024 * 1024)
-        except Exception as e:
-            logger.warning(f"Failed to calculate cache size: {e}")
-            cache_size_mb = 0.0
-        
-        return {
-            "total_models": len(self._memory_cache),
-            "providers": sorted(list(providers)),
-            "vision_capable_count": vision_count,
-            "reasoning_model_count": reasoning_count,
-            "cache_size_mb": round(cache_size_mb, 4),
-            "last_updated": self._last_update.isoformat() if self._last_update else None,
-            "is_expired": self.is_expired(),
-            "ttl_seconds": self.ttl_seconds
-        }
+            self.shutdown()
+        except Exception:
+            pass  # Ignore errors during cleanup
 
 
 # Client access moved to _fetch_models_from_api to avoid circular imports

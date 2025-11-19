@@ -29,6 +29,7 @@ from .operational_controls import (
     TaskCancellationManager
 )
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
+from ..utils.token_counter import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -152,11 +153,23 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             models = await self._select_models(task)
             logger.info(f"Selected {len(models)} models for consensus: {models}")
 
+            # Estimate tokens for quota check using tiktoken
+            # Use the first model for token counting (they're all similar enough)
+            estimated_tokens = count_tokens(task.content, model_id=models[0] if models else "default")
+            # Multiply by number of models for total request estimate
+            total_estimated_tokens = estimated_tokens * len(models)
+
+            # Estimate cost - we'll update with actual costs as responses come in
+            # For now, use a conservative estimate based on average pricing
+            # Will be updated with actual costs from model responses
+            estimated_cost_per_token = 0.00003  # Conservative average
+            estimated_cost = total_estimated_tokens * estimated_cost_per_token
+
             # Check quota before proceeding
             can_proceed, reason = await self.quota_tracker.check_and_increment(
                 request_id,
-                tokens=len(task.content) * len(models),  # Rough estimate
-                cost=0.0  # Would be calculated from model pricing
+                tokens=total_estimated_tokens,
+                cost=estimated_cost
             )
             if not can_proceed:
                 raise RuntimeError(f"Quota check failed: {reason}")
@@ -277,11 +290,18 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
             api_task = None
             try:
+                # Estimate tokens for this specific API call using tiktoken
+                estimated_tokens = count_tokens(task.content, model_id=model_id)
+
+                # Conservative cost estimate - will be updated with actual cost from response
+                estimated_cost_per_token = 0.00003  # Conservative average
+                estimated_cost = estimated_tokens * estimated_cost_per_token
+
                 # Check quota for this specific API call
                 can_proceed, reason = await self.quota_tracker.check_and_increment(
                     request_id,
-                    tokens=len(task.content),  # Rough estimate
-                    cost=0.0  # Would be calculated from model pricing
+                    tokens=estimated_tokens,
+                    cost=estimated_cost
                 )
                 if not can_proceed:
                     logger.warning(f"Quota exceeded for {model_id}: {reason}")
@@ -300,6 +320,25 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                     api_task,
                     timeout=self.config.timeout_seconds
                 )
+
+                # Update quota tracker with actual costs from response
+                # The result now contains real token counts and costs
+                if result.tokens_used > 0 or result.cost > 0:
+                    # Deduct the estimate and add the actual
+                    actual_token_diff = result.tokens_used - estimated_tokens
+                    actual_cost_diff = result.cost - estimated_cost
+
+                    # Update quota with actual values
+                    if actual_token_diff != 0 or actual_cost_diff != 0:
+                        await self.quota_tracker.check_and_increment(
+                            request_id,
+                            tokens=actual_token_diff,
+                            cost=actual_cost_diff
+                        )
+                        logger.debug(
+                            f"Updated quota for {model_id}: "
+                            f"token_diff={actual_token_diff}, cost_diff=${actual_cost_diff:.6f}"
+                        )
 
                 weight = self.config.model_weights.get(model_id, 1.0)
                 reliability = self.model_reliability.get(model_id, 1.0)
