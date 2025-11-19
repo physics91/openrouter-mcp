@@ -109,32 +109,64 @@ def validate_image_format(format_name: str) -> bool:
 def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
     """
     Process an image: resize if too large, optimize for API usage.
-    
+
     Args:
         base64_data: Base64 encoded image data
         max_size_mb: Maximum size in MB (default: 20MB)
-        
+
     Returns:
         Tuple of (processed_base64_data, was_resized)
-        
+
     Raises:
+        ValueError: If image is too large or has invalid dimensions
         Exception: If image processing fails
     """
+    # Security: Limit maximum base64 string size before decoding (prevents decompression bombs)
+    MAX_BASE64_SIZE = 100 * 1024 * 1024  # 100MB base64 max
+    if len(base64_data) > MAX_BASE64_SIZE:
+        raise ValueError(f"Base64 data too large: {len(base64_data)} bytes exceeds {MAX_BASE64_SIZE} bytes")
+
     try:
         # Decode base64 to bytes
         image_bytes = base64.b64decode(base64_data)
         max_size_bytes = max_size_mb * 1024 * 1024
+
+        # Security: Check decoded size before PIL processing
+        if len(image_bytes) > max_size_bytes * 5:  # Allow 5x headroom for compression
+            raise ValueError(f"Decoded image too large: {len(image_bytes)} bytes exceeds safe limit")
+
+        # If image is already small enough, still validate it
+        # Open and validate the image BEFORE returning it
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Security: Validate image dimensions to prevent pixel bombs
+        MAX_PIXELS = 89_478_485  # PIL's DecompressionBombError default threshold
+        MAX_DIMENSION = 65535  # Reasonable max for width/height
+
+        width, height = image.size
+        if width * height > MAX_PIXELS:
+            raise ValueError(
+                f"Image dimensions too large: {width}x{height} = {width*height} pixels exceeds {MAX_PIXELS} pixels"
+            )
+        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+            raise ValueError(
+                f"Image dimension too large: {width}x{height}, max dimension is {MAX_DIMENSION}"
+            )
+
+        # Security: Validate image format before processing
+        original_format = image.format
+        if not original_format:
+            # Try to detect format from image mode and data
+            original_format = 'JPEG'
+            logger.warning("Image format not detected, defaulting to JPEG")
         
-        # If image is already small enough, return as-is
+        # If image is already small enough, return early
         if len(image_bytes) <= max_size_bytes:
             return base64_data, False
-            
-        # Open and process the image
-        image = Image.open(io.BytesIO(image_bytes))
-        original_format = image.format or 'JPEG'
-        
+
         # Validate format
         if not validate_image_format(original_format):
+            logger.info(f"Converting unsupported format {original_format} to JPEG")
             # Convert unsupported formats to JPEG
             if image.mode in ('RGBA', 'LA', 'P'):
                 # Convert to RGB for JPEG

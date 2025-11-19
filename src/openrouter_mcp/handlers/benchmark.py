@@ -587,7 +587,7 @@ class BenchmarkHandler:
 
 class EnhancedBenchmarkHandler(BenchmarkHandler):
     """Enhanced benchmark handler with advanced metrics and analysis."""
-    
+
     def __init__(self, api_key: str, model_cache: ModelCache, results_dir: str = "benchmarks"):
         """Initialize enhanced benchmark handler."""
         self.client = OpenRouterClient(api_key=api_key)
@@ -597,6 +597,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         self.cache_dir.mkdir(exist_ok=True)
         self.quality_analyzer = ResponseQualityAnalyzer()
         self._executor = ThreadPoolExecutor(max_workers=4)
+        self._executor_shutdown = False
     
     def assess_response_quality(self, prompt: str, response: str) -> float:
         """Assess the quality of a response using advanced analysis."""
@@ -950,9 +951,41 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
                 report.append(f"  {i}. {item['model']}: {item['metric']:.2f} {item['unit']}")
         
         report.append("\n" + "=" * 80)
-        
+
         return "\n".join(report)
 
+    def shutdown(self) -> None:
+        """Shutdown the benchmark handler and cleanup resources."""
+        if not self._executor_shutdown:
+            logger.info("Shutting down ThreadPoolExecutor")
+            self._executor.shutdown(wait=True)
+            self._executor_shutdown = True
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup."""
+        self.shutdown()
+        return False
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - ensure cleanup."""
+        self.shutdown()
+        return False
+
+    def __del__(self):
+        """Destructor - ensure executor is shutdown."""
+        if hasattr(self, '_executor_shutdown') and not self._executor_shutdown:
+            try:
+                self.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down executor in destructor: {e}")
 
 
 class BenchmarkReportExporter:

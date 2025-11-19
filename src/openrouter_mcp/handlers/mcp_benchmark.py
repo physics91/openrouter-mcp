@@ -53,26 +53,39 @@ async def benchmark_models(
     prompt: str = "안녕하세요! 간단한 자기소개를 해주세요.",
     runs: int = 3,
     delay_seconds: float = 1.0,
-    save_results: bool = True
+    save_results: bool = True,
+    include_prompts_in_logs: bool = False
 ) -> Dict[str, Any]:
     """
     여러 모델의 성능을 벤치마킹합니다.
-    
+
     Args:
         models: 벤치마킹할 모델 ID 목록
         prompt: 테스트에 사용할 프롬프트
         runs: 각 모델당 실행 횟수 (통계적 정확도를 위해)
         delay_seconds: API 호출 간 지연 시간
         save_results: 결과를 파일로 저장할지 여부
-    
+        include_prompts_in_logs: PRIVACY WARNING - If True, logs will include actual prompt content.
+                                 Only enable for debugging. Prompts may contain sensitive data.
+
     Returns:
         벤치마크 결과와 통계
     """
     try:
         handler = await get_benchmark_handler()
-        
+
         logger.info(f"{len(models)}개 모델 벤치마킹 시작: {models}")
-        logger.info(f"프롬프트: {prompt[:50]}...")
+
+        # SECURITY: Only log prompt content if explicitly consented
+        if include_prompts_in_logs:
+            logger.warning(
+                "PRIVACY WARNING: Logging prompt content is enabled. "
+                "Prompts may contain sensitive or personal information."
+            )
+            logger.info(f"프롬프트: {prompt[:50]}...")
+        else:
+            logger.info(f"프롬프트 길이: {len(prompt)} 문자 (내용은 로깅하지 않음)")
+
         logger.info(f"실행 횟수: {runs}회, 지연: {delay_seconds}초")
         
         # 벤치마크 실행
@@ -88,19 +101,24 @@ async def benchmark_models(
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "models": models,
-                "prompt": prompt,
+                # SECURITY: Only include prompt if explicitly allowed
+                "prompt": prompt if include_prompts_in_logs else f"<REDACTED: {len(prompt)} chars>",
                 "runs": runs,
-                "delay_seconds": delay_seconds
+                "delay_seconds": delay_seconds,
+                "privacy_mode": not include_prompts_in_logs
             },
             "results": {}
         }
-        
+
         for model_id, result in results.items():
             benchmark_data["results"][model_id] = {
                 "success": result.success,
                 "error_message": result.error_message,
                 "metrics": result.metrics.__dict__ if result.metrics else None,
-                "response": result.response[:200] + "..." if result.response and len(result.response) > 200 else result.response
+                # SECURITY: Only include response content if explicitly allowed
+                "response": (
+                    result.response[:200] + "..." if result.response and len(result.response) > 200 else result.response
+                ) if include_prompts_in_logs else f"<REDACTED: {len(result.response) if result.response else 0} chars>"
             }
         
         # 성능 랭킹 계산
@@ -353,7 +371,8 @@ async def compare_model_categories(
                     "quality_score": result.metrics.quality_score,
                     "throughput": result.metrics.throughput
                 } if result.metrics else None,
-                "response_preview": result.response[:100] + "..." if result.response and len(result.response) > 100 else result.response
+                # SECURITY: Don't include response content by default - privacy risk
+                "response_length": len(result.response) if result.response else 0
             })
         
         # 전체 랭킹 계산

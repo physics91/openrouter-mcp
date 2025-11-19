@@ -7,6 +7,7 @@ into smaller components and assigns them to the most suitable models.
 """
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -366,10 +367,11 @@ class TaskDecomposer:
 
 class ModelAssigner:
     """Assigns the most suitable models to sub-tasks."""
-    
-    def __init__(self, model_provider: ModelProvider):
+
+    def __init__(self, model_provider: ModelProvider, max_history_size: int = 1000):
         self.model_provider = model_provider
-        self.assignment_history: List[ModelAssignment] = []
+        self.assignment_history: deque = deque(maxlen=max_history_size)
+        self.max_history_size = max_history_size
     
     async def assign_models(self, ensemble_task: EnsembleTask) -> List[ModelAssignment]:
         """Assign optimal models to all sub-tasks."""
@@ -505,12 +507,13 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
     Main ensemble reasoning coordinator that orchestrates task decomposition,
     model assignment, and result aggregation.
     """
-    
-    def __init__(self, model_provider: ModelProvider):
+
+    def __init__(self, model_provider: ModelProvider, max_history_size: int = 1000):
         super().__init__(model_provider)
         self.decomposer = TaskDecomposer()
-        self.assigner = ModelAssigner(model_provider)
-        self.processing_history: List[EnsembleResult] = []
+        self.assigner = ModelAssigner(model_provider, max_history_size=max_history_size)
+        self.processing_history: deque = deque(maxlen=max_history_size)
+        self.max_history_size = max_history_size
     
     async def process(self, task: TaskContext, **kwargs) -> EnsembleResult:
         """
@@ -894,5 +897,5 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
     def get_processing_history(self, limit: Optional[int] = None) -> List[EnsembleResult]:
         """Get historical ensemble processing results."""
         if limit:
-            return self.processing_history[-limit:]
-        return self.processing_history.copy()
+            return list(self.processing_history)[-limit:]
+        return list(self.processing_history)

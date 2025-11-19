@@ -48,6 +48,12 @@
   - Historical benchmark tracking and trend analysis
   - 5 MCP tools for seamless integration with Claude Desktop
 - 💰 **Usage Tracking**: Monitor API usage, costs, and token consumption
+- 🛡️ **Enterprise Security**: Multi-layered security with defense-in-depth architecture
+  - API keys NEVER stored in config files (environment variables only)
+  - Privacy-preserving logging with automatic data sanitization
+  - Response redaction in error messages to prevent data leaks
+  - Opt-in verbose mode with explicit consent warnings
+  - OWASP Top 10 compliant security controls
 - 🛡️ **Error Handling**: Robust error handling with detailed logging
 - 🔧 **Easy Setup**: One-command installation with `npx`
 - 🖥️ **Claude Desktop Integration**: Seamless integration with Claude Desktop app
@@ -501,6 +507,118 @@ Solve complex problems through collaborative multi-model interaction and iterati
 - `collaboration_quality`: Quality metrics for the collaboration
 - `component_contributions`: Individual model contributions
 - `convergence_metrics`: How the solution evolved over iterations
+
+---
+
+## 🔒 Security Best Practices
+
+This project implements **Defense in Depth** security architecture with multiple layers of protection. For complete security documentation, see [SECURITY.md](SECURITY.md).
+
+### ✅ Secure API Key Management
+
+**CRITICAL: API keys must NEVER be stored in configuration files.**
+
+**Recommended Approach: Environment Variables**
+
+**Windows:**
+```cmd
+set OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
+```
+
+**Linux/macOS:**
+```bash
+export OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
+
+# Make permanent:
+echo 'export OPENROUTER_API_KEY=sk-or-v1-your-api-key-here' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**The system actively prevents insecure API key storage:**
+- ❌ API keys in config files are **rejected** with security errors
+- ⚠️ Warnings issued if API key is provided as CLI argument
+- ✅ Validation ensures keys are set as environment variables only
+
+### 🔐 Privacy-Preserving Benchmarking
+
+**Default: Privacy Mode (Recommended)**
+
+By default, all user prompts and model responses are **redacted** from logs and saved results:
+
+```python
+# ✅ SECURE: Content is redacted
+benchmark_models(
+    models=["openai/gpt-4", "anthropic/claude-3.5-sonnet"],
+    prompt="Your sensitive prompt here"
+    # Results saved with: "<REDACTED: 245 chars>"
+)
+```
+
+**Opt-In: Verbose Logging (Debug Only)**
+
+To include actual content (use only for debugging):
+
+```python
+# ⚠️ WARNING: This logs actual prompt/response content
+benchmark_models(
+    models=["openai/gpt-4"],
+    prompt="Debug prompt",
+    include_prompts_in_logs=True  # Explicit consent required
+)
+```
+
+**A privacy warning will be logged:**
+```
+PRIVACY WARNING: Logging prompt content is enabled.
+Prompts may contain sensitive or personal information.
+```
+
+### 🛡️ Automatic Data Sanitization
+
+The system automatically sanitizes sensitive data:
+
+- **API Keys**: Masked in all logs (`sk-or...***MASKED***`)
+- **Request Headers**: Authorization tokens redacted
+- **Payloads**: Only metadata logged by default (message count, length)
+- **Responses**: Content truncated in error messages (100 char max)
+- **Errors**: No sensitive data in exception messages
+
+### 📊 Security Features Summary
+
+| Feature | Status | Protection |
+|---------|--------|------------|
+| API Key Storage | ✅ Enforced | Environment variables only |
+| Config File Validation | ✅ Active | Rejects keys in configs |
+| Privacy-Preserving Logs | ✅ Default | Content redacted by default |
+| Error Message Redaction | ✅ Active | Response bodies truncated |
+| Data Sanitization | ✅ Automatic | All logs sanitized |
+| Opt-In Verbose Mode | ⚠️ Available | With explicit warnings |
+
+### 🔍 Security Compliance
+
+This project implements controls aligned with:
+
+- **OWASP Top 10 (2021)**: A01, A02, A09
+- **CWE-798**: Hard-coded credentials prevention
+- **CWE-532**: Information exposure through logs prevention
+- **NIST SP 800-53**: AC-3, IA-5, AU-2
+
+### 📖 Additional Security Resources
+
+- **[Complete Security Policy](SECURITY.md)** - Comprehensive security documentation
+- **[Threat Model](SECURITY.md#threat-model)** - Threats mitigated and residual risks
+- **[Advanced Secrets Management](SECURITY.md#secrets-management-best-practices)** - OS keychain and cloud integration
+
+### ⚠️ Security Checklist
+
+Before deploying to production:
+
+- [ ] API key set as environment variable (never in config)
+- [ ] Privacy mode enabled (default) for all benchmarks
+- [ ] Verbose logging disabled (or used only for debugging)
+- [ ] Config directory permissions restricted (`chmod 700 ~/.claude`)
+- [ ] API key rotation policy implemented (90 days recommended)
+- [ ] Logs reviewed for sensitive data before sharing
 
 ---
 

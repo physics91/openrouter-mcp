@@ -549,13 +549,21 @@ class OpenRouterClient:
             raise OpenRouterError(f"Unexpected error: {str(e)}")
     
     async def _handle_http_error(self, response: httpx.Response) -> None:
-        """Handle HTTP errors from OpenRouter API."""
+        """Handle HTTP errors from OpenRouter API.
+
+        SECURITY: Response bodies are sanitized to prevent leaking sensitive data in error messages.
+        """
         try:
             error_data = response.json()
             error_message = error_data.get("error", {}).get("message", "Unknown error")
         except (json_lib.JSONDecodeError, KeyError):
-            error_message = f"HTTP {response.status_code}: {response.text}"
-        
+            # SECURITY: Don't include raw response.text - it may contain sensitive data
+            # Truncate and sanitize the response body
+            response_preview = SensitiveDataSanitizer.truncate_content(
+                response.text, max_length=100
+            ) if response.text else "No response body"
+            error_message = f"HTTP {response.status_code}: {response_preview}"
+
         if response.status_code == 401:
             raise AuthenticationError(error_message)
         elif response.status_code == 429:

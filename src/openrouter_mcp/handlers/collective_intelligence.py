@@ -32,6 +32,7 @@ from ..collective_intelligence import (
 from ..collective_intelligence.base import ModelCapability
 # Import shared MCP instance from registry to prevent duplicate registration
 from ..mcp_registry import mcp
+from ..utils.token_counter import count_message_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class OpenRouterModelProvider:
             client: OpenRouterClient instance that already has cache configured
         """
         self.client = client
+        self._model_pricing_cache: Dict[str, Dict[str, float]] = {}
 
     async def process_task(
         self,
@@ -70,11 +72,14 @@ class OpenRouterModelProvider:
                     "content": task.requirements["system_prompt"]
                 })
 
+            # Extract temperature from task requirements or kwargs, with fallback to default
+            temperature = task.requirements.get("temperature") or kwargs.get("temperature", 0.7)
+
             # Call OpenRouter API
             response = await self.client.chat_completion(
                 model=model_id,
                 messages=messages,
-                temperature=kwargs.get("temperature", 0.7),
+                temperature=temperature,
                 max_tokens=kwargs.get("max_tokens"),
                 stream=False
             )
@@ -92,7 +97,9 @@ class OpenRouterModelProvider:
             # Extract usage information
             usage = response.get("usage", {})
             tokens_used = usage.get("total_tokens", 0)
-            cost = self._estimate_cost(model_id, tokens_used)
+
+            # Calculate actual cost using real pricing
+            cost = await self._estimate_cost(model_id, usage)
 
             return ProcessingResult(
                 task_id=task.task_id,
@@ -168,12 +175,71 @@ class OpenRouterModelProvider:
         
         return max(0.0, min(1.0, base_confidence))
     
-    def _estimate_cost(self, model_id: str, tokens_used: int) -> float:
-        """Estimate cost based on model and token usage."""
-        # Simplified cost estimation
-        # This should use actual pricing data from OpenRouter
-        average_cost_per_token = 0.00002  # $0.00002 per token average
-        return tokens_used * average_cost_per_token
+    async def _get_model_pricing(self, model_id: str) -> Dict[str, float]:
+        """
+        Get pricing information for a specific model from cache.
+
+        Args:
+            model_id: Model identifier
+
+        Returns:
+            Dictionary with 'prompt' and 'completion' cost per token
+        """
+        # Check if already cached
+        if model_id in self._model_pricing_cache:
+            return self._model_pricing_cache[model_id]
+
+        # Fetch from model cache
+        try:
+            if self.client._model_cache:
+                model_info = await self.client._model_cache.get_model_info(model_id)
+                if model_info and "pricing" in model_info:
+                    pricing = model_info["pricing"]
+                    cost_data = {
+                        "prompt": float(pricing.get("prompt", 0)),
+                        "completion": float(pricing.get("completion", 0))
+                    }
+                    self._model_pricing_cache[model_id] = cost_data
+                    return cost_data
+        except Exception as e:
+            logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
+
+        # Fallback to conservative default
+        default_pricing = {"prompt": 0.00002, "completion": 0.00002}
+        self._model_pricing_cache[model_id] = default_pricing
+        return default_pricing
+
+    async def _estimate_cost(self, model_id: str, usage: Dict[str, int]) -> float:
+        """
+        Estimate cost based on actual model pricing and token usage.
+
+        Args:
+            model_id: Model identifier
+            usage: Usage dictionary with 'prompt_tokens' and 'completion_tokens'
+
+        Returns:
+            Estimated cost in USD
+        """
+        pricing = await self._get_model_pricing(model_id)
+
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+
+        # Calculate cost: pricing is typically per 1000 tokens, so divide by 1000
+        # OpenRouter pricing is per token, not per 1000
+        prompt_cost = prompt_tokens * pricing["prompt"]
+        completion_cost = completion_tokens * pricing["completion"]
+
+        total_cost = prompt_cost + completion_cost
+
+        logger.debug(
+            f"Cost calculation for {model_id}: "
+            f"{prompt_tokens} prompt tokens (${prompt_cost:.6f}) + "
+            f"{completion_tokens} completion tokens (${completion_cost:.6f}) = "
+            f"${total_cost:.6f}"
+        )
+
+        return total_cost
     
     def _extract_cost(self, pricing: Dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
@@ -299,13 +365,13 @@ def create_task_context(
 async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Dict[str, Any]:
     """
     Generate chat completion using collective intelligence with multiple models.
-    
+
     This tool leverages multiple AI models to reach consensus on responses,
     providing more reliable and accurate results through collective decision-making.
-    
+
     Args:
         request: Collective chat completion request
-        
+
     Returns:
         Dictionary containing:
         - consensus_response: The agreed-upon response
@@ -314,7 +380,7 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
         - participating_models: List of models that participated
         - individual_responses: Responses from each model
         - processing_time: Total time taken
-        
+
     Example:
         request = CollectiveChatRequest(
             prompt="Explain quantum computing in simple terms",
@@ -326,11 +392,11 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
     logger.info(f"Processing collective chat completion with strategy: {request.strategy}")
 
     try:
-        # Setup
+        # Setup - get_openrouter_client() is synchronous, NOT async
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
 
-        # Get lifecycle manager and configure it
+        # Get lifecycle manager and configure it with temperature parameter
         lifecycle_manager = await get_lifecycle_manager()
         lifecycle_manager.configure(model_provider)
 
@@ -349,44 +415,47 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
 
         # Get singleton consensus engine from lifecycle manager
         consensus_engine = await lifecycle_manager.get_consensus_engine(config)
-        
+
         # Create task context
-        requirements = {}
+        requirements = {
+            "temperature": request.temperature  # Wire temperature to requirements
+        }
         if request.system_prompt:
             requirements["system_prompt"] = request.system_prompt
-        
+        if request.models:
+            requirements["preferred_models"] = request.models  # Wire models to requirements
+
         task = create_task_context(
             content=request.prompt,
             requirements=requirements
         )
-        
-        # Process with consensus
-        async with client:
-            result = await consensus_engine.process(task)
-            
-            return {
-                "consensus_response": result.consensus_content,
-                "agreement_level": result.agreement_level.value,
-                "confidence_score": result.confidence_score,
-                "participating_models": result.participating_models,
-                "individual_responses": [
-                    {
-                        "model": resp.model_id,
-                        "content": resp.result.content,
-                        "confidence": resp.result.confidence
-                    }
-                    for resp in result.model_responses
-                ],
-                "strategy_used": result.strategy_used.value,
-                "processing_time": result.processing_time,
-                "quality_metrics": {
-                    "accuracy": result.quality_metrics.accuracy,
-                    "consistency": result.quality_metrics.consistency,
-                    "completeness": result.quality_metrics.completeness,
-                    "overall_score": result.quality_metrics.overall_score()
+
+        # Process with consensus - NO async with client (client is singleton managed by lifecycle)
+        result = await consensus_engine.process(task)
+
+        return {
+            "consensus_response": result.consensus_content,
+            "agreement_level": result.agreement_level.value,
+            "confidence_score": result.confidence_score,
+            "participating_models": result.participating_models,
+            "individual_responses": [
+                {
+                    "model": resp.model_id,
+                    "content": resp.result.content,
+                    "confidence": resp.result.confidence
                 }
+                for resp in result.model_responses
+            ],
+            "strategy_used": result.strategy_used.value,
+            "processing_time": result.processing_time,
+            "quality_metrics": {
+                "accuracy": result.quality_metrics.accuracy,
+                "consistency": result.quality_metrics.consistency,
+                "completeness": result.quality_metrics.completeness,
+                "overall_score": result.quality_metrics.overall_score()
             }
-            
+        }
+
     except Exception as e:
         logger.error(f"Collective chat completion failed: {str(e)}")
         raise
@@ -401,20 +470,20 @@ async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str
 async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[str, Any]:
     """
     Perform ensemble reasoning using specialized models for different aspects.
-    
+
     This tool decomposes complex problems and routes different parts to models
     best suited for each subtask, then combines the results intelligently.
-    
+
     Args:
         request: Ensemble reasoning request
-        
+
     Returns:
         Dictionary containing:
         - final_result: The combined reasoning result
         - subtask_results: Results from individual subtasks
         - model_assignments: Which models handled which subtasks
         - reasoning_quality: Quality metrics for the reasoning
-        
+
     Example:
         request = EnsembleReasoningRequest(
             problem="Design a sustainable energy system for a smart city",
@@ -426,7 +495,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
     logger.info(f"Processing ensemble reasoning for task type: {request.task_type}")
 
     try:
-        # Setup
+        # Setup - get_openrouter_client() is synchronous
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
 
@@ -436,44 +505,50 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
 
         # Get singleton ensemble reasoner from lifecycle manager
         ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
-        
-        # Create task context
+
+        # Create task context with temperature and models
+        requirements = {
+            "temperature": request.temperature  # Wire temperature
+        }
+        if request.models:
+            requirements["preferred_models"] = request.models  # Wire models
+
         task = create_task_context(
             content=request.problem,
-            task_type=request.task_type
+            task_type=request.task_type,
+            requirements=requirements
         )
-        
-        # Process with ensemble reasoning
-        async with client:
-            result = await ensemble_reasoner.process(task, decompose=request.decompose)
-            
-            return {
-                "final_result": result.final_content,
-                "subtask_results": [
-                    {
-                        "subtask": subtask.sub_task.content,
-                        "model": subtask.assignment.model_id,
-                        "result": subtask.result.content,
-                        "confidence": subtask.result.confidence,
-                        "success": subtask.success
-                    }
-                    for subtask in result.sub_task_results
-                ],
-                "model_assignments": {
-                    subtask.assignment.model_id: subtask.sub_task.content
-                    for subtask in result.sub_task_results
-                },
-                "reasoning_quality": {
-                    "overall_quality": result.overall_quality.overall_score(),
-                    "consistency": result.overall_quality.consistency,
-                    "completeness": result.overall_quality.completeness
-                },
-                "processing_time": result.total_time,
-                "strategy_used": result.decomposition_strategy.value,
-                "success_rate": result.success_rate,
-                "total_cost": result.total_cost
-            }
-            
+
+        # Process with ensemble reasoning - NO async with (singleton managed by lifecycle)
+        result = await ensemble_reasoner.process(task, decompose=request.decompose)
+
+        return {
+            "final_result": result.final_content,
+            "subtask_results": [
+                {
+                    "subtask": subtask.sub_task.content,
+                    "model": subtask.assignment.model_id,
+                    "result": subtask.result.content,
+                    "confidence": subtask.result.confidence,
+                    "success": subtask.success
+                }
+                for subtask in result.sub_task_results
+            ],
+            "model_assignments": {
+                subtask.assignment.model_id: subtask.sub_task.content
+                for subtask in result.sub_task_results
+            },
+            "reasoning_quality": {
+                "overall_quality": result.overall_quality.overall_score(),
+                "consistency": result.overall_quality.consistency,
+                "completeness": result.overall_quality.completeness
+            },
+            "processing_time": result.total_time,
+            "strategy_used": result.decomposition_strategy.value,
+            "success_rate": result.success_rate,
+            "total_cost": result.total_cost
+        }
+
     except Exception as e:
         logger.error(f"Ensemble reasoning failed: {str(e)}")
         raise
@@ -488,13 +563,13 @@ async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any
 async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[str, Any]:
     """
     Intelligently select the best model for a given task using adaptive routing.
-    
+
     This tool analyzes the query characteristics and selects the most appropriate
     model based on the task type, performance requirements, and current model metrics.
-    
+
     Args:
         request: Adaptive model selection request
-        
+
     Returns:
         Dictionary containing:
         - selected_model: The chosen model ID
@@ -502,7 +577,7 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
         - confidence: Confidence in the selection
         - alternative_models: Other viable options
         - routing_metrics: Performance metrics used in selection
-        
+
     Example:
         request = AdaptiveModelRequest(
             query="Write a Python function to sort a list",
@@ -514,7 +589,7 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
     logger.info(f"Processing adaptive model selection for task: {request.task_type}")
 
     try:
-        # Setup
+        # Setup - get_openrouter_client() is synchronous
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
 
@@ -524,37 +599,41 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
 
         # Get singleton adaptive router from lifecycle manager
         adaptive_router = await lifecycle_manager.get_adaptive_router()
-        
-        # Create task context
+
+        # Create task context with performance requirements
+        requirements = {}
+        if request.performance_requirements:
+            requirements.update(request.performance_requirements)
+
         task = create_task_context(
             content=request.query,
             task_type=request.task_type,
+            requirements=requirements,
             constraints=request.constraints
         )
-        
-        # Perform adaptive routing
-        async with client:
-            decision = await adaptive_router.process(task)
-            
-            return {
-                "selected_model": decision.selected_model_id,
-                "selection_reasoning": decision.justification,
-                "confidence": decision.confidence_score,
-                "alternative_models": [
-                    {
-                        "model": alt[0],
-                        "score": alt[1]
-                    }
-                    for alt in decision.alternative_models[:3]  # Top 3 alternatives
-                ],
-                "routing_metrics": {
-                    "expected_performance": decision.expected_performance,
-                    "strategy_used": decision.strategy_used.value,
-                    "total_candidates": decision.metadata.get("total_candidates", 0)
-                },
-                "selection_time": decision.routing_time
-            }
-            
+
+        # Perform adaptive routing - NO async with (singleton managed by lifecycle)
+        decision = await adaptive_router.process(task)
+
+        return {
+            "selected_model": decision.selected_model_id,
+            "selection_reasoning": decision.justification,
+            "confidence": decision.confidence_score,
+            "alternative_models": [
+                {
+                    "model": alt[0],
+                    "score": alt[1]
+                }
+                for alt in decision.alternative_models[:3]  # Top 3 alternatives
+            ],
+            "routing_metrics": {
+                "expected_performance": decision.expected_performance,
+                "strategy_used": decision.strategy_used.value,
+                "total_candidates": decision.metadata.get("total_candidates", 0)
+            },
+            "selection_time": decision.routing_time
+        }
+
     except Exception as e:
         logger.error(f"Adaptive model selection failed: {str(e)}")
         raise
@@ -569,13 +648,13 @@ async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, A
 async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[str, Any]:
     """
     Validate content quality and accuracy across multiple models.
-    
+
     This tool uses multiple models to cross-validate content, checking for
     accuracy, consistency, and identifying potential errors or biases.
-    
+
     Args:
         request: Cross-validation request
-        
+
     Returns:
         Dictionary containing:
         - validation_result: Overall validation result
@@ -583,7 +662,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
         - consensus_issues: Issues found by multiple models
         - model_validations: Individual validation results
         - recommendations: Suggested improvements
-        
+
     Example:
         request = CrossValidationRequest(
             content="The Earth is flat and the moon landing was fake",
@@ -595,7 +674,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
     logger.info("Processing cross-model validation")
 
     try:
-        # Setup
+        # Setup - get_openrouter_client() is synchronous
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
 
@@ -605,7 +684,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
 
         # Get singleton cross validator from lifecycle manager
         cross_validator = await lifecycle_manager.get_cross_validator()
-        
+
         # Create a dummy result to validate
         dummy_result = ProcessingResult(
             task_id="validation_task",
@@ -613,48 +692,56 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
             content=request.content,
             confidence=1.0
         )
-        
-        # Create task context for validation
+
+        # Create task context for validation with criteria and models
+        requirements = {
+            "validation_threshold": request.threshold
+        }
+        if request.validation_criteria:
+            requirements["validation_criteria"] = request.validation_criteria
+        if request.models:
+            requirements["preferred_models"] = request.models  # Wire models
+
         task = create_task_context(
             content=request.content,
-            task_type="analysis"
+            task_type="analysis",
+            requirements=requirements
         )
-        
-        # Perform cross-validation
-        async with client:
-            result = await cross_validator.process(dummy_result, task)
-            
-            return {
-                "validation_result": "VALID" if result.is_valid else "INVALID",
-                "validation_score": result.validation_confidence,
-                "validation_issues": [
-                    {
-                        "criteria": issue.criteria.value,
-                        "severity": issue.severity.value,
-                        "description": issue.description,
-                        "suggestion": issue.suggestion,
-                        "confidence": issue.confidence
-                    }
-                    for issue in result.validation_report.issues
-                ],
-                "model_validations": [
-                    {
-                        "model": validation.validator_model_id,
-                        "criteria": validation.criteria.value,
-                        "issues_found": len(validation.validation_issues)
-                    }
-                    for validation in result.validation_report.individual_validations
-                ],
-                "recommendations": result.improvement_suggestions,
-                "confidence": result.validation_confidence,
-                "processing_time": result.processing_time,
-                "quality_metrics": {
-                    "overall_score": result.quality_metrics.overall_score(),
-                    "accuracy": result.quality_metrics.accuracy,
-                    "consistency": result.quality_metrics.consistency
+
+        # Perform cross-validation - NO async with (singleton managed by lifecycle)
+        result = await cross_validator.process(dummy_result, task)
+
+        return {
+            "validation_result": "VALID" if result.is_valid else "INVALID",
+            "validation_score": result.validation_confidence,
+            "validation_issues": [
+                {
+                    "criteria": issue.criteria.value,
+                    "severity": issue.severity.value,
+                    "description": issue.description,
+                    "suggestion": issue.suggestion,
+                    "confidence": issue.confidence
                 }
+                for issue in result.validation_report.issues
+            ],
+            "model_validations": [
+                {
+                    "model": validation.validator_model_id,
+                    "criteria": validation.criteria.value,
+                    "issues_found": len(validation.validation_issues)
+                }
+                for validation in result.validation_report.individual_validations
+            ],
+            "recommendations": result.improvement_suggestions,
+            "confidence": result.validation_confidence,
+            "processing_time": result.processing_time,
+            "quality_metrics": {
+                "overall_score": result.quality_metrics.overall_score(),
+                "accuracy": result.quality_metrics.accuracy,
+                "consistency": result.quality_metrics.consistency
             }
-            
+        }
+
     except Exception as e:
         logger.error(f"Cross-model validation failed: {str(e)}")
         raise
@@ -695,7 +782,7 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
     logger.info("Processing collaborative problem solving")
 
     try:
-        # Setup
+        # Setup - get_openrouter_client() is synchronous
         client = get_openrouter_client()
         model_provider = OpenRouterModelProvider(client)
 
@@ -705,37 +792,41 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
 
         # Get singleton collaborative solver from lifecycle manager
         collaborative_solver = await lifecycle_manager.get_collaborative_solver()
-        
-        # Create task context
+
+        # Create task context with max_iterations and models
+        requirements = request.requirements or {}
+        requirements["max_iterations"] = request.max_iterations  # Wire max_iterations
+        if request.models:
+            requirements["preferred_models"] = request.models  # Wire models
+
         task = create_task_context(
             content=request.problem,
-            requirements=request.requirements,
+            requirements=requirements,
             constraints=request.constraints
         )
-        
-        # Start collaborative solving session
-        async with client:
-            result = await collaborative_solver.process(task, strategy="iterative")
-            
-            return {
-                "final_solution": result.final_content,
-                "solution_path": result.solution_path,
-                "alternative_solutions": result.alternative_solutions,
-                "quality_assessment": {
-                    "overall_score": result.quality_assessment.overall_score(),
-                    "accuracy": result.quality_assessment.accuracy,
-                    "consistency": result.quality_assessment.consistency,
-                    "completeness": result.quality_assessment.completeness
-                },
-                "component_contributions": result.component_contributions,
-                "confidence": result.confidence_score,
-                "improvement_suggestions": result.improvement_suggestions,
-                "processing_time": result.total_processing_time,
-                "session_id": result.session.session_id,
-                "strategy_used": result.session.strategy.value,
-                "components_used": result.session.components_used
-            }
-            
+
+        # Start collaborative solving session - NO async with (singleton managed by lifecycle)
+        result = await collaborative_solver.process(task, strategy="iterative")
+
+        return {
+            "final_solution": result.final_content,
+            "solution_path": result.solution_path,
+            "alternative_solutions": result.alternative_solutions,
+            "quality_assessment": {
+                "overall_score": result.quality_assessment.overall_score(),
+                "accuracy": result.quality_assessment.accuracy,
+                "consistency": result.quality_assessment.consistency,
+                "completeness": result.quality_assessment.completeness
+            },
+            "component_contributions": result.component_contributions,
+            "confidence": result.confidence_score,
+            "improvement_suggestions": result.improvement_suggestions,
+            "processing_time": result.total_processing_time,
+            "session_id": result.session.session_id,
+            "strategy_used": result.session.strategy.value,
+            "components_used": result.session.components_used
+        }
+
     except Exception as e:
         logger.error(f"Collaborative problem solving failed: {str(e)}")
         raise
