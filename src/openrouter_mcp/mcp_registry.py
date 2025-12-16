@@ -30,6 +30,8 @@ import asyncio
 from typing import Optional
 from fastmcp import FastMCP
 
+from .config.constants import APIConfig, CacheConfig, EnvVars
+
 logger = logging.getLogger(__name__)
 
 # Create the single shared FastMCP instance
@@ -79,19 +81,19 @@ async def get_shared_client():
         from .client.openrouter import OpenRouterClient
 
         # Get API key
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv(EnvVars.API_KEY)
         if not api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable is required")
+            raise ValueError(f"{EnvVars.API_KEY} environment variable is required")
 
         # Create client with environment configuration
         logger.info("Initializing shared OpenRouterClient singleton")
         _client_instance = OpenRouterClient(
             api_key=api_key,
-            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-            app_name=os.getenv("OPENROUTER_APP_NAME"),
-            http_referer=os.getenv("OPENROUTER_HTTP_REFERER"),
+            base_url=os.getenv(EnvVars.BASE_URL, APIConfig.BASE_URL),
+            app_name=os.getenv(EnvVars.APP_NAME),
+            http_referer=os.getenv(EnvVars.HTTP_REFERER),
             enable_cache=True,
-            cache_ttl=3600  # 1 hour cache TTL
+            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS
         )
 
         # Enter the async context manager once

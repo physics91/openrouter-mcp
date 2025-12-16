@@ -332,27 +332,36 @@ class TestCollaborativeSolver:
     async def test_solve_adaptive_strategy_complex_task(self, mock_model_provider):
         """Test adaptive strategy selection for complex tasks."""
         solver = CollaborativeSolver(mock_model_provider)
-        
-        # Create complex task
+
+        # Create complex task with enough complexity to trigger iterative strategy
+        # Complexity calculation: content_length/1000 * 0.3 + req_count/10 * 0.2 + type_complexity * 0.5
+        # For iterative: complexity >= 0.7
+        # CODE_GENERATION type_complexity = 0.9 * 0.5 = 0.45
+        # Need content + requirements to contribute at least 0.25
         complex_task = TaskContext(
             task_id="complex_adaptive",
             task_type=TaskType.CODE_GENERATION,
-            content="Build a distributed microservices architecture with authentication, monitoring, and auto-scaling capabilities",
+            content="Build a distributed microservices architecture with authentication, monitoring, and auto-scaling capabilities. " * 10,  # ~1000+ chars for high complexity
             requirements={
                 "scalability": "high",
                 "security": "enterprise",
                 "monitoring": "comprehensive",
                 "documentation": "complete",
-                "testing": "full_coverage"
+                "testing": "full_coverage",
+                "performance": "high",
+                "reliability": "99.99%",
+                "maintainability": "excellent",
+                "deployment": "automated",
+                "logging": "centralized"  # 10 requirements for max req_complexity
             }
         )
-        
+
         # Mock the iterative solver to avoid complex setup
         with patch.object(solver, '_solve_iterative') as mock_iterative:
             mock_iterative.return_value = Mock(final_content="Iterative solution")
-            
+
             result = await solver.process(complex_task, strategy=SolvingStrategy.ADAPTIVE)
-            
+
             # Should use iterative strategy for complex task
             mock_iterative.assert_called_once()
 
@@ -501,7 +510,7 @@ class TestCollaborativeSolver:
     async def test_concurrent_solving_sessions(self, mock_model_provider):
         """Test handling multiple concurrent solving sessions."""
         solver = CollaborativeSolver(mock_model_provider)
-        
+
         # Create multiple tasks
         tasks = [
             TaskContext(
@@ -511,23 +520,37 @@ class TestCollaborativeSolver:
             )
             for i in range(3)
         ]
-        
-        # Mock solving to return different results
-        def mock_solve_side_effect(session):
-            return Mock(final_content=f"Solution for {session.original_task.task_id}")
-        
+
+        # Mock solving to return proper SolvingResult objects
+        def mock_solve_side_effect(session, request_id):
+            session.start_time = datetime.now()
+            session.end_time = datetime.now()
+            return SolvingResult(
+                session=session,
+                final_content=f"Solution for {session.original_task.task_id}",
+                confidence_score=0.9,
+                quality_assessment=QualityMetrics(
+                    relevance=0.9, coherence=0.9, completeness=0.9, accuracy=0.9
+                ),
+                solution_path=["ensemble_reasoner"],
+                alternative_solutions=[],
+                improvement_suggestions=[],
+                component_contributions={"ensemble_reasoner": 1.0},
+                total_processing_time=0.1
+            )
+
         with patch.object(solver, '_solve_sequential', side_effect=mock_solve_side_effect):
             # Process all tasks concurrently
             results = await asyncio.gather(
                 *[solver.process(task, strategy=SolvingStrategy.SEQUENTIAL) for task in tasks],
                 return_exceptions=True
             )
-            
+
             # All should succeed
             assert len(results) == 3
             assert all(isinstance(result, SolvingResult) for result in results)
             assert len(set(result.final_content for result in results)) == 3  # All unique
-            
+
             # All sessions should be completed
             assert len(solver.active_sessions) == 0
             assert len(solver.completed_sessions) == 3
@@ -537,20 +560,42 @@ class TestCollaborativeSolver:
     async def test_solving_performance(self, performance_mock_provider, sample_task):
         """Test solving performance with realistic components."""
         solver = CollaborativeSolver(performance_mock_provider)
-        
+
+        # Create a proper session and result for the mock
+        test_session = SolvingSession(
+            session_id="perf_test_session",
+            original_task=sample_task,
+            strategy=SolvingStrategy.ADAPTIVE,
+            components_used=["ensemble_reasoner"],
+            intermediate_results=[]
+        )
+        test_session.start_time = datetime.now()
+        test_session.end_time = datetime.now()
+
+        mock_result = SolvingResult(
+            session=test_session,
+            final_content="Performance test solution",
+            confidence_score=0.9,
+            quality_assessment=QualityMetrics(
+                relevance=0.9, coherence=0.9, completeness=0.9, accuracy=0.9
+            ),
+            solution_path=["ensemble_reasoner"],
+            alternative_solutions=[],
+            improvement_suggestions=[],
+            component_contributions={"ensemble_reasoner": 1.0},
+            total_processing_time=1.0
+        )
+
         # Use simple mocking to avoid component complexity
         with patch.object(solver, '_solve_adaptive') as mock_solve:
-            mock_solve.return_value = Mock(
-                final_content="Performance test solution",
-                total_processing_time=1.0
-            )
-            
+            mock_solve.return_value = mock_result
+
             start_time = datetime.now()
             result = await solver.process(sample_task, strategy=SolvingStrategy.ADAPTIVE)
             end_time = datetime.now()
-            
+
             processing_time = (end_time - start_time).total_seconds()
-            
+
             # Should complete within reasonable time
             assert processing_time < 3.0  # 3 seconds max for mocked version
             assert isinstance(result, SolvingResult)
@@ -591,15 +636,13 @@ class TestCollaborativeSolver:
     async def test_solving_with_all_component_failures(self, mock_model_provider, sample_task):
         """Test solving when all components fail."""
         solver = CollaborativeSolver(mock_model_provider)
-        
-        # Mock all components to fail
-        with patch('src.openrouter_mcp.collective_intelligence.collaborative_solver.AdaptiveRouter') as mock_router:
-            with patch('src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner') as mock_ensemble:
-                mock_router.return_value.process.side_effect = Exception("Router failed")
-                mock_ensemble.return_value.process.side_effect = Exception("Ensemble failed")
-                
-                with pytest.raises(Exception):
-                    await solver.process(sample_task, strategy=SolvingStrategy.SEQUENTIAL)
+
+        # Patch solver's instance components directly to fail
+        solver.ensemble_reasoner.process = AsyncMock(side_effect=Exception("Ensemble failed"))
+        solver.adaptive_router.process = AsyncMock(side_effect=Exception("Router failed"))
+
+        with pytest.raises(Exception):
+            await solver.process(sample_task, strategy=SolvingStrategy.SEQUENTIAL)
 
     @pytest.mark.unit
     def test_solving_strategies_enum(self):

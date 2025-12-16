@@ -1,11 +1,11 @@
-import os
 import logging
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
-from ..client.openrouter import OpenRouterClient
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import mcp, get_shared_client
+# Import centralized configuration constants
+from ..config.constants import ModelDefaults
 
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,9 @@ class ChatCompletionRequest(BaseModel):
     """Request for chat completion."""
     model: str = Field(..., description="The model to use for completion")
     messages: List[ChatMessage] = Field(..., description="List of messages in the conversation")
-    temperature: float = Field(0.7, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(None, description="Maximum number of tokens to generate")
-    stream: bool = Field(False, description="Whether to stream the response")
+    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)")
+    max_tokens: Optional[int] = Field(ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate")
+    stream: bool = Field(ModelDefaults.STREAM, description="Whether to stream the response")
 
 
 class ModelListRequest(BaseModel):
@@ -35,19 +35,6 @@ class UsageStatsRequest(BaseModel):
     """Request for usage statistics."""
     start_date: Optional[str] = Field(None, description="Start date for usage tracking (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
-
-
-async def get_openrouter_client() -> OpenRouterClient:
-    """
-    Get the shared OpenRouter client from registry.
-
-    DEPRECATED: This function is kept for backward compatibility but now
-    returns the shared singleton client instead of creating a new instance.
-
-    Returns:
-        OpenRouterClient: Shared client instance (already in async context)
-    """
-    return await get_shared_client()
 
 
 @mcp.tool()
@@ -86,7 +73,7 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    client = await get_shared_client()
 
     try:
         if request.stream:
@@ -151,7 +138,7 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
     logger.info(f"Listing models with filter: {request.filter_by or 'none'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    client = await get_shared_client()
 
     try:
         models = await client.list_models(filter_by=request.filter_by)
@@ -195,7 +182,7 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
     logger.info(f"Getting usage stats from {request.start_date or 'beginning'} to {request.end_date or 'now'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    client = await get_shared_client()
 
     try:
         stats = await client.track_usage(

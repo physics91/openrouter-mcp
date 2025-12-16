@@ -14,8 +14,10 @@ from .metadata import (
     enhance_model_metadata,
     batch_enhance_models
 )
+from .sanitizer import SensitiveDataSanitizer
 
 __all__ = [
+    # Metadata utilities
     "ModelProvider",
     "ModelCategory",
     "ModelCapabilities",
@@ -27,5 +29,7 @@ __all__ = [
     "determine_performance_tier",
     "determine_cost_tier",
     "enhance_model_metadata",
-    "batch_enhance_models"
+    "batch_enhance_models",
+    # Sanitizer utilities
+    "SensitiveDataSanitizer",
 ]

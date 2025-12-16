@@ -47,6 +47,14 @@ from .semantic_similarity import (
     SimilarityScore,
     calculate_response_similarity
 )
+from .protocols import (
+    ConcurrencyAware,
+    QuotaAware,
+    FailureAware,
+    StorageAware,
+    CancellationAware,
+    OperationalControlsAware,
+)
 
 __all__ = [
     'ConsensusEngine',
@@ -88,6 +96,13 @@ __all__ = [
     'ResponseGrouper',
     'SimilarityScore',
     'calculate_response_similarity',
+    # ISP Protocol interfaces
+    'ConcurrencyAware',
+    'QuotaAware',
+    'FailureAware',
+    'StorageAware',
+    'CancellationAware',
+    'OperationalControlsAware',
 ]
 
 __version__ = "1.0.0"
