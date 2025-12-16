@@ -370,9 +370,22 @@ class StorageManager:
         self.item_timestamps: Dict[str, datetime] = {}
         self._lock = asyncio.Lock()
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_started = False
 
-        if config.enable_auto_cleanup:
-            self._start_cleanup_task()
+    def _ensure_cleanup_task(self) -> None:
+        """Ensure cleanup task is started if auto_cleanup is enabled.
+
+        This is called lazily from async methods to avoid event loop issues
+        when StorageManager is instantiated in sync context.
+        """
+        if self.config.enable_auto_cleanup and not self._cleanup_started:
+            try:
+                loop = asyncio.get_running_loop()
+                self._start_cleanup_task()
+                self._cleanup_started = True
+            except RuntimeError:
+                # No running event loop - cleanup will be started later
+                pass
 
     def _start_cleanup_task(self) -> None:
         """Start background cleanup task."""
@@ -385,6 +398,8 @@ class StorageManager:
 
     async def add_item(self, item_id: str, item: Any) -> None:
         """Add an item to storage."""
+        # Lazily start cleanup task when first async method is called
+        self._ensure_cleanup_task()
         async with self._lock:
             self.items.append((item_id, item))
             self.item_timestamps[item_id] = datetime.now()

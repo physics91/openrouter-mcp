@@ -78,13 +78,14 @@ class TestConsensusEngine:
         """Test successful retrieval of model responses."""
         engine = ConsensusEngine(mock_model_provider, consensus_config)
         model_ids = ["openai/gpt-4", "anthropic/claude-3-haiku", "meta-llama/llama-3.1-70b"]
-        
-        responses = await engine._get_model_responses(sample_task, model_ids)
-        
+        request_id = "test_request_001"
+
+        responses = await engine._get_model_responses(sample_task, model_ids, request_id)
+
         assert isinstance(responses, list)
         assert len(responses) == len(model_ids)
         assert all(isinstance(response, ModelResponse) for response in responses)
-        
+
         # Check that all requested models are represented
         response_model_ids = {response.model_id for response in responses}
         assert response_model_ids == set(model_ids)
@@ -112,7 +113,7 @@ class TestConsensusEngine:
         
         # Should handle timeout gracefully
         with pytest.raises(ValueError, match="Insufficient responses"):
-            await engine._get_model_responses(sample_task, ["slow_model"])
+            await engine._get_model_responses(sample_task, ["slow_model"], "test_timeout_request")
 
     @pytest.mark.asyncio
     @pytest.mark.unit

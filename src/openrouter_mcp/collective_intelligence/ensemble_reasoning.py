@@ -370,9 +370,19 @@ class ModelAssigner:
 
     def __init__(self, model_provider: ModelProvider, max_history_size: int = 1000):
         self.model_provider = model_provider
-        self.assignment_history: deque = deque(maxlen=max_history_size)
+        self._assignment_history: deque = deque(maxlen=max_history_size)
         self.max_history_size = max_history_size
-    
+
+    @property
+    def assignment_history(self) -> List[ModelAssignment]:
+        """Get assignment history as a list for backward compatibility."""
+        return list(self._assignment_history)
+
+    @assignment_history.setter
+    def assignment_history(self, value: List[ModelAssignment]) -> None:
+        """Set assignment history for backward compatibility."""
+        self._assignment_history = deque(value, maxlen=self.max_history_size)
+
     async def assign_models(self, ensemble_task: EnsembleTask) -> List[ModelAssignment]:
         """Assign optimal models to all sub-tasks."""
         available_models = await self.model_provider.get_available_models()
@@ -382,7 +392,7 @@ class ModelAssigner:
             assignment = await self._assign_single_model(sub_task, available_models)
             assignments.append(assignment)
         
-        self.assignment_history.extend(assignments)
+        self._assignment_history.extend(assignments)
         
         logger.info(f"Assigned models to {len(assignments)} sub-tasks")
         
@@ -512,9 +522,19 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         super().__init__(model_provider)
         self.decomposer = TaskDecomposer()
         self.assigner = ModelAssigner(model_provider, max_history_size=max_history_size)
-        self.processing_history: deque = deque(maxlen=max_history_size)
+        self._processing_history: deque = deque(maxlen=max_history_size)
         self.max_history_size = max_history_size
-    
+
+    @property
+    def processing_history(self) -> List[EnsembleResult]:
+        """Get processing history as a list for backward compatibility."""
+        return list(self._processing_history)
+
+    @processing_history.setter
+    def processing_history(self, value: List[EnsembleResult]) -> None:
+        """Set processing history for backward compatibility."""
+        self._processing_history = deque(value, maxlen=self.max_history_size)
+
     async def process(self, task: TaskContext, **kwargs) -> EnsembleResult:
         """
         Process a complex task using ensemble reasoning.
@@ -552,7 +572,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             )
             
             # Store in history
-            self.processing_history.append(final_result)
+            self._processing_history.append(final_result)
             
             logger.info(f"Ensemble reasoning completed for task {task.task_id} in {processing_time:.2f}s")
             
@@ -897,5 +917,5 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
     def get_processing_history(self, limit: Optional[int] = None) -> List[EnsembleResult]:
         """Get historical ensemble processing results."""
         if limit:
-            return list(self.processing_history)[-limit:]
-        return list(self.processing_history)
+            return list(self._processing_history)[-limit:]
+        return list(self._processing_history)

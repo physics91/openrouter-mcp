@@ -1,53 +1,40 @@
 {
   "models": [
     {
-      "id": "openai/gpt-4",
-      "name": "GPT-4",
-      "description": "OpenAI GPT-4",
-      "context_length": 8192,
-      "pricing": {
-        "prompt": "0.00003",
-        "completion": "0.00006"
-      },
-      "architecture": {
-        "modality": "text"
-      },
-      "top_provider": {
-        "provider": "OpenAI"
-      },
-      "provider": "openai",
+      "id": "legacy/model-v1",
+      "name": "Legacy Model",
+      "context_length": 4096,
+      "provider": "unknown",
       "category": "chat",
       "capabilities": {
         "supports_vision": false,
-        "supports_function_calling": true,
+        "supports_function_calling": false,
         "supports_streaming": true,
         "supports_system_prompt": true,
-        "supports_json_mode": true,
-        "supports_tool_use": true,
-        "max_tokens": 8192,
+        "supports_json_mode": false,
+        "supports_tool_use": false,
+        "max_tokens": 4096,
         "max_output_tokens": 4096,
         "supports_multiple_images": false,
         "supports_pdf": false
       },
       "version_info": {
-        "version": "unknown",
+        "version": "v1",
         "release_date": null,
         "is_latest": false,
-        "family": "gpt-4",
-        "full_version": "gpt-4-unknown"
+        "family": "unknown",
+        "full_version": "v1"
       },
-      "performance_tier": "standard",
-      "cost_tier": "low",
-      "quality_score": 6.0,
+      "performance_tier": "economy",
+      "cost_tier": "free",
+      "quality_score": 4.0,
       "tags": [
-        "openai",
-        "tools",
-        "low",
-        "functions",
+        "unknown",
         "chat",
-        "standard"
+        "economy",
+        "free"
       ]
     }
   ],
-  "updated_at": "2025-11-18T17:32:31.382220"
+  "updated_at": "2025-12-16T14:54:40.604348"
 }

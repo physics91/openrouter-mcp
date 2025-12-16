@@ -6,13 +6,17 @@ enabling multi-model consensus, ensemble reasoning, adaptive model selection,
 cross-model validation, and collaborative problem-solving.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
-from ..client.openrouter import OpenRouterClient
+if TYPE_CHECKING:
+    from ..client.openrouter import OpenRouterClient
+
 from ..collective_intelligence import (
     ConsensusEngine,
     EnsembleReasoner,
@@ -30,8 +34,10 @@ from ..collective_intelligence import (
     get_lifecycle_manager
 )
 from ..collective_intelligence.base import ModelCapability
-# Import shared MCP instance from registry to prevent duplicate registration
-from ..mcp_registry import mcp
+# Import shared MCP instance and client manager from registry
+from ..mcp_registry import mcp, get_shared_client
+# Import centralized configuration constants
+from ..config.constants import ModelDefaults, ConsensusDefaults
 from ..utils.token_counter import count_message_tokens
 
 logger = logging.getLogger(__name__)
@@ -73,7 +79,14 @@ class OpenRouterModelProvider:
                 })
 
             # Extract temperature from task requirements or kwargs, with fallback to default
-            temperature = task.requirements.get("temperature") or kwargs.get("temperature", 0.7)
+            # Use explicit None check to preserve valid 0.0 temperature values
+            temp_from_req = task.requirements.get("temperature")
+            temp_from_kwargs = kwargs.get("temperature")
+            temperature = (
+                temp_from_req if temp_from_req is not None
+                else temp_from_kwargs if temp_from_kwargs is not None
+                else ModelDefaults.TEMPERATURE
+            )
 
             # Call OpenRouter API
             response = await self.client.chat_completion(
@@ -297,9 +310,9 @@ class CollectiveChatRequest(BaseModel):
     prompt: str = Field(..., description="The prompt to process collectively")
     models: Optional[List[str]] = Field(None, description="Specific models to use (optional)")
     strategy: str = Field("majority_vote", description="Consensus strategy: majority_vote, weighted_average, confidence_threshold")
-    min_models: int = Field(3, description="Minimum number of models to use")
-    max_models: int = Field(5, description="Maximum number of models to use")
-    temperature: float = Field(0.7, description="Sampling temperature")
+    min_models: int = Field(ConsensusDefaults.MIN_MODELS, description="Minimum number of models to use")
+    max_models: int = Field(ConsensusDefaults.MAX_MODELS, description="Maximum number of models to use")
+    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
     system_prompt: Optional[str] = Field(None, description="System prompt for all models")
 
 
@@ -309,7 +322,7 @@ class EnsembleReasoningRequest(BaseModel):
     task_type: str = Field("reasoning", description="Type of task: reasoning, analysis, creative, factual, code_generation")
     decompose: bool = Field(True, description="Whether to decompose the problem into subtasks")
     models: Optional[List[str]] = Field(None, description="Specific models to use (optional)")
-    temperature: float = Field(0.7, description="Sampling temperature")
+    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
 
 
 class AdaptiveModelRequest(BaseModel):
@@ -325,7 +338,7 @@ class CrossValidationRequest(BaseModel):
     content: str = Field(..., description="Content to validate across models")
     validation_criteria: Optional[List[str]] = Field(None, description="Specific validation criteria")
     models: Optional[List[str]] = Field(None, description="Models to use for validation")
-    threshold: float = Field(0.7, description="Validation threshold")
+    threshold: float = Field(ConsensusDefaults.CONFIDENCE_THRESHOLD, description="Validation threshold")
 
 
 class CollaborativeSolvingRequest(BaseModel):
@@ -335,11 +348,6 @@ class CollaborativeSolvingRequest(BaseModel):
     constraints: Optional[Dict[str, Any]] = Field(None, description="Problem constraints")
     max_iterations: int = Field(3, description="Maximum number of iteration rounds")
     models: Optional[List[str]] = Field(None, description="Specific models to use")
-
-
-def get_openrouter_client() -> OpenRouterClient:
-    """Get configured OpenRouter client."""
-    return OpenRouterClient.from_env()
 
 
 def create_task_context(
@@ -392,8 +400,8 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
     logger.info(f"Processing collective chat completion with strategy: {request.strategy}")
 
     try:
-        # Setup - get_openrouter_client() is synchronous, NOT async
-        client = get_openrouter_client()
+        # Setup - use shared singleton client from registry
+        client = await get_shared_client()
         model_provider = OpenRouterModelProvider(client)
 
         # Get lifecycle manager and configure it with temperature parameter
@@ -495,8 +503,8 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
     logger.info(f"Processing ensemble reasoning for task type: {request.task_type}")
 
     try:
-        # Setup - get_openrouter_client() is synchronous
-        client = get_openrouter_client()
+        # Setup - use shared singleton client from registry
+        client = await get_shared_client()
         model_provider = OpenRouterModelProvider(client)
 
         # Get lifecycle manager and configure it
@@ -589,8 +597,8 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
     logger.info(f"Processing adaptive model selection for task: {request.task_type}")
 
     try:
-        # Setup - get_openrouter_client() is synchronous
-        client = get_openrouter_client()
+        # Setup - use shared singleton client from registry
+        client = await get_shared_client()
         model_provider = OpenRouterModelProvider(client)
 
         # Get lifecycle manager and configure it
@@ -674,8 +682,8 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
     logger.info("Processing cross-model validation")
 
     try:
-        # Setup - get_openrouter_client() is synchronous
-        client = get_openrouter_client()
+        # Setup - use shared singleton client from registry
+        client = await get_shared_client()
         model_provider = OpenRouterModelProvider(client)
 
         # Get lifecycle manager and configure it
@@ -782,8 +790,8 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
     logger.info("Processing collaborative problem solving")
 
     try:
-        # Setup - get_openrouter_client() is synchronous
-        client = get_openrouter_client()
+        # Setup - use shared singleton client from registry
+        client = await get_shared_client()
         model_provider = OpenRouterModelProvider(client)
 
         # Get lifecycle manager and configure it

@@ -157,8 +157,8 @@ class TestCollectiveIntelligenceIntegration:
         assert len(ensemble_result.sub_task_results) > 0
         
         # Verify that routing informed ensemble decisions
-        participating_models = [str.model_id for str in ensemble_result.sub_task_results]
-        
+        participating_models = [subtask_result.assignment.model_id for subtask_result in ensemble_result.sub_task_results]
+
         # The routed model should influence ensemble selection
         assert len(participating_models) > 0
         assert ensemble_result.success_rate > 0.0

@@ -1,4 +1,3 @@
-import os
 import logging
 import base64
 import io
@@ -6,9 +5,10 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 from pydantic import BaseModel, Field, field_validator
 from PIL import Image
 
-from ..client.openrouter import OpenRouterClient
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import mcp, get_shared_client
+# Import centralized configuration constants
+from ..config.constants import ModelDefaults
 
 
 logger = logging.getLogger(__name__)
@@ -36,27 +36,14 @@ class VisionChatRequest(BaseModel):
     model: str = Field(..., description="The vision-capable model to use")
     messages: List[Dict[str, str]] = Field(..., description="List of messages in the conversation")
     images: List[ImageInput] = Field(..., description="List of images to analyze")
-    temperature: float = Field(0.7, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(None, description="Maximum number of tokens to generate")
-    stream: bool = Field(False, description="Whether to stream the response")
+    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)")
+    max_tokens: Optional[int] = Field(ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate")
+    stream: bool = Field(ModelDefaults.STREAM, description="Whether to stream the response")
 
 
 class VisionModelRequest(BaseModel):
     """Request for listing vision-capable models."""
     filter_by: Optional[str] = Field(None, description="Filter models by name substring")
-
-
-async def get_openrouter_client() -> OpenRouterClient:
-    """
-    Get the shared OpenRouter client from registry.
-
-    DEPRECATED: This function is kept for backward compatibility but now
-    returns the shared singleton client instead of creating a new instance.
-
-    Returns:
-        OpenRouterClient: Shared client instance (already in async context)
-    """
-    return await get_shared_client()
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
@@ -346,7 +333,7 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
     logger.info(f"Processing vision chat request for model: {request.model}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    client = await get_shared_client()
 
     try:
         # Process images and create vision messages
@@ -434,7 +421,7 @@ async def list_vision_models(request: VisionModelRequest) -> List[Dict[str, Any]
     logger.info(f"Listing vision models with filter: {request.filter_by or 'none'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    client = await get_shared_client()
 
     try:
         # Get all models
