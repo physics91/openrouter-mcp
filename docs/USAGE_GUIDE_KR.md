@@ -76,13 +76,11 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=INFO
 
-# 캐시 설정
-CACHE_TTL_HOURS=2
-CACHE_MAX_ITEMS=1000
-
 # 로깅 설정 (주의: verbose는 개발 환경에서만)
 # OPENROUTER_VERBOSE_LOGGING=false
 ```
+
+캐시 설정(TTL/메모리/파일 경로)은 환경변수가 아닌 코드에서 `ModelCache`로 조정합니다.
 
 ---
 
@@ -580,12 +578,7 @@ response = await client.chat(...)
 
 #### 3. **Model Cache 설정**
 
-```bash
-# .env 파일
-CACHE_TTL_HOURS=2          # 캐시 유효 시간
-CACHE_MAX_ITEMS=1000       # 메모리 최대 항목 수
-CACHE_FILE=models.json     # 캐시 파일 경로
-```
+환경변수로 캐시를 설정하지 않습니다. 아래처럼 코드에서 설정하세요.
 
 **프로그래밍 방식**:
 ```python
@@ -602,15 +595,13 @@ print(f"TTL: {cache.ttl_seconds}초")
 
 **고급 설정 (고부하 환경)**:
 
-```bash
-# TTL 증가 (API 호출 감소)
-CACHE_TTL_HOURS=6
-
-# 컨테이너 볼륨에 캐시
-CACHE_FILE=/data/openrouter_cache.json
-
-# 메모리 증가
-CACHE_MAX_ITEMS=5000
+```python
+# 고부하 환경 예시
+cache = ModelCache(
+    ttl_hours=6,                 # TTL 증가 (API 호출 감소)
+    max_memory_items=5000,       # 메모리 증가
+    cache_file="/data/openrouter_cache.json"  # 컨테이너 볼륨 사용
+)
 ```
 
 ---

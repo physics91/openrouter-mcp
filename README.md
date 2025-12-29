@@ -638,11 +638,6 @@ OPENROUTER_HTTP_REFERER=https://localhost
 HOST=localhost
 PORT=8000
 LOG_LEVEL=info
-
-# Cache Configuration
-CACHE_TTL_HOURS=1
-CACHE_MAX_ITEMS=1000
-CACHE_FILE=openrouter_model_cache.json
 ```
 
 ### Configuration Options
@@ -655,9 +650,10 @@ CACHE_FILE=openrouter_model_cache.json
 | `HOST` | Server bind address | "localhost" |
 | `PORT` | Server port | "8000" |
 | `LOG_LEVEL` | Logging level | "info" |
-| `CACHE_TTL_HOURS` | Model cache TTL in hours | "1" |
-| `CACHE_MAX_ITEMS` | Max items in memory cache | "1000" |
-| `CACHE_FILE` | Cache file path | "openrouter_model_cache.json" |
+
+Cache tuning (TTL, memory size, cache file path) is configured programmatically
+via `ModelCache` and `OpenRouterClient` parameters rather than environment
+variables.
 
 ## 📊 Popular Models
 

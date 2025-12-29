@@ -185,13 +185,11 @@ The server uses a two-layer cache:
 1. **Memory cache**: Fast, in-memory LRU cache
 2. **File cache**: Persistent JSON cache
 
-Cache TTL and size can be configured in `.env`.
+Cache TTL and size are configured programmatically via `ModelCache`.
 
 ### Can I disable caching?
-Yes, set in `.env`:
-```env
-CACHE_TTL_HOURS=0
-```
+Yes. When constructing the client, set `enable_cache=False`. (The server uses
+default caching unless you change it in code.)
 
 ### What's the maximum request size?
 - **Text**: Generally 100k-200k tokens depending on model

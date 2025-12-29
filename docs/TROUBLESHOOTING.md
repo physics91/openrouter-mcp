@@ -1,4 +1,4 @@
-# Troubleshooting Guide
+﻿# Troubleshooting Guide
 
 This guide helps you resolve common issues with the OpenRouter MCP Server.
 
@@ -175,10 +175,14 @@ npx openrouter-mcp start --debug
 ```bash
 # Delete cache file
 rm openrouter_model_cache.json
+```
 
-# Reduce cache size in .env
-CACHE_MAX_ITEMS=100
-CACHE_TTL_HOURS=0.5
+# Reduce cache size in code (ModelCache settings)
+```python
+from openrouter_mcp.models.cache import ModelCache
+
+cache = ModelCache(ttl_hours=0.5, max_memory_items=100)
+print(cache.get_cache_stats())
 ```
 
 2. **Increase memory limit**:
