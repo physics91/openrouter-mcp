@@ -174,7 +174,7 @@ npx openrouter-mcp start --debug
 1. **Clear cache**:
 ```bash
 # Delete cache file
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
 ```
 
 # Reduce cache size in code (ModelCache settings)
@@ -305,7 +305,7 @@ curl -w "@curl-format.txt" https://openrouter.ai/api/v1
 cat .env | grep CACHE
 
 # Check cache file exists
-ls -la openrouter_model_cache.json
+ls -la .cache/openrouter_model_cache.json
 ```
 
 ### High Token Usage

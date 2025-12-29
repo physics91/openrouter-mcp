@@ -421,7 +421,7 @@ When upgrading major versions:
 ```bash
 # Backup current configuration
 cp .env .env.backup
-cp openrouter_model_cache.json cache.backup.json
+cp .cache/openrouter_model_cache.json cache.backup.json
 
 # Run migration
 npx openrouter-mcp migrate
@@ -449,7 +449,7 @@ npm uninstall openrouter-mcp
 rm .env
 
 # Remove cache
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
 
 # Remove logs
 rm -rf logs/

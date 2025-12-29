@@ -159,7 +159,7 @@ claude "Use Claude Opus to write a Python script"
 claude "List all available AI models"
 ```
 
-**자세한 설정**: `docs/CLAUDE_CODE_SETUP_KR.md` 참조
+**자세한 설정**: `CLAUDE_CODE_SETUP_KR.md` 참조
 
 ### 기본 MCP 툴 사용
 
@@ -301,7 +301,7 @@ img = ImageInput(
 **마이그레이션 필수**:
 - 모든 `type="path"` 코드를 위의 패턴으로 변경
 - 실패 시 명확한 에러 메시지 표시
-- 자세한 내용: `docs/MULTIMODAL_SECURITY_MIGRATION.md`
+- 자세한 내용: `MULTIMODAL_SECURITY_MIGRATION.md`
 
 ---
 
@@ -824,7 +824,7 @@ npx openrouter-mcp init
 
 ```bash
 # 캐시 삭제 및 재생성
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
 
 # 서버 재시작
 npx openrouter-mcp start
@@ -852,7 +852,7 @@ npx openrouter-mcp start
 ~/.openrouter-mcp/security-audit.log
 
 # 캐시 파일
-./openrouter_model_cache.json
+.cache/openrouter_model_cache.json
 ```
 
 ### 지원
@@ -867,13 +867,13 @@ npx openrouter-mcp start
 
 ### 상세 문서
 
-- `docs/SECURITY.md` - 보안 가이드
-- `docs/LOGGING_SECURITY.md` - 로깅 보안 상세
-- `docs/MULTIMODAL_SECURITY_MIGRATION.md` - Multimodal 마이그레이션
-- `docs/COLLECTIVE_INTELLIGENCE_INTEGRATION.md` - Collective Intelligence 완전 가이드
-- `docs/PERFORMANCE_IMPROVEMENTS.md` - 성능 최적화 상세
-- `docs/MODEL_CACHING.md` - 캐시 시스템 가이드
-- `docs/SEMANTIC_SIMILARITY_IMPROVEMENT.md` - 의미론적 유사도 알고리즘
+- `SECURITY.md` - 보안 가이드
+- `LOGGING_SECURITY.md` - 로깅 보안 상세
+- `MULTIMODAL_SECURITY_MIGRATION.md` - Multimodal 마이그레이션
+- `COLLECTIVE_INTELLIGENCE_INTEGRATION.md` - Collective Intelligence 완전 가이드
+- `PERFORMANCE_IMPROVEMENTS.md` - 성능 최적화 상세
+- `MODEL_CACHING.md` - 캐시 시스템 가이드
+- `SEMANTIC_SIMILARITY_IMPROVEMENT.md` - 의미론적 유사도 알고리즘
 
 ### 예제 코드
 

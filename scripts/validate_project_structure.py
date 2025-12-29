@@ -126,8 +126,9 @@ class ProjectStructureValidator:
         # 필수 패턴들
         required_patterns = [
             "*_cache.json",
-            "*_results_*.json", 
+            "*_results_*.json",
             "benchmark_*.json",
+            ".cache/",
             ".env"
         ]
         
