@@ -93,6 +93,21 @@ class PricingDefaults:
     PER_1K_PRICE_THRESHOLD: float = 0.001
 
 
+class BenchmarkDefaults:
+    """Default configuration for benchmarking tools."""
+
+    DEFAULT_PROMPT: str = (
+        "\uc548\ub155\ud558\uc138\uc694! \uac04\ub2e8\ud55c "
+        "\uc790\uae30\uc18c\uac1c\ub97c \ud574\uc8fc\uc138\uc694."
+    )
+    DEFAULT_MAX_TOKENS: int = 1000
+    DEFAULT_DELAY_SECONDS: float = 1.0
+    DEFAULT_RUNS_PER_MODEL: int = 1
+    DEFAULT_MCP_RUNS: int = 3
+    DEFAULT_RESULTS_DIR: str = "benchmarks"
+    DEFAULT_TIMEOUT_SECONDS: float = 60.0
+
+
 __all__ = [
     "APIConfig",
     "CacheConfig",
@@ -102,4 +117,5 @@ __all__ = [
     "RateLimitConfig",
     "LoggingConfig",
     "PricingDefaults",
+    "BenchmarkDefaults",
 ]

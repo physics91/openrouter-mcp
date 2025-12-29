@@ -148,7 +148,7 @@ class OpenRouterClient:
         if not model or model.strip() == "":
             raise ValueError("Model cannot be empty")
     
-    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:
+    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:       
         """Validate messages parameter."""
         if not messages:
             raise ValueError("Messages cannot be empty")
@@ -161,6 +161,38 @@ class OpenRouterClient:
 
             if message["role"] not in valid_roles:
                 raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
+
+    def _validate_messages_if_text(self, messages: List[Dict[str, Any]]) -> None:
+        """Validate messages when they are simple text-only payloads."""
+        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
+            self._validate_messages(messages)  # type: ignore[arg-type]
+
+    def _build_chat_payload(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: Optional[int],
+        stream: bool,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Build a chat completion payload with shared validation."""
+        self._validate_model(model)
+        self._validate_messages_if_text(messages)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": stream,
+            **kwargs,
+        }
+
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+
+        return payload
 
     async def _make_request(
         self,
@@ -476,22 +508,15 @@ class OpenRouterClient:
         Returns:
             Chat completion response
         """
-        self._validate_model(model)
-        # Skip message validation for multimodal messages (they have different structure)
-        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
-            self._validate_messages(messages)
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": stream,
-            **kwargs
-        }
-        
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        
+        payload = self._build_chat_payload(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=stream,
+            **kwargs,
+        )
+
         return await self._make_request("POST", "/chat/completions", json=payload)
     
     async def chat_completion_with_vision(
@@ -559,22 +584,15 @@ class OpenRouterClient:
         Yields:
             Chat completion chunks
         """
-        self._validate_model(model)
-        # Skip message validation for multimodal messages
-        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
-            self._validate_messages(messages)
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": True,
-            **kwargs
-        }
-        
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        
+        payload = self._build_chat_payload(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            **kwargs,
+        )
+
         async for chunk in self._stream_request("/chat/completions", payload):
             yield chunk
     
