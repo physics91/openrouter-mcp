@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 from ..mcp_registry import mcp, get_openrouter_client
 # Import centralized configuration constants
 from ..models.requests import BaseChatRequest, ChatMessage
+from ..utils.async_utils import collect_async_iterable
+from ..utils.message_utils import serialize_messages
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +62,7 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
     logger.info(f"Processing chat completion request for model: {request.model}")
 
     # Convert Pydantic models to dict format expected by client
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    messages = serialize_messages(request.messages)
 
     # Get shared client (already in async context, no need for 'async with')
     client = await get_openrouter_client()
@@ -68,14 +70,14 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
     try:
         if request.stream:
             logger.info("Initiating streaming chat completion")
-            chunks = []
-            async for chunk in client.stream_chat_completion(
+            chunks = await collect_async_iterable(
+                client.stream_chat_completion(
                 model=request.model,
                 messages=messages,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens
-            ):
-                chunks.append(chunk)
+                )
+            )
 
             logger.info(f"Streaming completed with {len(chunks)} chunks")
             return chunks
