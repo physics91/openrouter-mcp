@@ -22,14 +22,11 @@ from .base import (
 )
 from .operational_controls import (
     OperationalConfig,
-    ConcurrencyLimiter,
-    QuotaTracker,
-    FailureController,
-    StorageManager,
-    TaskCancellationManager
+    init_operational_controls,
 )
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
 from ..utils.token_counter import count_tokens
+from ..config.constants import PricingDefaults
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +101,13 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         self.config = config or ConsensusConfig()
 
         # Initialize operational controls
-        op_config = self.config.operational_config or OperationalConfig.conservative()
-        self.concurrency_limiter = ConcurrencyLimiter(op_config.concurrency)
-        self.quota_tracker = QuotaTracker(op_config.quota)
-        self.failure_controller = FailureController(op_config.failure)
-        self.storage_manager = StorageManager(op_config.storage)
-        self.cancellation_manager = TaskCancellationManager()
-        self.operational_config = op_config
+        controls = init_operational_controls(self.config.operational_config)
+        self.concurrency_limiter = controls.concurrency_limiter
+        self.quota_tracker = controls.quota_tracker
+        self.failure_controller = controls.failure_controller
+        self.storage_manager = controls.storage_manager
+        self.cancellation_manager = controls.cancellation_manager
+        self.operational_config = controls.config
 
         self.model_reliability: Dict[str, float] = {}
 
@@ -181,7 +178,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             # Estimate cost - we'll update with actual costs as responses come in
             # For now, use a conservative estimate based on average pricing
             # Will be updated with actual costs from model responses
-            estimated_cost_per_token = 0.00003  # Conservative average
+            estimated_cost_per_token = PricingDefaults.ESTIMATED_TOKEN_PRICE
             estimated_cost = total_estimated_tokens * estimated_cost_per_token
 
             # Check quota before proceeding
@@ -313,7 +310,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                 estimated_tokens = count_tokens(task.content, model_id=model_id)
 
                 # Conservative cost estimate - will be updated with actual cost from response
-                estimated_cost_per_token = 0.00003  # Conservative average
+                estimated_cost_per_token = PricingDefaults.ESTIMATED_TOKEN_PRICE
                 estimated_cost = estimated_tokens * estimated_cost_per_token
 
                 # Check quota for this specific API call

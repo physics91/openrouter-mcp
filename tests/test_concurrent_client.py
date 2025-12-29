@@ -15,8 +15,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
-# Set up test environment
-os.environ["OPENROUTER_API_KEY"] = "test-key-123"
+@pytest.fixture(autouse=True)
+def _set_test_api_key(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-123")
 
 
 @pytest.mark.asyncio

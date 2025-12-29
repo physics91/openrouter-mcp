@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field, field_validator
 from PIL import Image
 
 # Import shared MCP instance and client manager from registry
-from ..mcp_registry import mcp, get_shared_client
-# Import centralized configuration constants
-from ..config.constants import ModelDefaults
+from ..mcp_registry import mcp, get_openrouter_client
+# Import centralized request base classes
+from ..models.requests import BaseChatRequest
 
 
 logger = logging.getLogger(__name__)
@@ -31,14 +31,9 @@ class ImageInput(BaseModel):
         return v
 
 
-class VisionChatRequest(BaseModel):
+class VisionChatRequest(BaseChatRequest):
     """Request for chat completion with vision."""
-    model: str = Field(..., description="The vision-capable model to use")
-    messages: List[Dict[str, str]] = Field(..., description="List of messages in the conversation")
     images: List[ImageInput] = Field(..., description="List of images to analyze")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate")
-    stream: bool = Field(ModelDefaults.STREAM, description="Whether to stream the response")
 
 
 class VisionModelRequest(BaseModel):
@@ -119,8 +114,11 @@ def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
         max_size_bytes = max_size_mb * 1024 * 1024
 
         # Security: Check decoded size before PIL processing
-        if len(image_bytes) > max_size_bytes * 5:  # Allow 5x headroom for compression
-            raise ValueError(f"Decoded image too large: {len(image_bytes)} bytes exceeds safe limit")
+        safe_limit = max(max_size_bytes * 5, 1024 * 1024)  # At least 1MB headroom
+        if len(image_bytes) > safe_limit:
+            raise ValueError(
+                f"Decoded image too large: {len(image_bytes)} bytes exceeds safe limit"
+            )
 
         # If image is already small enough, still validate it
         # Open and validate the image BEFORE returning it
@@ -333,14 +331,19 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
     logger.info(f"Processing vision chat request for model: {request.model}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_shared_client()
+    client = await get_openrouter_client()
 
     try:
         # Process images and create vision messages
         vision_messages = []
 
         for i, message in enumerate(request.messages):
-            if i == len(request.messages) - 1:  # Last message, add images
+            message_payload = (
+                message.model_dump()
+                if hasattr(message, "model_dump")
+                else message
+            )
+            if i == len(request.messages) - 1:  # Last message, add images      
                 # Process images
                 processed_images = []
                 for img in request.images:
@@ -355,12 +358,12 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
 
                 # Format vision message
                 vision_message = format_vision_message(
-                    text=message["content"],
+                    text=message_payload["content"],
                     images=processed_images
                 )
                 vision_messages.append(vision_message)
             else:
-                vision_messages.append(message)
+                vision_messages.append(message_payload)
 
         if request.stream:
             logger.info("Initiating streaming vision chat completion")
@@ -421,7 +424,7 @@ async def list_vision_models(request: VisionModelRequest) -> List[Dict[str, Any]
     logger.info(f"Listing vision models with filter: {request.filter_by or 'none'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_shared_client()
+    client = await get_openrouter_client()
 
     try:
         # Get all models

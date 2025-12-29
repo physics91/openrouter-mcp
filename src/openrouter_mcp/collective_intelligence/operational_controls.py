@@ -371,6 +371,8 @@ class StorageManager:
         self._lock = asyncio.Lock()
         self._cleanup_task: Optional[asyncio.Task] = None
         self._cleanup_started = False
+        # Start cleanup if we already have a running loop
+        self._ensure_cleanup_task()
 
     def _ensure_cleanup_task(self) -> None:
         """Ensure cleanup task is started if auto_cleanup is enabled.
@@ -512,3 +514,29 @@ class TaskCancellationManager:
     def get_pending_count(self, request_id: str) -> int:
         """Get number of pending tasks for a request."""
         return len(self.pending_tasks.get(request_id, set()))
+
+
+@dataclass(frozen=True)
+class OperationalControls:
+    """Container for initialized operational control components."""
+    config: OperationalConfig
+    concurrency_limiter: ConcurrencyLimiter
+    quota_tracker: QuotaTracker
+    failure_controller: FailureController
+    storage_manager: StorageManager
+    cancellation_manager: TaskCancellationManager
+
+
+def init_operational_controls(
+    config: Optional[OperationalConfig] = None
+) -> OperationalControls:
+    """Initialize operational controls with a consistent config source."""
+    op_config = config or OperationalConfig.conservative()
+    return OperationalControls(
+        config=op_config,
+        concurrency_limiter=ConcurrencyLimiter(op_config.concurrency),
+        quota_tracker=QuotaTracker(op_config.quota),
+        failure_controller=FailureController(op_config.failure),
+        storage_manager=StorageManager(op_config.storage),
+        cancellation_manager=TaskCancellationManager()
+    )

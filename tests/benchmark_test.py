@@ -3,13 +3,9 @@
 OpenRouter MCP 벤치마크 시스템 테스트 스크립트
 """
 
-import os
 import asyncio
 import sys
 from datetime import datetime
-
-# 환경변수 설정 (실제 API 키는 사용하지 않음)
-os.environ['OPENROUTER_API_KEY'] = 'test-api-key-for-demo'
 
 # MCP 벤치마크 시스템 import
 from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
@@ -18,8 +14,9 @@ from src.openrouter_mcp.handlers.benchmark import (
     EnhancedBenchmarkResult, EnhancedBenchmarkMetrics, BenchmarkResult
 )
 
-async def test_benchmark_system():
+async def test_benchmark_system(monkeypatch):
     """벤치마크 시스템 테스트"""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-api-key-for-demo")
     print("=" * 60)
     print("OpenRouter MCP 벤치마크 시스템 테스트")
     print("=" * 60)

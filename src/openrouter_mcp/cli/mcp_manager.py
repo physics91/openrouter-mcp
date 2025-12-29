@@ -7,7 +7,6 @@ in the Claude Code CLI configuration.
 """
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -16,6 +15,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import platform
 import logging
+from ..config.constants import EnvVars
+from ..utils.env import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,8 @@ class MCPManager:
                 # SECURITY: Never store API keys in config files
                 # API key MUST be set as environment variable: export OPENROUTER_API_KEY=sk-or-...
                 # The MCP server will read it from the environment at runtime
-                "OPENROUTER_APP_NAME": "claude-code-mcp",
-                "OPENROUTER_HTTP_REFERER": "https://localhost:3000",
+                EnvVars.APP_NAME: "claude-code-mcp",
+                EnvVars.HTTP_REFERER: "https://localhost:3000",
                 "HOST": "localhost",
                 "PORT": "8000",
                 "LOG_LEVEL": "info"
@@ -334,24 +335,24 @@ class MCPManager:
             MCPConfigError: If API key is stored in config (security issue)
         """
         # Check if API key is stored in env dict (SECURITY VIOLATION)
-        if config.env and "OPENROUTER_API_KEY" in config.env:
-            api_key_value = config.env["OPENROUTER_API_KEY"]
+        if config.env and EnvVars.API_KEY in config.env:
+            api_key_value = config.env[EnvVars.API_KEY]
             if api_key_value and api_key_value.strip():
                 raise MCPConfigError(
                     "SECURITY ERROR: API keys must NOT be stored in configuration files. "
-                    "Please remove the OPENROUTER_API_KEY from the config and set it as an environment variable:\n"
-                    "  Windows: set OPENROUTER_API_KEY=sk-or-...\n"
-                    "  Linux/Mac: export OPENROUTER_API_KEY=sk-or-..."
+                    f"Please remove the {EnvVars.API_KEY} from the config and set it as an environment variable:\n"
+                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
                 )
 
         # Check if API key is set in environment
-        env_api_key = os.getenv("OPENROUTER_API_KEY")
-        if not env_api_key or not env_api_key.strip():
+        env_api_key = get_env_value(EnvVars.API_KEY)
+        if not env_api_key:
             logger.warning(
-                "WARNING: OPENROUTER_API_KEY environment variable is not set. "
+                f"WARNING: {EnvVars.API_KEY} environment variable is not set. "
                 "The server will fail to start without it. Please set it:\n"
-                "  Windows: set OPENROUTER_API_KEY=sk-or-...\n"
-                "  Linux/Mac: export OPENROUTER_API_KEY=sk-or-..."
+                f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
             )
     
     def backup_config(self) -> Path:
@@ -457,9 +458,9 @@ class MCPManager:
             if "api_key" in kwargs:
                 logger.warning(
                     "SECURITY WARNING: API keys should NOT be stored in configuration files. "
-                    "Please set OPENROUTER_API_KEY as an environment variable instead:\n"
-                    "  Windows: set OPENROUTER_API_KEY=sk-or-...\n"
-                    "  Linux/Mac: export OPENROUTER_API_KEY=sk-or-...\n"
+                    f"Please set {EnvVars.API_KEY} as an environment variable instead:\n"
+                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-...\n"
                     "The API key argument will be ignored for security."
                 )
 

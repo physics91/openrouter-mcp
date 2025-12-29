@@ -196,8 +196,8 @@ class TestLifecycleManagement:
         """Test that shutdown handler performs cleanup."""
         from openrouter_mcp.server import shutdown_handler
 
-        # Mock the lifecycle manager shutdown (it's imported inside the function)
-        with patch('openrouter_mcp.collective_intelligence.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        # Mock the lifecycle manager shutdown (patched on server module)
+        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
             await shutdown_handler()
 
             # Verify shutdown was called
@@ -208,8 +208,8 @@ class TestLifecycleManagement:
         """Test that shutdown handler handles errors gracefully."""
         from openrouter_mcp.server import shutdown_handler
 
-        # Mock shutdown to raise an error (it's imported inside the function)
-        with patch('openrouter_mcp.collective_intelligence.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        # Mock shutdown to raise an error (patched on server module)
+        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
             mock_shutdown.side_effect = Exception("Test error")
 
             # Should not raise exception (logs error instead)
@@ -452,7 +452,7 @@ class TestErrorHandling:
         from openrouter_mcp.server import shutdown_handler
 
         # Mock the shutdown to fail with ImportError
-        with patch('openrouter_mcp.collective_intelligence.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
             mock_shutdown.side_effect = ImportError("Module not found")
 
             # Should handle error gracefully (logs it instead of raising)

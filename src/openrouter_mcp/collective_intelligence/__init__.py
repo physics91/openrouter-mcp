@@ -30,11 +30,13 @@ from .operational_controls import (
     QuotaConfig,
     StorageConfig,
     FailureConfig,
+    OperationalControls,
     ConcurrencyLimiter,
     QuotaTracker,
     FailureController,
     StorageManager,
-    TaskCancellationManager
+    TaskCancellationManager,
+    init_operational_controls
 )
 from .lifecycle_manager import (
     CollectiveIntelligenceLifecycleManager,
@@ -84,11 +86,13 @@ __all__ = [
     'QuotaConfig',
     'StorageConfig',
     'FailureConfig',
+    'OperationalControls',
     'ConcurrencyLimiter',
     'QuotaTracker',
     'FailureController',
     'StorageManager',
     'TaskCancellationManager',
+    'init_operational_controls',
     'CollectiveIntelligenceLifecycleManager',
     'get_lifecycle_manager',
     'shutdown_lifecycle_manager',

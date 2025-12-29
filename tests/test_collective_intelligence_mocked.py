@@ -611,12 +611,14 @@ class TestCollectiveIntelligenceErrorHandling:
             max_models=1
         )
 
-        # The MCP framework catches exceptions and returns None or error structure
-        # We test that it doesn't crash and handles the error gracefully
-        result = await collective_chat_completion(request)
+        # The handler should surface insufficient response errors cleanly
+        try:
+            result = await collective_chat_completion(request)
+        except ValueError as exc:
+            assert "Insufficient responses" in str(exc)
+            return
 
-        # FastMCP may return None on error, or the handler may raise which FastMCP catches
-        # Either way, the test passes if we don't get a crash
+        # If no exception, ensure result is well-formed
         assert result is None or isinstance(result, dict)
 
     @pytest.mark.asyncio

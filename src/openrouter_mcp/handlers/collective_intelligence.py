@@ -33,12 +33,13 @@ from ..collective_intelligence import (
     ModelProvider,
     get_lifecycle_manager
 )
-from ..collective_intelligence.base import ModelCapability
 # Import shared MCP instance and client manager from registry
-from ..mcp_registry import mcp, get_shared_client
+from ..mcp_registry import mcp, get_openrouter_client
 # Import centralized configuration constants
-from ..config.constants import ModelDefaults, ConsensusDefaults
-from ..utils.token_counter import count_message_tokens
+from ..config.constants import ModelDefaults, ConsensusDefaults, PricingDefaults
+from ..models.requests import BaseCollectiveRequest, BaseConsensusRequest
+from ..utils.pricing import normalize_pricing, estimate_cost_from_usage
+from ..utils.async_utils import maybe_await
 
 logger = logging.getLogger(__name__)
 
@@ -202,23 +203,37 @@ class OpenRouterModelProvider:
         if model_id in self._model_pricing_cache:
             return self._model_pricing_cache[model_id]
 
-        # Fetch from model cache
+        # Prefer client-level pricing accessor when available
         try:
-            if self.client._model_cache:
+            get_pricing = getattr(self.client, "get_model_pricing", None)
+            if callable(get_pricing):
+                pricing = await maybe_await(get_pricing(model_id))
+                if isinstance(pricing, dict) and pricing:
+                    normalized = normalize_pricing(
+                        pricing,
+                        PricingDefaults.DEFAULT_TOKEN_PRICE,
+                    )
+                    self._model_pricing_cache[model_id] = normalized
+                    return normalized
+        except Exception as e:
+            logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
+
+        # Fallback to internal cache access
+        try:
+            if getattr(self.client, "_model_cache", None):
                 model_info = await self.client._model_cache.get_model_info(model_id)
                 if model_info and "pricing" in model_info:
-                    pricing = model_info["pricing"]
-                    cost_data = {
-                        "prompt": float(pricing.get("prompt", 0)),
-                        "completion": float(pricing.get("completion", 0))
-                    }
+                    cost_data = normalize_pricing(
+                        model_info.get("pricing", {}),
+                        PricingDefaults.DEFAULT_TOKEN_PRICE,
+                    )
                     self._model_pricing_cache[model_id] = cost_data
                     return cost_data
         except Exception as e:
             logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
 
         # Fallback to conservative default
-        default_pricing = {"prompt": 0.00002, "completion": 0.00002}
+        default_pricing = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
         self._model_pricing_cache[model_id] = default_pricing
         return default_pricing
 
@@ -234,16 +249,15 @@ class OpenRouterModelProvider:
             Estimated cost in USD
         """
         pricing = await self._get_model_pricing(model_id)
-
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-
-        # Calculate cost: pricing is typically per 1000 tokens, so divide by 1000
-        # OpenRouter pricing is per token, not per 1000
+        total_cost = estimate_cost_from_usage(
+            usage,
+            pricing,
+            PricingDefaults.DEFAULT_TOKEN_PRICE,
+        )
         prompt_cost = prompt_tokens * pricing["prompt"]
         completion_cost = completion_tokens * pricing["completion"]
-
-        total_cost = prompt_cost + completion_cost
 
         logger.debug(
             f"Cost calculation for {model_id}: "
@@ -253,19 +267,11 @@ class OpenRouterModelProvider:
         )
 
         return total_cost
-    
+
     def _extract_cost(self, pricing: Dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
-        # Try to get completion cost, fallback to prompt cost
-        completion_cost = pricing.get("completion")
-        prompt_cost = pricing.get("prompt") 
-        
-        if completion_cost:
-            return float(completion_cost)
-        elif prompt_cost:
-            return float(prompt_cost)
-        else:
-            return 0.00002  # Default estimate
+        normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
+        return normalized["completion"]
     
     def _estimate_capabilities(self, raw_model: Dict[str, Any]) -> Dict[str, float]:
         """Estimate model capabilities based on model metadata."""
@@ -303,26 +309,54 @@ class OpenRouterModelProvider:
         return capabilities
 
 
+async def _get_configured_lifecycle_manager():
+    """Return lifecycle manager configured with a shared OpenRouter model provider."""
+    client = await maybe_await(get_openrouter_client())
+    model_provider = OpenRouterModelProvider(client)
+    lifecycle_manager = await get_lifecycle_manager()
+    lifecycle_manager.configure(model_provider)
+    return lifecycle_manager
+
+
+def _build_requirements(
+    *,
+    base: Optional[Dict[str, Any]] = None,
+    temperature: Optional[float] = None,
+    models: Optional[List[str]] = None,
+    extras: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build requirements dict with consistent keys for CI components."""
+    requirements: Dict[str, Any] = {}
+    if base:
+        requirements.update(base)
+    if extras:
+        requirements.update(extras)
+    if temperature is not None:
+        requirements["temperature"] = temperature
+    if models:
+        requirements["preferred_models"] = models
+    return requirements
+
+
 # Pydantic models for MCP tool inputs
 
-class CollectiveChatRequest(BaseModel):
+class CollectiveChatRequest(BaseConsensusRequest):
     """Request for collective chat completion."""
     prompt: str = Field(..., description="The prompt to process collectively")
-    models: Optional[List[str]] = Field(None, description="Specific models to use (optional)")
-    strategy: str = Field("majority_vote", description="Consensus strategy: majority_vote, weighted_average, confidence_threshold")
-    min_models: int = Field(ConsensusDefaults.MIN_MODELS, description="Minimum number of models to use")
-    max_models: int = Field(ConsensusDefaults.MAX_MODELS, description="Maximum number of models to use")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
-    system_prompt: Optional[str] = Field(None, description="System prompt for all models")
+    strategy: str = Field(
+        "majority_vote",
+        description="Consensus strategy: majority_vote, weighted_average, confidence_threshold"
+    )
 
 
-class EnsembleReasoningRequest(BaseModel):
+class EnsembleReasoningRequest(BaseCollectiveRequest):
     """Request for ensemble reasoning."""
     problem: str = Field(..., description="Problem to solve with ensemble reasoning")
-    task_type: str = Field("reasoning", description="Type of task: reasoning, analysis, creative, factual, code_generation")
+    task_type: str = Field(
+        "reasoning",
+        description="Type of task: reasoning, analysis, creative, factual, code_generation"
+    )
     decompose: bool = Field(True, description="Whether to decompose the problem into subtasks")
-    models: Optional[List[str]] = Field(None, description="Specific models to use (optional)")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
 
 
 class AdaptiveModelRequest(BaseModel):
@@ -333,21 +367,25 @@ class AdaptiveModelRequest(BaseModel):
     constraints: Optional[Dict[str, Any]] = Field(None, description="Task constraints")
 
 
-class CrossValidationRequest(BaseModel):
+class CrossValidationRequest(BaseCollectiveRequest):
     """Request for cross-model validation."""
     content: str = Field(..., description="Content to validate across models")
-    validation_criteria: Optional[List[str]] = Field(None, description="Specific validation criteria")
-    models: Optional[List[str]] = Field(None, description="Models to use for validation")
-    threshold: float = Field(ConsensusDefaults.CONFIDENCE_THRESHOLD, description="Validation threshold")
+    validation_criteria: Optional[List[str]] = Field(
+        None,
+        description="Specific validation criteria"
+    )
+    threshold: float = Field(
+        ConsensusDefaults.CONFIDENCE_THRESHOLD,
+        description="Validation threshold"
+    )
 
 
-class CollaborativeSolvingRequest(BaseModel):
+class CollaborativeSolvingRequest(BaseCollectiveRequest):
     """Request for collaborative problem solving."""
     problem: str = Field(..., description="Problem to solve collaboratively")
     requirements: Optional[Dict[str, Any]] = Field(None, description="Problem requirements")
     constraints: Optional[Dict[str, Any]] = Field(None, description="Problem constraints")
     max_iterations: int = Field(3, description="Maximum number of iteration rounds")
-    models: Optional[List[str]] = Field(None, description="Specific models to use")
 
 
 def create_task_context(
@@ -401,12 +439,7 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
 
     try:
         # Setup - use shared singleton client from registry
-        client = await get_shared_client()
-        model_provider = OpenRouterModelProvider(client)
-
-        # Get lifecycle manager and configure it with temperature parameter
-        lifecycle_manager = await get_lifecycle_manager()
-        lifecycle_manager.configure(model_provider)
+        lifecycle_manager = await _get_configured_lifecycle_manager()
 
         # Configure consensus engine
         try:
@@ -418,20 +451,21 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
             strategy=strategy,
             min_models=request.min_models,
             max_models=request.max_models,
-            timeout_seconds=60.0
+            timeout_seconds=ConsensusDefaults.TIMEOUT_SECONDS
         )
 
         # Get singleton consensus engine from lifecycle manager
         consensus_engine = await lifecycle_manager.get_consensus_engine(config)
 
         # Create task context
-        requirements = {
-            "temperature": request.temperature  # Wire temperature to requirements
-        }
+        extras = {}
         if request.system_prompt:
-            requirements["system_prompt"] = request.system_prompt
-        if request.models:
-            requirements["preferred_models"] = request.models  # Wire models to requirements
+            extras["system_prompt"] = request.system_prompt
+        requirements = _build_requirements(
+            temperature=request.temperature,
+            models=request.models,
+            extras=extras or None,
+        )
 
         task = create_task_context(
             content=request.prompt,
@@ -469,7 +503,6 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
         raise
 
 
-@mcp.tool()
 async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
     """MCP tool wrapper for collective chat completion."""
     return await _collective_chat_completion_impl(request)
@@ -504,22 +537,16 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
 
     try:
         # Setup - use shared singleton client from registry
-        client = await get_shared_client()
-        model_provider = OpenRouterModelProvider(client)
-
-        # Get lifecycle manager and configure it
-        lifecycle_manager = await get_lifecycle_manager()
-        lifecycle_manager.configure(model_provider)
+        lifecycle_manager = await _get_configured_lifecycle_manager()
 
         # Get singleton ensemble reasoner from lifecycle manager
         ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
 
         # Create task context with temperature and models
-        requirements = {
-            "temperature": request.temperature  # Wire temperature
-        }
-        if request.models:
-            requirements["preferred_models"] = request.models  # Wire models
+        requirements = _build_requirements(
+            temperature=request.temperature,
+            models=request.models,
+        )
 
         task = create_task_context(
             content=request.problem,
@@ -562,7 +589,6 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
         raise
 
 
-@mcp.tool()
 async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
     """MCP tool wrapper for ensemble reasoning."""
     return await _ensemble_reasoning_impl(request)
@@ -598,20 +624,13 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
 
     try:
         # Setup - use shared singleton client from registry
-        client = await get_shared_client()
-        model_provider = OpenRouterModelProvider(client)
-
-        # Get lifecycle manager and configure it
-        lifecycle_manager = await get_lifecycle_manager()
-        lifecycle_manager.configure(model_provider)
+        lifecycle_manager = await _get_configured_lifecycle_manager()
 
         # Get singleton adaptive router from lifecycle manager
         adaptive_router = await lifecycle_manager.get_adaptive_router()
 
         # Create task context with performance requirements
-        requirements = {}
-        if request.performance_requirements:
-            requirements.update(request.performance_requirements)
+        requirements = _build_requirements(base=request.performance_requirements)
 
         task = create_task_context(
             content=request.query,
@@ -647,7 +666,6 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
         raise
 
 
-@mcp.tool()
 async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
     """MCP tool wrapper for adaptive model selection."""
     return await _adaptive_model_selection_impl(request)
@@ -683,12 +701,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
 
     try:
         # Setup - use shared singleton client from registry
-        client = await get_shared_client()
-        model_provider = OpenRouterModelProvider(client)
-
-        # Get lifecycle manager and configure it
-        lifecycle_manager = await get_lifecycle_manager()
-        lifecycle_manager.configure(model_provider)
+        lifecycle_manager = await _get_configured_lifecycle_manager()
 
         # Get singleton cross validator from lifecycle manager
         cross_validator = await lifecycle_manager.get_cross_validator()
@@ -702,13 +715,13 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
         )
 
         # Create task context for validation with criteria and models
-        requirements = {
-            "validation_threshold": request.threshold
-        }
+        extras = {"validation_threshold": request.threshold}
         if request.validation_criteria:
-            requirements["validation_criteria"] = request.validation_criteria
-        if request.models:
-            requirements["preferred_models"] = request.models  # Wire models
+            extras["validation_criteria"] = request.validation_criteria
+        requirements = _build_requirements(
+            models=request.models,
+            extras=extras,
+        )
 
         task = create_task_context(
             content=request.content,
@@ -718,6 +731,37 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
 
         # Perform cross-validation - NO async with (singleton managed by lifecycle)
         result = await cross_validator.process(dummy_result, task)
+
+        report = result.validation_report
+        issues = report.issues
+        validator_models = getattr(report, "validator_models", []) or []
+        if not validator_models:
+            seen_models = set()
+            for issue in issues:
+                model_id = getattr(issue, "validator_model_id", None)
+                if model_id and model_id not in seen_models:
+                    seen_models.add(model_id)
+                    validator_models.append(model_id)
+
+        model_validations = []
+        for model_id in validator_models:
+            model_issues = [issue for issue in issues if issue.validator_model_id == model_id]
+            criteria_values = {
+                issue.criteria.value if hasattr(issue.criteria, "value") else str(issue.criteria)
+                for issue in model_issues
+            }
+            if not criteria_values:
+                criteria_label = "none"
+            elif len(criteria_values) == 1:
+                criteria_label = next(iter(criteria_values))
+            else:
+                criteria_label = "multiple"
+
+            model_validations.append({
+                "model": model_id,
+                "criteria": criteria_label,
+                "issues_found": len(model_issues)
+            })
 
         return {
             "validation_result": "VALID" if result.is_valid else "INVALID",
@@ -730,16 +774,9 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
                     "suggestion": issue.suggestion,
                     "confidence": issue.confidence
                 }
-                for issue in result.validation_report.issues
+                for issue in issues
             ],
-            "model_validations": [
-                {
-                    "model": validation.validator_model_id,
-                    "criteria": validation.criteria.value,
-                    "issues_found": len(validation.validation_issues)
-                }
-                for validation in result.validation_report.individual_validations
-            ],
+            "model_validations": model_validations,
             "recommendations": result.improvement_suggestions,
             "confidence": result.validation_confidence,
             "processing_time": result.processing_time,
@@ -755,7 +792,6 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
         raise
 
 
-@mcp.tool()
 async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
     """MCP tool wrapper for cross-model validation."""
     return await _cross_model_validation_impl(request)
@@ -791,21 +827,17 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
 
     try:
         # Setup - use shared singleton client from registry
-        client = await get_shared_client()
-        model_provider = OpenRouterModelProvider(client)
-
-        # Get lifecycle manager and configure it
-        lifecycle_manager = await get_lifecycle_manager()
-        lifecycle_manager.configure(model_provider)
+        lifecycle_manager = await _get_configured_lifecycle_manager()
 
         # Get singleton collaborative solver from lifecycle manager
         collaborative_solver = await lifecycle_manager.get_collaborative_solver()
 
         # Create task context with max_iterations and models
-        requirements = request.requirements or {}
-        requirements["max_iterations"] = request.max_iterations  # Wire max_iterations
-        if request.models:
-            requirements["preferred_models"] = request.models  # Wire models
+        requirements = _build_requirements(
+            base=request.requirements,
+            models=request.models,
+            extras={"max_iterations": request.max_iterations},
+        )
 
         task = create_task_context(
             content=request.problem,
@@ -840,7 +872,14 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
         raise
 
 
-@mcp.tool()
 async def collaborative_problem_solving(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
     """MCP tool wrapper for collaborative problem solving."""
     return await _collaborative_problem_solving_impl(request)
+
+
+# Register tools without replacing the callable references (for direct use in tests/scripts).
+_collective_chat_completion_tool = mcp.tool(collective_chat_completion)
+_ensemble_reasoning_tool = mcp.tool(ensemble_reasoning)
+_adaptive_model_selection_tool = mcp.tool(adaptive_model_selection)
+_cross_model_validation_tool = mcp.tool(cross_model_validation)
+_collaborative_problem_solving_tool = mcp.tool(collaborative_problem_solving)
