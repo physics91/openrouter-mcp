@@ -242,13 +242,14 @@ class TestEnhancedBenchmarkHandler:
     """Test EnhancedBenchmarkHandler class."""
 
     @pytest.fixture
-    def handler(self):
+    def handler(self, tmp_path):
         """Create enhanced benchmark handler for testing."""
         with patch('src.openrouter_mcp.handlers.benchmark.ModelCache') as mock_cache:
+            results_dir = tmp_path / "benchmarks"
             handler = EnhancedBenchmarkHandler(
                 api_key="test-api-key",
                 model_cache=mock_cache(),
-                results_dir="test_benchmarks"
+                results_dir=str(results_dir)
             )
             return handler
 

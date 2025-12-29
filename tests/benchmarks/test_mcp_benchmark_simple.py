@@ -8,6 +8,7 @@ MCP 벤치마킹 시스템 간단한 기능 테스트
 import asyncio
 import os
 import json
+from pathlib import Path
 from datetime import datetime
 
 # MCP 벤치마킹 도구들 가져오기
@@ -18,6 +19,7 @@ from src.openrouter_mcp.handlers.mcp_benchmark import (
     export_benchmark_report,
     compare_model_performance
 )
+from src.openrouter_mcp.config.constants import BenchmarkDefaults
 
 async def test_mcp_tools():
     """MCP 벤치마킹 도구들의 기본 기능 테스트"""
@@ -100,9 +102,9 @@ async def test_mcp_tools():
     print("\n[5] 보고서 내보내기 테스트...")
     try:
         # 기존 벤치마크 파일 찾기
-        benchmarks_dir = "benchmarks"
-        if os.path.exists(benchmarks_dir):
-            benchmark_files = [f for f in os.listdir(benchmarks_dir) 
+        benchmarks_dir = Path(BenchmarkDefaults.DEFAULT_RESULTS_DIR)
+        if benchmarks_dir.exists():
+            benchmark_files = [f for f in os.listdir(benchmarks_dir)
                              if f.startswith('test_benchmark_') and f.endswith('.json')]
             
             if benchmark_files:
@@ -117,7 +119,7 @@ async def test_mcp_tools():
                 print("  [INFO] 테스트할 벤치마크 파일이 없습니다.")
                 test_results["report_export"] = "파일 없음"
         else:
-            print("  [INFO] benchmarks 디렉토리가 없습니다.")
+            print("  [INFO] 벤치마크 결과 디렉토리가 없습니다.")
             test_results["report_export"] = "디렉토리 없음"
     except Exception as e:
         print(f"  [ERROR] 오류: {e}")

@@ -252,10 +252,13 @@ class ModelCache:
                 "updated_at": datetime.now().isoformat()
             }
 
+            cache_path = Path(self.cache_file)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+
             # Use file locking to prevent concurrent write corruption
             # LOCK_EX = exclusive lock, timeout=5 seconds
             with portalocker.Lock(
-                self.cache_file,
+                cache_path,
                 mode='w',
                 encoding='utf-8',
                 timeout=self._lock_timeout(5),

@@ -6,6 +6,7 @@ OpenRouter MCP 벤치마크 시스템 테스트 스크립트
 import asyncio
 import sys
 from datetime import datetime
+from pathlib import Path
 
 # MCP 벤치마크 시스템 import
 from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
@@ -13,6 +14,7 @@ from src.openrouter_mcp.handlers.benchmark import (
     BenchmarkReportExporter, ModelPerformanceAnalyzer,
     EnhancedBenchmarkResult, EnhancedBenchmarkMetrics, BenchmarkResult
 )
+from src.openrouter_mcp.config.constants import BenchmarkDefaults
 
 async def test_benchmark_system(monkeypatch):
     """벤치마크 시스템 테스트"""
@@ -72,13 +74,15 @@ async def test_benchmark_system(monkeypatch):
         exporter = BenchmarkReportExporter()
         
         # Markdown 보고서
-        md_path = f"benchmarks/test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        await exporter.export_markdown(results, md_path)
+        results_dir = Path(BenchmarkDefaults.DEFAULT_RESULTS_DIR)
+        results_dir.mkdir(parents=True, exist_ok=True)
+        md_path = results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        await exporter.export_markdown(results, str(md_path))
         print(f"   Markdown 보고서: {md_path}")
         
         # CSV 보고서
-        csv_path = f"benchmarks/test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        await exporter.export_csv(results, csv_path)
+        csv_path = results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        await exporter.export_csv(results, str(csv_path))
         print(f"   CSV 보고서: {csv_path}")
         
         # 6. 성능 분석기 테스트

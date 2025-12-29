@@ -574,7 +574,7 @@ class BenchmarkHandler:
         self.client = client
         self.model_cache = model_cache or ModelCache()
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _build_prompt_messages(prompt: str) -> List[Dict[str, str]]:

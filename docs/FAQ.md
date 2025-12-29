@@ -235,7 +235,7 @@ Yes, but consider:
 3. Ensure no extra spaces in `.env` file
 
 ### Models not showing up?
-1. Refresh model cache: Delete `openrouter_model_cache.json`
+1. Refresh model cache: Delete `.cache/openrouter_model_cache.json`
 2. Check internet connection
 3. Verify API key has access to models
 

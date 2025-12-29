@@ -31,7 +31,7 @@ class CacheConfig:
     DEFAULT_TTL_SECONDS: int = 3600  # 1 hour
     MIN_TTL_HOURS: float = 0.08334   # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
-    MODEL_CACHE_FILE: str = "openrouter_model_cache.json"
+    MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
 
 
 class ModelDefaults:
@@ -104,7 +104,7 @@ class BenchmarkDefaults:
     DEFAULT_DELAY_SECONDS: float = 1.0
     DEFAULT_RUNS_PER_MODEL: int = 1
     DEFAULT_MCP_RUNS: int = 3
-    DEFAULT_RESULTS_DIR: str = "benchmarks"
+    DEFAULT_RESULTS_DIR: str = ".cache/benchmarks"
     DEFAULT_TIMEOUT_SECONDS: float = 60.0
 
 

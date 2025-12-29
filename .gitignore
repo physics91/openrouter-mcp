@@ -85,6 +85,10 @@ FINAL_IMPROVEMENTS*.md
 # Temporary files
 *.tmp
 *.temp
+.cache/
+!.cache/
+.cache/*
+!.cache/.gitkeep
 
 # Benchmark and cache files
 *_cache.json
@@ -116,6 +120,13 @@ benchmarks/*_report*.markdown
 *_INTEGRATION*.md
 QUICK_REFERENCE.md
 SECURE_STORAGE_INTEGRATION.md
+
+# Keep curated documentation copies in docs/
+!docs/QUICK_REFERENCE.md
+!docs/SECURE_STORAGE_INTEGRATION.md
+!docs/CLAUDE_CODE_QUICKREF.md
+!docs/reports/
+!docs/reports/*.md
 
 # Generated security advisories and reports
 docs/SECURITY_ADVISORY_*.md

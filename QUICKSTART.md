@@ -321,7 +321,7 @@ npx openrouter-mcp init
 
 ```bash
 # Delete cache
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
 
 # Restart
 npx openrouter-mcp start

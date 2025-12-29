@@ -765,6 +765,7 @@ npm run format
 
 ```
 openrouter-mcp/
+├── .cache/                # Local cache and benchmark outputs (ignored)
 ├── bin/                    # CLI scripts
 │   ├── openrouter-mcp.js  # Main CLI entry point
 │   └── check-python.js    # Python environment checker
@@ -783,6 +784,7 @@ openrouter-mcp/
 ├── examples/              # Usage examples
 │   └── multimodal_example.py # Multimodal usage examples
 ├── docs/                  # Documentation
+│   └── reports/           # Fix summaries and verification notes
 ├── requirements.txt       # Python dependencies (includes Pillow)
 └── package.json          # Node.js package config
 ```
@@ -803,8 +805,14 @@ openrouter-mcp/
 ### Feature Guides
 - [Multimodal/Vision Guide](docs/MULTIMODAL_GUIDE.md) - Image analysis capabilities
 - [Benchmarking Guide](docs/BENCHMARK_GUIDE.md) - Model performance comparison
-- [Model Metadata Guide](docs/METADATA_GUIDE.md) - Enhanced filtering system
+- [Model Metadata Guide](docs/METADATA_GUIDE.md) - Enhanced filtering system    
 - [Model Caching](docs/MODEL_CACHING.md) - Cache optimization
+
+### Reference & Reports
+- [Quick Reference](docs/QUICK_REFERENCE.md) - Handy CLI and API notes
+- [Claude Code Quickref](docs/CLAUDE_CODE_QUICKREF.md) - Command shortcuts
+- [Secure Storage Integration](docs/SECURE_STORAGE_INTEGRATION.md) - Key storage setup
+- [Maintenance Reports](docs/reports/README.md) - Fix summaries and verification
 
 ### Development
 - [Architecture Overview](docs/ARCHITECTURE.md) - System design documentation

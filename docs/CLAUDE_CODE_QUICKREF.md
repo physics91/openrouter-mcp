@@ -328,8 +328,8 @@ npx openrouter-mcp status
 
 ## 📚 더 알아보기
 
-- **상세 가이드**: `docs/CLAUDE_CODE_SETUP_KR.md`
-- **전체 사용법**: `docs/USAGE_GUIDE_KR.md`
+- **상세 가이드**: `CLAUDE_CODE_SETUP_KR.md`
+- **전체 사용법**: `USAGE_GUIDE_KR.md`
 - **빠른 시작**: `QUICKSTART.md`
 
 ---
