@@ -9,6 +9,8 @@ from PIL import Image
 from ..mcp_registry import mcp, get_openrouter_client
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
+from ..utils.async_utils import collect_async_iterable
+from ..utils.message_utils import serialize_messages
 
 
 logger = logging.getLogger(__name__)
@@ -335,15 +337,11 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
 
     try:
         # Process images and create vision messages
+        base_messages = serialize_messages(request.messages)
         vision_messages = []
 
-        for i, message in enumerate(request.messages):
-            message_payload = (
-                message.model_dump()
-                if hasattr(message, "model_dump")
-                else message
-            )
-            if i == len(request.messages) - 1:  # Last message, add images      
+        for i, message_payload in enumerate(base_messages):
+            if i == len(base_messages) - 1:  # Last message, add images
                 # Process images
                 processed_images = []
                 for img in request.images:
@@ -367,14 +365,14 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
 
         if request.stream:
             logger.info("Initiating streaming vision chat completion")
-            chunks = []
-            async for chunk in client.stream_chat_completion_with_vision(
+            chunks = await collect_async_iterable(
+                client.stream_chat_completion_with_vision(
                 model=request.model,
                 messages=vision_messages,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens
-            ):
-                chunks.append(chunk)
+                )
+            )
 
             logger.info(f"Streaming completed with {len(chunks)} chunks")
             return chunks

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, AsyncIterable, List, TypeVar
+
+T = TypeVar("T")
 
 
 async def maybe_await(value: Any) -> Any:
@@ -13,4 +15,12 @@ async def maybe_await(value: Any) -> Any:
     return value
 
 
-__all__ = ["maybe_await"]
+async def collect_async_iterable(iterable: AsyncIterable[T]) -> List[T]:
+    """Collect items from an async iterable into a list."""
+    items: List[T] = []
+    async for item in iterable:
+        items.append(item)
+    return items
+
+
+__all__ = ["maybe_await", "collect_async_iterable"]
