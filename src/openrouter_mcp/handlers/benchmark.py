@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 
 from ..client.openrouter import OpenRouterClient
 from ..models.cache import ModelCache
-from ..config.constants import EnvVars, ModelDefaults, PricingDefaults
+from ..config.constants import EnvVars, ModelDefaults, PricingDefaults, BenchmarkDefaults
 from ..utils.pricing import (
     parse_price,
     normalize_pricing,
@@ -550,28 +550,43 @@ class BenchmarkHandler:
             error=error,
         )
     
-    def __init__(self, cache_dir: str = "benchmarks", api_key: Optional[str] = None):
+    def __init__(
+        self,
+        cache_dir: str = BenchmarkDefaults.DEFAULT_RESULTS_DIR,
+        api_key: Optional[str] = None,
+        *,
+        client: Optional[OpenRouterClient] = None,
+        model_cache: Optional[ModelCache] = None,
+    ) -> None:
         """Initialize benchmark handler."""
-        # Get API key from parameter or environment
-        if api_key is None:
-            api_key = get_env_value(EnvVars.API_KEY)
-        
-        if not api_key:
-            raise ValueError(
-                f"OpenRouter API key is required. Set {EnvVars.API_KEY} environment variable."
-            )
-        
-        self.client = OpenRouterClient(api_key=api_key)
-        self.model_cache = ModelCache()
+        if client is None:
+            # Get API key from parameter or environment
+            if api_key is None:
+                api_key = get_env_value(EnvVars.API_KEY)
+
+            if not api_key:
+                raise ValueError(
+                    f"OpenRouter API key is required. Set {EnvVars.API_KEY} environment variable."
+                )
+
+            client = OpenRouterClient(api_key=api_key)
+
+        self.client = client
+        self.model_cache = model_cache or ModelCache()
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
+
+    @staticmethod
+    def _build_prompt_messages(prompt: str) -> List[Dict[str, str]]:
+        """Build a single-message chat payload for benchmarking."""
+        return [{"role": "user", "content": prompt}]
     
     async def benchmark_model(
         self,
         model_id: str,
         prompt: str,
         temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = 1000
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS
     ) -> BenchmarkResult:
         """Benchmark a single model with a prompt."""
         start_time = time.time()
@@ -584,7 +599,7 @@ class BenchmarkHandler:
             # Make the API call
             response = await self.client.chat_completion(
                 model=model_id,
-                messages=[{"role": "user", "content": prompt}],
+                messages=self._build_prompt_messages(prompt),
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -624,8 +639,8 @@ class BenchmarkHandler:
         models: List[str],
         prompt: str,
         temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = 1000,
-        runs_per_model: int = 1
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+        runs_per_model: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL
     ) -> ModelComparison:
         """Benchmark multiple models with the same prompt."""
         logger.info(f"Starting benchmark for {len(models)} models with {runs_per_model} runs each")
@@ -761,13 +776,22 @@ class BenchmarkHandler:
 class EnhancedBenchmarkHandler(BenchmarkHandler):
     """Enhanced benchmark handler with advanced metrics and analysis."""
 
-    def __init__(self, api_key: str, model_cache: ModelCache, results_dir: str = "benchmarks"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_cache: Optional[ModelCache] = None,
+        results_dir: str = BenchmarkDefaults.DEFAULT_RESULTS_DIR,
+        *,
+        client: Optional[OpenRouterClient] = None,
+    ) -> None:
         """Initialize enhanced benchmark handler."""
-        self.client = OpenRouterClient(api_key=api_key)
-        self.model_cache = model_cache
-        self.cache_dir = Path(results_dir)
+        super().__init__(
+            cache_dir=results_dir,
+            api_key=api_key,
+            client=client,
+            model_cache=model_cache,
+        )
         self.results_dir = results_dir
-        self.cache_dir.mkdir(exist_ok=True)
         self.quality_analyzer = ResponseQualityAnalyzer()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._executor_shutdown = False
@@ -775,13 +799,13 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
     async def benchmark_models(
         self,
         models: Optional[List[str]] = None,
-        prompt: str = "안녕하세요! 간단한 자기소개를 해주세요.",
+        prompt: str = BenchmarkDefaults.DEFAULT_PROMPT,
         temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = 1000,
-        runs_per_model: int = 1,
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+        runs_per_model: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
         model_ids: Optional[List[str]] = None,
         runs: Optional[int] = None,
-        delay_between_requests: float = 1.0
+        delay_between_requests: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS
     ) -> Union[ModelComparison, Dict[str, 'EnhancedBenchmarkResult']]:
         """
         Backwards-compatible benchmark wrapper.
@@ -882,8 +906,8 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         model_id: str,
         prompt: str,
         temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = 1000,
-        timeout: float = 60.0
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+        timeout: float = BenchmarkDefaults.DEFAULT_TIMEOUT_SECONDS
     ) -> BenchmarkResult:
         """Benchmark a single model with enhanced error handling and metrics."""
         start_time = time.time()
@@ -905,7 +929,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             response = await asyncio.wait_for(
                 self.client.chat_completion(
                     model=model_id,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=self._build_prompt_messages(prompt),
                     temperature=temperature,
                     max_tokens=max_tokens
                 ),
@@ -1098,10 +1122,10 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         self,
         model_ids: List[str],
         prompt: str,
-        runs: int = 1,
-        delay_between_requests: float = 1.0,
+        runs: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
+        delay_between_requests: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
         temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = 1000
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS
     ) -> Dict[str, 'EnhancedBenchmarkResult']:
         """Enhanced benchmark method with correct signature for MCP tools."""
         logger.info(f"Starting enhanced benchmark for {len(model_ids)} models with {runs} runs each")

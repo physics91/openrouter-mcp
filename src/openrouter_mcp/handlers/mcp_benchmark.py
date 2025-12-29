@@ -17,7 +17,7 @@ from ..models.cache import ModelCache
 from .benchmark import EnhancedBenchmarkHandler, BenchmarkReportExporter, ModelPerformanceAnalyzer
 # Import shared MCP instance from registry to prevent duplicate registration
 from ..mcp_registry import mcp
-from ..config.constants import EnvVars
+from ..config.constants import EnvVars, BenchmarkDefaults
 from ..utils.async_utils import maybe_await
 from ..utils.env import get_required_env
 
@@ -67,7 +67,7 @@ async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
         _benchmark_handler = handler_factory(
             api_key=api_key,
             model_cache=_model_cache,
-            results_dir="benchmarks"
+            results_dir=BenchmarkDefaults.DEFAULT_RESULTS_DIR
         )
         _benchmark_handler_factory = handler_factory
 
@@ -76,9 +76,9 @@ async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
 
 async def benchmark_models(
     models: List[str],
-    prompt: str = "안녕하세요! 간단한 자기소개를 해주세요.",
-    runs: int = 3,
-    delay_seconds: float = 1.0,
+    prompt: str = BenchmarkDefaults.DEFAULT_PROMPT,
+    runs: int = BenchmarkDefaults.DEFAULT_MCP_RUNS,
+    delay_seconds: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
     save_results: bool = True,
     include_prompts_in_logs: bool = False
 ) -> Dict[str, Any]:
