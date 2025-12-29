@@ -242,8 +242,8 @@ For team/production environments:
 ### Security Updates
 
 Security patches will be released as:
-- **Patch versions** for backwards-compatible security fixes (e.g., 1.3.1)
-- **Minor versions** for security enhancements requiring changes (e.g., 1.4.0)
+- **Patch versions** for backwards-compatible security fixes (e.g., 1.4.1)
+- **Minor versions** for security enhancements requiring changes (e.g., 1.5.0)
 
 Subscribe to security advisories: [GitHub Security Advisories](https://github.com/your-org/openrouter-mcp/security/advisories)
 
@@ -311,6 +311,6 @@ This project follows **"Secure by Default"** principles:
 
 ---
 
-**Last Updated:** 2025-01-18
-**Version:** 1.3.0
+**Last Updated:** 2025-12-29
+**Version:** 1.4.0
 **Security Contact:** [To be configured]

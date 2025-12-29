@@ -1,6 +1,6 @@
-# Security Vulnerability Fixes - OpenRouter MCP v1.3.1
+# Security Vulnerability Fixes - OpenRouter MCP v1.4.0
 
-**Date:** 2025-01-18
+**Date:** 2025-12-29
 **Severity:** HIGH
 **Type:** Security Hardening & Privacy Protection
 **Status:** ✅ RESOLVED
@@ -525,7 +525,7 @@ tail -f logs/*.log
 
 ## Release Information
 
-**Version:** 1.3.1 (Security Patch)
+**Version:** 1.4.0 (Security Patch)
 **Release Type:** Security Update
 **Breaking Changes:** None
 **Upgrade Required:** **YES** (for security)
@@ -561,6 +561,6 @@ npx @physics91/openrouter-mcp@latest
 
 ---
 
-**Last Updated:** 2025-01-18
+**Last Updated:** 2025-12-29
 **Document Version:** 1.0
 **Status:** PUBLISHED
