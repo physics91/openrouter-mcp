@@ -271,15 +271,13 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 
-# Optional Cache Configuration
-CACHE_TTL_HOURS=1
-CACHE_MAX_ITEMS=1000
-CACHE_FILE=openrouter_model_cache.json
-
 # Optional API Configuration
 OPENROUTER_APP_NAME=my-app
 OPENROUTER_HTTP_REFERER=https://myapp.com
 ```
+
+Cache tuning (TTL, memory size, cache file path) is configured programmatically
+via `ModelCache` and `OpenRouterClient` rather than environment variables.
 
 ### Claude Desktop Integration
 

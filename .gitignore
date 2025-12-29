@@ -88,6 +88,7 @@ FINAL_IMPROVEMENTS*.md
 
 # Benchmark and cache files
 *_cache.json
+openrouter_model_cache.json
 *_results_*.json
 *_report_*.json
 *_report_*.md
@@ -104,6 +105,8 @@ benchmarks/test_*.json
 benchmarks/*_report_*.csv
 benchmarks/*_report_*.md
 benchmarks/*_report_*.json
+benchmarks/*_report*.markdown
+*_report*.markdown
 # Keep benchmark documentation but ignore generated reports
 !benchmarks/README.md
 

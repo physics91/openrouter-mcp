@@ -377,8 +377,7 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
       "command": "npx",
       "args": ["openrouter-mcp", "start"],
       "env": {
-        "LOG_LEVEL": "WARNING",
-        "CACHE_TTL_HOURS": "6"
+        "LOG_LEVEL": "WARNING"
       }
     }
   }
@@ -416,14 +415,14 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
       "command": "npx",
       "args": ["openrouter-mcp", "start"],
       "env": {
-        "CACHE_TTL_HOURS": "6",
-        "CACHE_MAX_ITEMS": "5000",
-        "CACHE_FILE": "/tmp/openrouter_cache.json"
+        "LOG_LEVEL": "INFO"
       }
     }
   }
 }
 ```
+
+캐시 튜닝(TTL/메모리/파일 경로)은 환경변수가 아니라 코드에서 `ModelCache`로 조정합니다.
 
 ### 4. 팀 공유 설정
 
