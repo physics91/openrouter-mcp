@@ -628,18 +628,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                 sub_task = ensemble_task.sub_tasks[i]
                 assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
                 final_results.append(
-                    SubTaskResult(
-                        sub_task=sub_task,
-                        assignment=assignment,
-                        result=ProcessingResult(
-                            task_id=sub_task.sub_task_id,
-                            model_id=assignment.model_id,
-                            content="",
-                            confidence=0.0
-                        ),
-                        success=False,
-                        error_message=str(result)
-                    )
+                    self._build_failed_subtask_result(sub_task, assignment, result)
                 )
             else:
                 final_results.append(result)
@@ -682,19 +671,8 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                 if isinstance(result, Exception):
                     sub_task = ready_tasks[i]
                     assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-                    result = SubTaskResult(
-                        sub_task=sub_task,
-                        assignment=assignment,
-                        result=ProcessingResult(
-                            task_id=sub_task.sub_task_id,
-                            model_id=assignment.model_id,
-                            content="",
-                            confidence=0.0
-                        ),
-                        success=False,
-                        error_message=str(result)
-                    )
-                
+                    result = self._build_failed_subtask_result(sub_task, assignment, result)
+
                 results.append(result)
                 completed_tasks.add(result.sub_task.sub_task_id)
         
@@ -753,6 +731,22 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         # All retries failed
         logger.error(f"Sub-task {sub_task.sub_task_id} failed after {retry_count} attempts")
         
+        return self._build_failed_subtask_result(
+            sub_task,
+            assignment,
+            last_error,
+            retry_count=retry_count
+        )
+
+    def _build_failed_subtask_result(
+        self,
+        sub_task: SubTask,
+        assignment: ModelAssignment,
+        error: Optional[Exception],
+        retry_count: int = 0
+    ) -> SubTaskResult:
+        """Build a failed sub-task result with standardized metadata."""
+        error_message = str(error) if error else "Unknown error"
         return SubTaskResult(
             sub_task=sub_task,
             assignment=assignment,
@@ -764,7 +758,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             ),
             success=False,
             retry_count=retry_count,
-            error_message=str(last_error)
+            error_message=error_message
         )
     
     def _find_assignment(self, sub_task_id: str, assignments: List[ModelAssignment]) -> ModelAssignment:

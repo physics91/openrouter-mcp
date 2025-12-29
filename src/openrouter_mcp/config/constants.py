@@ -31,6 +31,7 @@ class CacheConfig:
     DEFAULT_TTL_SECONDS: int = 3600  # 1 hour
     MIN_TTL_HOURS: float = 0.08334   # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
+    MODEL_CACHE_FILE: str = "openrouter_model_cache.json"
 
 
 class ModelDefaults:
@@ -81,6 +82,17 @@ class LoggingConfig:
     DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
 
 
+class PricingDefaults:
+    """Default pricing assumptions and heuristics."""
+
+    # Fallback per-token price used when pricing is missing
+    DEFAULT_TOKEN_PRICE: float = 0.00002
+    # Conservative estimate used for pre-flight quota checks
+    ESTIMATED_TOKEN_PRICE: float = 0.00003
+    # If a price is >= this value, assume it is per-1K tokens and normalize
+    PER_1K_PRICE_THRESHOLD: float = 0.001
+
+
 __all__ = [
     "APIConfig",
     "CacheConfig",
@@ -89,4 +101,5 @@ __all__ = [
     "ConsensusDefaults",
     "RateLimitConfig",
     "LoggingConfig",
+    "PricingDefaults",
 ]

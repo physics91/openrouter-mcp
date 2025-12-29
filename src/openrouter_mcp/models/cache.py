@@ -27,6 +27,9 @@ from ..utils.metadata import (
     extract_provider_from_id,
     determine_model_category
 )
+from ..utils.http import build_openrouter_headers
+from ..utils.env import get_env_value
+from ..config.constants import APIConfig, CacheConfig, EnvVars
 
 # Import client locally to avoid circular imports
 
@@ -45,8 +48,8 @@ class HTTPTransport:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://openrouter.ai/api/v1",
-        timeout: float = 30.0
+        base_url: str = APIConfig.BASE_URL,
+        timeout: float = APIConfig.DEFAULT_TIMEOUT
     ):
         """
         Initialize HTTP transport.
@@ -63,23 +66,7 @@ class HTTPTransport:
 
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for requests."""
-        import os
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        # Add optional tracking headers
-        app_name = os.getenv("OPENROUTER_APP_NAME")
-        if app_name:
-            headers["X-Title"] = app_name
-
-        http_referer = os.getenv("OPENROUTER_HTTP_REFERER")
-        if http_referer:
-            headers["HTTP-Referer"] = http_referer
-
-        return headers
+        return build_openrouter_headers(self.api_key, fallback_to_env=True)
 
     async def get(self, endpoint: str) -> Dict[str, Any]:
         """
@@ -120,9 +107,9 @@ class ModelCache:
     
     def __init__(
         self,
-        ttl_hours: float = 1.0,
+        ttl_hours: float = CacheConfig.DEFAULT_TTL_HOURS,
         max_memory_items: int = 1000,
-        cache_file: str = "openrouter_model_cache.json",
+        cache_file: str = CacheConfig.MODEL_CACHE_FILE,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None
     ):
@@ -183,9 +170,8 @@ class ModelCache:
         if self._transport_initialized:
             return
 
-        import os
-        api_key = self._api_key or os.getenv("OPENROUTER_API_KEY")
-        base_url = self._base_url or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        api_key = self._api_key or get_env_value(EnvVars.API_KEY)
+        base_url = self._base_url or get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL)
 
         if api_key:
             self._transport = HTTPTransport(api_key=api_key, base_url=base_url)
@@ -217,7 +203,7 @@ class ModelCache:
             if not self._transport:
                 raise ValueError(
                     "API key is required. Provide via api_key parameter or "
-                    "OPENROUTER_API_KEY environment variable"
+                    f"{EnvVars.API_KEY} environment variable"
                 )
 
             # Use shared transport layer
@@ -240,7 +226,12 @@ class ModelCache:
         except Exception as e:
             logger.error(f"Failed to fetch models from API: {e}")
             raise
-    
+
+    @staticmethod
+    def _lock_timeout(default_seconds: int) -> Optional[int]:
+        """Return None on Windows to avoid portalocker timeout warnings."""
+        return None if sys.platform.startswith("win") else default_seconds
+
     def _save_to_file_cache_sync(self, models: List[Dict[str, Any]]) -> None:
         """
         Synchronous file save operation (runs in thread executor).
@@ -267,7 +258,7 @@ class ModelCache:
                 self.cache_file,
                 mode='w',
                 encoding='utf-8',
-                timeout=5,
+                timeout=self._lock_timeout(5),
                 flags=portalocker.LOCK_EX
             ) as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
@@ -282,18 +273,14 @@ class ModelCache:
         except Exception as e:
             logger.error(f"Failed to save models to file cache: {e}")
 
-    async def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
+    def _save_to_file_cache(self, models: List[Dict[str, Any]]) -> None:
         """
-        Async wrapper for file save operation.
+        Synchronous wrapper for file save operation.
 
-        Offloads blocking file I/O to thread executor to keep async methods
-        truly non-blocking.
-
-        Args:
-            models: List of model dictionaries to cache
+        This is kept synchronous for compatibility with tests and callers that
+        invoke the method directly without awaiting.
         """
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(self._executor, self._save_to_file_cache_sync, models)
+        self._save_to_file_cache_sync(models)
     
     def _load_from_file_cache_sync(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
         """
@@ -312,13 +299,13 @@ class ModelCache:
             return [], None
 
         try:
-            # Use shared lock (LOCK_SH) for reading - allows concurrent reads
+            # Use shared lock (LOCK_SH) for reading - allows concurrent reads   
             # but blocks if someone has an exclusive write lock
             with portalocker.Lock(
                 self.cache_file,
                 mode='r',
                 encoding='utf-8',
-                timeout=3,
+                timeout=self._lock_timeout(3),
                 flags=portalocker.LOCK_SH
             ) as f:
                 cache_data = json.load(f)
@@ -341,18 +328,14 @@ class ModelCache:
             logger.error(f"Failed to load models from file cache: {e}")
             return [], None
 
-    async def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+    def _load_from_file_cache(self) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
         """
-        Async wrapper for file load operation.
+        Synchronous wrapper for file load operation.
 
-        Offloads blocking file I/O to thread executor to keep async methods
-        truly non-blocking.
-
-        Returns:
-            Tuple of (models list, last update datetime)
+        This is kept synchronous for compatibility with tests and callers that
+        invoke the method directly without awaiting.
         """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, self._load_from_file_cache_sync)
+        return self._load_from_file_cache_sync()
     
     def iter_models(self) -> Iterator[Dict[str, Any]]:
         """
@@ -424,8 +407,9 @@ class ModelCache:
                 self._memory_cache = models
                 self._last_update = datetime.now()
 
-            # Persist to file (async, non-blocking)
-            await self._save_to_file_cache(models)
+            # Persist to file without blocking the event loop
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(self._executor, self._save_to_file_cache, models)
 
             logger.info(f"Cache updated with {len(models)} models")
             return models
@@ -433,7 +417,8 @@ class ModelCache:
         except Exception as e:
             # Fallback to file cache if API fails
             logger.warning(f"API fetch failed, trying file cache: {e}")
-            models, _ = await self._load_from_file_cache()
+            loop = asyncio.get_running_loop()
+            models, _ = await loop.run_in_executor(self._executor, self._load_from_file_cache)
 
             if models:
                 logger.info(f"Using {len(models)} models from file cache fallback")

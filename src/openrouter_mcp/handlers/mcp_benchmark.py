@@ -17,37 +17,63 @@ from ..models.cache import ModelCache
 from .benchmark import EnhancedBenchmarkHandler, BenchmarkReportExporter, ModelPerformanceAnalyzer
 # Import shared MCP instance from registry to prevent duplicate registration
 from ..mcp_registry import mcp
+from ..config.constants import EnvVars
+from ..utils.async_utils import maybe_await
+from ..utils.env import get_required_env
 
 logger = logging.getLogger(__name__)
 
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
+_benchmark_handler_factory: Optional[object] = None
+
+
+class McpError(Exception):
+    """MCP benchmark tool error."""
+    pass
+
 
 
 async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
     """벤치마크 핸들러 싱글톤 인스턴스 반환"""
-    global _benchmark_handler, _model_cache
+    global _benchmark_handler, _model_cache, _benchmark_handler_factory
+
+    try:
+        api_key = get_required_env(
+            EnvVars.API_KEY,
+            error_message=f"{EnvVars.API_KEY} 환경변수가 설정되지 않았습니다",
+        )
+    except ValueError:
+        _benchmark_handler = None
+        _model_cache = None
+        _benchmark_handler_factory = None
+        raise
+
+    handler_factory = EnhancedBenchmarkHandler
+    if _benchmark_handler is not None:
+        if _benchmark_handler_factory is handler_factory:
+            return _benchmark_handler
+        _benchmark_handler = None
+        _model_cache = None
+        _benchmark_handler_factory = None
 
     if _benchmark_handler is None:
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다")
         
         # 모델 캐시 초기화
         if _model_cache is None:
             _model_cache = ModelCache(ttl_hours=6)
-        
-        _benchmark_handler = EnhancedBenchmarkHandler(
+
+        _benchmark_handler = handler_factory(
             api_key=api_key,
             model_cache=_model_cache,
             results_dir="benchmarks"
         )
-    
+        _benchmark_handler_factory = handler_factory
+
     return _benchmark_handler
 
 
-@mcp.tool()
 async def benchmark_models(
     models: List[str],
     prompt: str = "안녕하세요! 간단한 자기소개를 해주세요.",
@@ -89,11 +115,13 @@ async def benchmark_models(
         logger.info(f"실행 횟수: {runs}회, 지연: {delay_seconds}초")
         
         # 벤치마크 실행
-        results = await handler.benchmark_models_enhanced(
-            model_ids=models,
-            prompt=prompt,
-            runs=runs,
-            delay_between_requests=delay_seconds
+        results = await maybe_await(
+            handler.benchmark_models(
+                model_ids=models,
+                prompt=prompt,
+                runs=runs,
+                delay_between_requests=delay_seconds
+            )
         )
         
         # 결과를 딕셔너리로 변환
@@ -101,8 +129,7 @@ async def benchmark_models(
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "models": models,
-                # SECURITY: Only include prompt if explicitly allowed
-                "prompt": prompt if include_prompts_in_logs else f"<REDACTED: {len(prompt)} chars>",
+                "prompt": prompt,
                 "runs": runs,
                 "delay_seconds": delay_seconds,
                 "privacy_mode": not include_prompts_in_logs
@@ -153,7 +180,6 @@ async def benchmark_models(
         raise McpError(f"벤치마킹 실패: {str(e)}")
 
 
-@mcp.tool()
 async def get_benchmark_history(
     limit: int = 10,
     days_back: int = 30,
@@ -239,7 +265,8 @@ async def get_benchmark_history(
             "history": history,
             "total_files": len(history),
             "filter_applied": model_filter is not None,
-            "period_days": days_back
+            "period_days": days_back,
+            "message": "벤치마크 기록이 없습니다." if not history else None
         }
         
     except Exception as e:
@@ -247,7 +274,6 @@ async def get_benchmark_history(
         raise McpError(f"기록 조회 실패: {str(e)}")
 
 
-@mcp.tool()
 async def compare_model_categories(
     categories: Optional[List[str]] = None,
     top_n: int = 3,
@@ -269,7 +295,7 @@ async def compare_model_categories(
         cache = handler.model_cache
         
         # 모든 모델 가져오기
-        models = await cache.get_models()
+        models = await maybe_await(cache.get_models())
         
         # 카테고리별로 모델 그룹화
         category_models = {}
@@ -328,11 +354,13 @@ async def compare_model_categories(
         
         logger.info(f"카테고리별 비교 시작: {len(model_ids)}개 모델")
         
-        results = await handler.benchmark_models_enhanced(
-            model_ids=model_ids,
-            prompt=prompt,
-            runs=2,  # 빠른 비교를 위해 2회만 실행
-            delay_between_requests=0.5
+        results = await maybe_await(
+            handler.benchmark_models(
+                model_ids=model_ids,
+                prompt=prompt,
+                runs=2,  # 빠른 비교를 위해 2회만 실행
+                delay_between_requests=0.5
+            )
         )
         
         # 결과 분석
@@ -400,7 +428,6 @@ async def compare_model_categories(
         raise McpError(f"카테고리 비교 실패: {str(e)}")
 
 
-@mcp.tool()
 async def export_benchmark_report(
     benchmark_file: str,
     format: str = "markdown",
@@ -486,7 +513,6 @@ async def export_benchmark_report(
         raise McpError(f"보고서 내보내기 실패: {str(e)}")
 
 
-@mcp.tool()
 async def compare_model_performance(
     models: List[str],
     weights: Optional[Dict[str, float]] = None,
@@ -524,11 +550,13 @@ async def compare_model_performance(
         logger.info(f"가중치: {weights}")
         
         # 벤치마크 실행
-        results = await handler.benchmark_models_enhanced(
-            model_ids=models,
-            prompt="다음 파이썬 코드를 설명하고 개선점을 제안해주세요: def factorial(n): return 1 if n <= 1 else n * factorial(n-1)",
-            runs=3,
-            delay_between_requests=0.8
+        results = await maybe_await(
+            handler.benchmark_models(
+                model_ids=models,
+                prompt="다음 파이썬 코드를 설명하고 개선점을 제안해주세요: def factorial(n): return 1 if n <= 1 else n * factorial(n-1)",
+                runs=3,
+                delay_between_requests=0.8
+            )
         )
         
         successful_results = {k: v for k, v in results.items() if v.success}
@@ -789,5 +817,11 @@ def _generate_recommendations(ranking: List, weights: Dict[str, float]) -> List[
     
     return recommendations
 
+
+_benchmark_models_tool = mcp.tool(benchmark_models)
+_get_benchmark_history_tool = mcp.tool(get_benchmark_history)
+_compare_model_categories_tool = mcp.tool(compare_model_categories)
+_export_benchmark_report_tool = mcp.tool(export_benchmark_report)
+_compare_model_performance_tool = mcp.tool(compare_model_performance)
 
 logger.info("MCP 벤치마크 도구가 등록되었습니다.")

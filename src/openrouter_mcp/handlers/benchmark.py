@@ -1,4 +1,4 @@
-"""
+﻿"""
 Benchmark handler for comparing multiple AI models.
 
 This module provides functionality to benchmark and compare multiple AI models
@@ -7,7 +7,6 @@ by sending the same prompt to each model and analyzing their responses.
 
 import asyncio
 import json
-import os
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -20,6 +19,14 @@ from contextlib import asynccontextmanager
 
 from ..client.openrouter import OpenRouterClient
 from ..models.cache import ModelCache
+from ..config.constants import EnvVars, ModelDefaults, PricingDefaults
+from ..utils.pricing import (
+    parse_price,
+    normalize_pricing,
+    cost_for_tokens,
+    estimate_cost_from_usage,
+)
+from ..utils.env import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -151,10 +158,10 @@ class ResponseQualityAnalyzer:
         return min(coherence_score, 1.0)
 
 
-@dataclass
+@dataclass(init=False)
 class BenchmarkResult:
     """Result from benchmarking a single model."""
-    
+
     model_id: str
     prompt: str
     response: Optional[str]
@@ -173,6 +180,98 @@ class BenchmarkResult:
     contains_code_example: Optional[bool] = None
     language_coherence_score: Optional[float] = None
     throughput_tokens_per_second: Optional[float] = None
+    # Compatibility fields used by some benchmark tools/tests
+    success: Optional[bool] = None
+    error_message: Optional[str] = None
+    metrics: Optional[Any] = None
+
+    def __init__(self, model_id: str, *args, **kwargs) -> None:
+        # Detect enhanced-style signature (success/response/error_message/metrics)
+        is_enhanced = "success" in kwargs or (args and isinstance(args[0], bool))
+        is_standard = (
+            "prompt" in kwargs
+            or "response_time_ms" in kwargs
+            or "tokens_used" in kwargs
+            or "cost" in kwargs
+            or "timestamp" in kwargs
+        )
+
+        if is_enhanced and not is_standard:
+            # Enhanced-style: model_id, success, response, error_message, metrics, timestamp?
+            success = kwargs.pop("success", None)
+            response = kwargs.pop("response", None)
+            error_message = kwargs.pop("error_message", None)
+            metrics = kwargs.pop("metrics", None)
+            timestamp = kwargs.pop("timestamp", None)
+
+            if args:
+                success = args[0] if len(args) > 0 else success
+                response = args[1] if len(args) > 1 else response
+                error_message = args[2] if len(args) > 2 else error_message
+                metrics = args[3] if len(args) > 3 else metrics
+                timestamp = args[4] if len(args) > 4 else timestamp
+
+            self.model_id = model_id
+            self.prompt = ""
+            self.response = response
+            self.response_time_ms = 0.0
+            self.tokens_used = 0
+            self.cost = 0.0
+            self.timestamp = timestamp or datetime.now(timezone.utc)
+            self.error = error_message
+            self.success = success if success is not None else self.error is None
+            self.error_message = error_message
+            self.metrics = metrics
+            # Initialize optional metric fields
+            self.prompt_tokens = kwargs.pop("prompt_tokens", None)
+            self.completion_tokens = kwargs.pop("completion_tokens", None)
+            self.input_cost_per_1k_tokens = kwargs.pop("input_cost_per_1k_tokens", None)
+            self.output_cost_per_1k_tokens = kwargs.pop("output_cost_per_1k_tokens", None)
+            self.quality_score = kwargs.pop("quality_score", None)
+            self.response_length = kwargs.pop("response_length", None)
+            self.contains_code_example = kwargs.pop("contains_code_example", None)
+            self.language_coherence_score = kwargs.pop("language_coherence_score", None)
+            self.throughput_tokens_per_second = kwargs.pop("throughput_tokens_per_second", None)
+            return
+
+        # Standard-style (original benchmark result)
+        if args:
+            # Positional mapping: prompt, response, response_time_ms, tokens_used, cost, timestamp, error?
+            if len(args) >= 6:
+                kwargs.setdefault("prompt", args[0])
+                kwargs.setdefault("response", args[1])
+                kwargs.setdefault("response_time_ms", args[2])
+                kwargs.setdefault("tokens_used", args[3])
+                kwargs.setdefault("cost", args[4])
+                kwargs.setdefault("timestamp", args[5])
+                if len(args) > 6:
+                    kwargs.setdefault("error", args[6])
+
+        self.model_id = model_id
+        self.prompt = kwargs.pop("prompt", "")
+        self.response = kwargs.pop("response", None)
+        self.response_time_ms = kwargs.pop("response_time_ms", 0.0)
+        self.tokens_used = kwargs.pop("tokens_used", 0)
+        self.cost = kwargs.pop("cost", 0.0)
+        self.timestamp = kwargs.pop("timestamp", datetime.now(timezone.utc))
+        self.error = kwargs.pop("error", None)
+        self.prompt_tokens = kwargs.pop("prompt_tokens", None)
+        self.completion_tokens = kwargs.pop("completion_tokens", None)
+        self.input_cost_per_1k_tokens = kwargs.pop("input_cost_per_1k_tokens", None)
+        self.output_cost_per_1k_tokens = kwargs.pop("output_cost_per_1k_tokens", None)
+        self.quality_score = kwargs.pop("quality_score", None)
+        self.response_length = kwargs.pop("response_length", None)
+        self.contains_code_example = kwargs.pop("contains_code_example", None)
+        self.language_coherence_score = kwargs.pop("language_coherence_score", None)
+        self.throughput_tokens_per_second = kwargs.pop("throughput_tokens_per_second", None)
+        self.success = kwargs.pop("success", None)
+        self.error_message = kwargs.pop("error_message", None)
+        self.metrics = kwargs.pop("metrics", None)
+
+        if self.success is None:
+            self.success = self.error is None
+        if self.error_message is None and self.error:
+            self.error_message = self.error
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -203,6 +302,10 @@ class BenchmarkMetrics:
     avg_prompt_tokens: Optional[float] = None
     avg_completion_tokens: Optional[float] = None
     cost_per_quality_point: Optional[float] = None
+    avg_total_tokens: Optional[float] = None
+    avg_response_length: Optional[float] = None
+    avg_input_cost_per_1k_tokens: Optional[float] = None
+    avg_output_cost_per_1k_tokens: Optional[float] = None
     
     @classmethod
     def from_results(cls, results: List[BenchmarkResult]) -> "BenchmarkMetrics":
@@ -253,6 +356,42 @@ class BenchmarkMetrics:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
+
+    # Compatibility properties for consumers expecting enhanced metric names.
+    @property
+    def avg_response_time(self) -> float:
+        """Average response time in seconds."""
+        if self.avg_response_time_ms is None:
+            return 0.0
+        return self.avg_response_time_ms / 1000.0
+
+    @property
+    def quality_score(self) -> float:
+        """Alias for average quality score."""
+        return self.avg_quality_score or 0.0
+
+    @property
+    def throughput(self) -> float:
+        """Alias for average throughput (tokens/sec)."""
+        return self.avg_throughput or 0.0
+
+    @property
+    def speed_score(self) -> float:
+        """Normalized speed score (0-1) derived from response time."""
+        avg_response_time = self.avg_response_time
+        return max(0.0, 1.0 - (avg_response_time / 60.0)) if avg_response_time is not None else 0.0
+
+    @property
+    def cost_score(self) -> float:
+        """Normalized cost score (0-1) derived from average cost."""
+        avg_cost = self.avg_cost if self.avg_cost is not None else 0.0
+        return max(0.0, 1.0 - (avg_cost * 1000.0))
+
+    @property
+    def throughput_score(self) -> float:
+        """Normalized throughput score (0-1) derived from throughput."""
+        throughput = self.throughput
+        return min(1.0, throughput / 100.0) if throughput is not None else 0.0
 
 
 class ModelComparison:
@@ -364,15 +503,63 @@ class ModelComparison:
 
 class BenchmarkHandler:
     """Handler for benchmarking AI models."""
+
+    def _build_benchmark_result(
+        self,
+        *,
+        model_id: str,
+        prompt: str,
+        response: Optional[str],
+        response_time_ms: float,
+        tokens_used: int,
+        cost: float,
+        timestamp: datetime,
+        error: Optional[str] = None,
+        **extra: Any,
+    ) -> BenchmarkResult:
+        """Build a benchmark result with standard fields and optional extras."""
+        return BenchmarkResult(
+            model_id=model_id,
+            prompt=prompt,
+            response=response,
+            response_time_ms=response_time_ms,
+            tokens_used=tokens_used,
+            cost=cost,
+            timestamp=timestamp,
+            error=error,
+            **extra,
+        )
+
+    def _build_error_result(
+        self,
+        *,
+        model_id: str,
+        prompt: str,
+        error: str,
+        timestamp: Optional[datetime] = None,
+    ) -> BenchmarkResult:
+        """Build a standardized error result for failed benchmarks."""
+        return self._build_benchmark_result(
+            model_id=model_id,
+            prompt=prompt,
+            response=None,
+            response_time_ms=0.0,
+            tokens_used=0,
+            cost=0.0,
+            timestamp=timestamp or datetime.now(timezone.utc),
+            error=error,
+        )
     
     def __init__(self, cache_dir: str = "benchmarks", api_key: Optional[str] = None):
         """Initialize benchmark handler."""
         # Get API key from parameter or environment
         if api_key is None:
-            api_key = os.getenv("OPENROUTER_API_KEY")
+            api_key = get_env_value(EnvVars.API_KEY)
         
         if not api_key:
-            raise ValueError("OpenRouter API key is required. Set OPENROUTER_API_KEY environment variable.")
+            raise ValueError(
+                f"OpenRouter API key is required. Set {EnvVars.API_KEY} environment variable."
+            )
         
         self.client = OpenRouterClient(api_key=api_key)
         self.model_cache = ModelCache()
@@ -383,7 +570,7 @@ class BenchmarkHandler:
         self,
         model_id: str,
         prompt: str,
-        temperature: float = 0.7,
+        temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: int = 1000
     ) -> BenchmarkResult:
         """Benchmark a single model with a prompt."""
@@ -406,36 +593,22 @@ class BenchmarkHandler:
             response_text = response["choices"][0]["message"]["content"]
             tokens_used = response.get("usage", {}).get("total_tokens", 0)
             
-            # Calculate cost (simplified - would need actual pricing data)
+            # Calculate cost using model pricing when available
             model_info = await self.model_cache.get_model_info(model_id)
             if model_info and "pricing" in model_info:
-                # Simplified cost calculation
-                prompt_price = model_info["pricing"].get("prompt", 0)
-                completion_price = model_info["pricing"].get("completion", 0)
-                
-                # Convert to float if string
-                if isinstance(prompt_price, str):
-                    try:
-                        prompt_price = float(prompt_price)
-                    except (ValueError, TypeError):
-                        prompt_price = 0
-                
-                if isinstance(completion_price, str):
-                    try:
-                        completion_price = float(completion_price)
-                    except (ValueError, TypeError):
-                        completion_price = 0
-                
-                # Rough estimate: assume half tokens for prompt, half for completion
-                cost = (tokens_used / 2 * prompt_price + tokens_used / 2 * completion_price) / 1_000_000
+                cost = estimate_cost_from_usage(
+                    response.get("usage", {}),
+                    model_info.get("pricing", {}),
+                    PricingDefaults.DEFAULT_TOKEN_PRICE,
+                )
             
         except Exception as e:
             error = str(e)
             logger.error(f"Error benchmarking {model_id}: {error}")
         
         response_time_ms = (time.time() - start_time) * 1000
-        
-        return BenchmarkResult(
+
+        return self._build_benchmark_result(
             model_id=model_id,
             prompt=prompt,
             response=response_text,
@@ -443,14 +616,14 @@ class BenchmarkHandler:
             tokens_used=tokens_used,
             cost=cost,
             timestamp=datetime.now(timezone.utc),
-            error=error
+            error=error,
         )
     
     async def benchmark_models(
         self,
         models: List[str],
         prompt: str,
-        temperature: float = 0.7,
+        temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: int = 1000,
         runs_per_model: int = 1
     ) -> ModelComparison:
@@ -598,7 +771,45 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         self.quality_analyzer = ResponseQualityAnalyzer()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._executor_shutdown = False
-    
+
+    async def benchmark_models(
+        self,
+        models: Optional[List[str]] = None,
+        prompt: str = "안녕하세요! 간단한 자기소개를 해주세요.",
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: int = 1000,
+        runs_per_model: int = 1,
+        model_ids: Optional[List[str]] = None,
+        runs: Optional[int] = None,
+        delay_between_requests: float = 1.0
+    ) -> Union[ModelComparison, Dict[str, 'EnhancedBenchmarkResult']]:
+        """
+        Backwards-compatible benchmark wrapper.
+
+        - If model_ids/runs are provided, delegate to benchmark_models_enhanced.
+        - Otherwise, fall back to the base BenchmarkHandler implementation.
+        """
+        use_enhanced = model_ids is not None or runs is not None
+        if use_enhanced:
+            effective_ids = model_ids or models or []
+            effective_runs = runs if runs is not None else runs_per_model
+            return await self.benchmark_models_enhanced(
+                model_ids=effective_ids,
+                prompt=prompt,
+                runs=effective_runs,
+                delay_between_requests=delay_between_requests,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+
+        return await super().benchmark_models(
+            models=models or [],
+            prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            runs_per_model=runs_per_model
+        )
+
     def assess_response_quality(self, prompt: str, response: str) -> float:
         """Assess the quality of a response using advanced analysis."""
         analysis = self.quality_analyzer.analyze_response(prompt, response)
@@ -613,13 +824,18 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         usage = api_response.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        
-        input_price = model_pricing.get("prompt", 0)
-        output_price = model_pricing.get("completion", 0)
-        
-        input_cost = (prompt_tokens * input_price) / 1000
-        output_cost = (completion_tokens * output_price) / 1000
-        
+
+        normalized_pricing = normalize_pricing(
+            model_pricing,
+            PricingDefaults.DEFAULT_TOKEN_PRICE,
+            normalize_units=False,
+        )
+        prompt_price = normalized_pricing["prompt"]
+        completion_price = normalized_pricing["completion"]
+
+        input_cost = cost_for_tokens(prompt_tokens, prompt_price)
+        output_cost = cost_for_tokens(completion_tokens, completion_price)
+
         return {
             "input_cost": input_cost,
             "output_cost": output_cost,
@@ -645,15 +861,10 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         for model_id, result in zip(models, results_list):
             if isinstance(result, Exception):
                 # Create error result
-                error_result = BenchmarkResult(
+                error_result = self._build_error_result(
                     model_id=model_id,
                     prompt=prompt,
-                    response=None,
-                    response_time_ms=0,
-                    tokens_used=0,
-                    cost=0,
-                    timestamp=datetime.now(timezone.utc),
-                    error=str(result)
+                    error=str(result),
                 )
                 results[model_id] = [error_result]
             else:
@@ -670,7 +881,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         self,
         model_id: str,
         prompt: str,
-        temperature: float = 0.7,
+        temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: int = 1000,
         timeout: float = 60.0
     ) -> BenchmarkResult:
@@ -748,7 +959,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             throughput_tokens_per_second = (tokens_used / response_time_ms) * 1000
         
         # Add comprehensive analysis data to result
-        result = BenchmarkResult(
+        result = self._build_benchmark_result(
             model_id=model_id,
             prompt=prompt,
             response=response_text,
@@ -761,7 +972,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             completion_tokens=completion_tokens,
             quality_score=quality_score,
             response_length=response_length,
-            throughput_tokens_per_second=throughput_tokens_per_second
+            throughput_tokens_per_second=throughput_tokens_per_second,
         )
         
         # Add comprehensive analysis fields if available
@@ -771,188 +982,156 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         
         return result
     
-    def _calculate_cost_enhanced(self, model_info: Dict[str, Any], prompt_tokens: Optional[int], 
+    def _calculate_cost_enhanced(self, model_info: Dict[str, Any], prompt_tokens: Optional[int],
                                 completion_tokens: Optional[int], total_tokens: int) -> float:
         """Enhanced cost calculation with better error handling."""
         if not model_info or "pricing" not in model_info:
             logger.warning("No pricing information available for cost calculation")
             return 0.0
-        
+
         try:
-            prompt_price = model_info["pricing"].get("prompt", 0)
-            completion_price = model_info["pricing"].get("completion", 0)
-            
-            # Robust type conversion
-            prompt_price = self._safe_float_conversion(prompt_price, "prompt_price")
-            completion_price = self._safe_float_conversion(completion_price, "completion_price")
-            
+            prompt_price = self._safe_float_conversion(
+                model_info["pricing"].get("prompt", 0),
+                "prompt_price"
+            )
+            completion_price = self._safe_float_conversion(
+                model_info["pricing"].get("completion", 0),
+                "completion_price"
+            )
+
             # Use actual token breakdown if available
             if prompt_tokens and completion_tokens:
-                cost = (prompt_tokens * prompt_price + completion_tokens * completion_price) / 1_000_000
+                cost = (
+                    prompt_tokens * prompt_price
+                    + completion_tokens * completion_price
+                ) / 1_000_000
                 logger.debug(f"Cost calculated from token breakdown: {cost}")
             else:
                 # Fallback to rough estimate
-                cost = (total_tokens / 2 * prompt_price + total_tokens / 2 * completion_price) / 1_000_000
+                cost = (
+                    total_tokens / 2 * prompt_price
+                    + total_tokens / 2 * completion_price
+                ) / 1_000_000
                 logger.debug(f"Cost estimated from total tokens: {cost}")
-            
+
             return cost
-            
         except Exception as e:
             logger.error(f"Error calculating cost: {e}")
             return 0.0
-    
+
     def _safe_float_conversion(self, value: Any, field_name: str) -> float:
         """Safely convert a value to float with logging."""
-        if isinstance(value, (int, float)):
-            return float(value)
-        elif isinstance(value, str):
-            try:
-                return float(value)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Could not convert {field_name} '{value}' to float: {e}")
-                return 0.0
-        else:
-            logger.warning(f"Unexpected type for {field_name}: {type(value)}")
-            return 0.0
-    
-    async def benchmark_models(
+        result = parse_price(value)
+        if result == 0.0 and value not in (0, 0.0, "0", "0.0", "", None):
+            logger.warning(
+                f"Could not convert {field_name} '{value}' to float; using 0.0"
+            )
+        return result
+
+    def _create_enhanced_result(
+        self,
+        model_id: str,
+        benchmark_results: List[BenchmarkResult],
+        prompt: str
+    ) -> 'EnhancedBenchmarkResult':
+        """Create an enhanced benchmark result from multiple runs."""
+        if not benchmark_results:
+            return EnhancedBenchmarkResult(
+                model_id=model_id,
+                success=False,
+                response=None,
+                error_message="No benchmark results",
+                metrics=None,
+                timestamp=datetime.now(timezone.utc)
+            )
+
+        successful_results = [r for r in benchmark_results if r.error is None]
+        if not successful_results:
+            first_error = benchmark_results[0].error if benchmark_results else "Unknown error"
+            return EnhancedBenchmarkResult(
+                model_id=model_id,
+                success=False,
+                response=None,
+                error_message=first_error,
+                metrics=None,
+                timestamp=datetime.now(timezone.utc)
+            )
+
+        metrics = EnhancedBenchmarkMetrics.from_benchmark_results(benchmark_results)
+        best_result = max(successful_results, key=lambda r: len(r.response or ""))
+
+        return EnhancedBenchmarkResult(
+            model_id=model_id,
+            success=True,
+            response=best_result.response,
+            error_message=None,
+            metrics=metrics,
+            timestamp=datetime.now(timezone.utc)
+        )
+
+    async def save_results(self, results: Dict[str, 'EnhancedBenchmarkResult'], filename: str):
+        """Save enhanced benchmark results to a JSON file."""
+        output_path = self.cache_dir / filename
+
+        serializable_results = {}
+        for model_id, result in results.items():
+            serializable_results[model_id] = {
+                "model_id": result.model_id,
+                "success": result.success,
+                "response": result.response,
+                "error_message": result.error_message,
+                "timestamp": result.timestamp.isoformat(),
+                "metrics": result.metrics.__dict__ if result.metrics else None
+            }
+
+        save_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "results": serializable_results
+        }
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+
+        logger.info(f"Saved enhanced benchmark results to {output_path}")
+
+    async def benchmark_models_enhanced(
         self,
         model_ids: List[str],
         prompt: str,
         runs: int = 1,
         delay_between_requests: float = 1.0,
-        temperature: float = 0.7,
+        temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: int = 1000
     ) -> Dict[str, 'EnhancedBenchmarkResult']:
-        """Benchmark multiple models with the same prompt, returning enhanced results."""
-        logger.info(f"Starting benchmark for {len(model_ids)} models with {runs} runs each")
-        
-        results = {}
-        
+        """Enhanced benchmark method with correct signature for MCP tools."""
+        logger.info(f"Starting enhanced benchmark for {len(model_ids)} models with {runs} runs each")
+
+        results: Dict[str, 'EnhancedBenchmarkResult'] = {}
+
         for model_id in model_ids:
             model_results = []
-            
+
             for run in range(runs):
                 logger.info(f"Benchmarking {model_id} (run {run + 1}/{runs})")
-                
+
                 result = await self.benchmark_model(
                     model_id=model_id,
                     prompt=prompt,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                
-                model_results.append(result)
-                
-                # Small delay between runs to avoid rate limiting
-                if run < runs_per_model - 1:
-                    await asyncio.sleep(0.5)
-            
-            results[model_id] = model_results
-            
-            # Delay between different models
-            await asyncio.sleep(1)
-        
-        comparison = ModelComparison(
-            prompt=prompt,
-            models=models,
-            results=results,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        # Save the comparison
-        self.save_comparison(comparison)
-        
-        return comparison
-    
-    def save_comparison(self, comparison: ModelComparison, file_path: Optional[str] = None) -> str:
-        """Save comparison results to a file."""
-        if file_path is None:
-            timestamp = comparison.timestamp.strftime("%Y%m%d_%H%M%S")
-            file_path = self.cache_dir / f"benchmark_{timestamp}.json"
-        else:
-            file_path = Path(file_path)
-        
-        with open(file_path, "w") as f:
-            json.dump(comparison.to_dict(), f, indent=2)
-        
-        logger.info(f"Saved benchmark comparison to {file_path}")
-        return str(file_path)
-    
-    def load_comparison(self, file_path: str) -> ModelComparison:
-        """Load comparison results from a file."""
-        with open(file_path, "r") as f:
-            data = json.load(f)
-        
-        return ModelComparison.from_dict(data)
-    
-    def get_history(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent benchmark history."""
-        files = sorted(self.cache_dir.glob("benchmark_*.json"), reverse=True)[:limit]
-        
-        history = []
-        for file in files:
-            try:
-                comparison = self.load_comparison(str(file))
-                history.append({
-                    "file": str(file),
-                    "prompt": comparison.prompt[:100] + "..." if len(comparison.prompt) > 100 else comparison.prompt,
-                    "models": comparison.models,
-                    "timestamp": comparison.timestamp.isoformat(),
-                    "metrics_summary": {
-                        model: {
-                            "avg_time_ms": metrics.avg_response_time_ms,
-                            "avg_cost": metrics.avg_cost,
-                            "success_rate": metrics.success_rate
-                        }
-                        for model, metrics in comparison.get_metrics().items()
-                    }
-                })
-            except Exception as e:
-                logger.error(f"Error loading benchmark file {file}: {e}")
-        
-        return history
-    
-    def format_comparison_report(self, comparison: ModelComparison) -> str:
-        """Format a comparison as a readable report."""
-        metrics = comparison.get_metrics()
-        rankings = comparison.get_rankings()
-        
-        report = []
-        report.append("=" * 80)
-        report.append("Benchmark Comparison Report")
-        report.append("=" * 80)
-        report.append(f"\nPrompt: {comparison.prompt}")
-        report.append(f"Timestamp: {comparison.timestamp.isoformat()}")
-        report.append(f"Models Tested: {', '.join(comparison.models)}")
-        
-        report.append("\n" + "-" * 80)
-        report.append("Model Performance Metrics")
-        report.append("-" * 80)
-        
-        for model in comparison.models:
-            m = metrics.get(model)
-            if m:
-                report.append(f"\n{model}:")
-                report.append(f"  Average Response Time: {m.avg_response_time_ms:.2f} ms")
-                report.append(f"  Average Tokens Used: {m.avg_tokens_used:.1f}")
-                report.append(f"  Average Cost: ${m.avg_cost:.6f}")
-                report.append(f"  Total Cost: ${m.total_cost:.6f}")
-                report.append(f"  Success Rate: {m.success_rate * 100:.1f}%")
-                report.append(f"  Sample Count: {m.sample_count}")
-        
-        report.append("\n" + "-" * 80)
-        report.append("Rankings")
-        report.append("-" * 80)
-        
-        for criterion, ranking in rankings.items():
-            report.append(f"\n{criterion.capitalize()}:")
-            for i, item in enumerate(ranking, 1):
-                report.append(f"  {i}. {item['model']}: {item['metric']:.2f} {item['unit']}")
-        
-        report.append("\n" + "=" * 80)
 
-        return "\n".join(report)
+                model_results.append(result)
+
+                if run < runs - 1:
+                    await asyncio.sleep(delay_between_requests / 2)
+
+            enhanced_result = self._create_enhanced_result(model_id, model_results, prompt)
+            results[model_id] = enhanced_result
+
+            await asyncio.sleep(delay_between_requests)
+
+        return results
 
     def shutdown(self) -> None:
         """Shutdown the benchmark handler and cleanup resources."""
@@ -1344,126 +1523,5 @@ class ModelPerformanceAnalyzer:
         }
 
 
-# 추가 메서드들 for EnhancedBenchmarkHandler 호환성
-def _patch_enhanced_benchmark_handler():
-    """EnhancedBenchmarkHandler 클래스에 필요한 메서드들을 동적으로 추가합니다."""
-    
-    def _create_enhanced_result(self, model_id: str, benchmark_results: List[BenchmarkResult], prompt: str) -> 'EnhancedBenchmarkResult':
-        """Create an enhanced benchmark result from multiple runs."""
-        if not benchmark_results:
-            return EnhancedBenchmarkResult(
-                model_id=model_id,
-                success=False,
-                response=None,
-                error_message="No benchmark results",
-                metrics=None,
-                timestamp=datetime.now(timezone.utc)
-            )
-        
-        # Check if any runs were successful
-        successful_results = [r for r in benchmark_results if r.error is None]
-        
-        if not successful_results:
-            # All runs failed
-            first_error = benchmark_results[0].error if benchmark_results else "Unknown error"
-            return EnhancedBenchmarkResult(
-                model_id=model_id,
-                success=False,
-                response=None,
-                error_message=first_error,
-                metrics=None,
-                timestamp=datetime.now(timezone.utc)
-            )
-        
-        # Create enhanced metrics from successful results
-        metrics = EnhancedBenchmarkMetrics.from_benchmark_results(benchmark_results)
-        
-        # Use the best response (longest or highest quality)
-        best_result = max(successful_results, key=lambda r: len(r.response or ""))
-        
-        return EnhancedBenchmarkResult(
-            model_id=model_id,
-            success=True,
-            response=best_result.response,
-            error_message=None,
-            metrics=metrics,
-            timestamp=datetime.now(timezone.utc)
-        )
-    
-    async def save_results(self, results: Dict[str, 'EnhancedBenchmarkResult'], filename: str):
-        """Save enhanced benchmark results to a JSON file."""
-        output_path = os.path.join(self.results_dir, filename)
-        
-        # Convert results to serializable format
-        serializable_results = {}
-        for model_id, result in results.items():
-            serializable_results[model_id] = {
-                'model_id': result.model_id,
-                'success': result.success,
-                'response': result.response,
-                'error_message': result.error_message,
-                'timestamp': result.timestamp.isoformat(),
-                'metrics': result.metrics.__dict__ if result.metrics else None
-            }
-        
-        save_data = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'results': serializable_results
-        }
-        
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(save_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"Saved enhanced benchmark results to {output_path}")
-    
-    async def benchmark_models_enhanced(
-        self,
-        model_ids: List[str],
-        prompt: str,
-        runs: int = 1,
-        delay_between_requests: float = 1.0,
-        temperature: float = 0.7,
-        max_tokens: int = 1000
-    ) -> Dict[str, 'EnhancedBenchmarkResult']:
-        """Enhanced benchmark method with correct signature for mcp_benchmark.py."""
-        logger.info(f"Starting enhanced benchmark for {len(model_ids)} models with {runs} runs each")
-        
-        results = {}
-        
-        for model_id in model_ids:
-            model_results = []
-            
-            for run in range(runs):
-                logger.info(f"Benchmarking {model_id} (run {run + 1}/{runs})")
-                
-                result = await self.benchmark_model(
-                    model_id=model_id,
-                    prompt=prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                
-                model_results.append(result)
-                
-                # Small delay between runs to avoid rate limiting
-                if run < runs - 1:
-                    await asyncio.sleep(delay_between_requests / 2)
-            
-            # Create enhanced result from benchmark results
-            enhanced_result = self._create_enhanced_result(model_id, model_results, prompt)
-            results[model_id] = enhanced_result
-            
-            # Delay between different models
-            await asyncio.sleep(delay_between_requests)
-        
-        return results
-    
-    # 메서드들을 클래스에 추가
-    EnhancedBenchmarkHandler._create_enhanced_result = _create_enhanced_result
-    EnhancedBenchmarkHandler.save_results = save_results
-    EnhancedBenchmarkHandler.benchmark_models_enhanced = benchmark_models_enhanced
-
-# 패치 적용
-_patch_enhanced_benchmark_handler()
-
 # MCP 도구들은 mcp_benchmark.py에서 관리됩니다.
+

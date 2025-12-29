@@ -130,20 +130,6 @@ class ValidationReport:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
-@dataclass
-class ValidationResult:
-    """Result of the complete validation process."""
-    task_id: str
-    original_result: ProcessingResult
-    validation_report: ValidationReport
-    is_valid: bool
-    validation_confidence: float
-    improvement_suggestions: List[str]
-    quality_metrics: QualityMetrics
-    processing_time: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
 class SpecializedValidator:
     """Base class for specialized validation components."""
     

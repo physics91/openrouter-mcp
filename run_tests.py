@@ -10,6 +10,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+try:
+    from dotenv import load_dotenv
+except ImportError:  # Optional for environments without python-dotenv.
+    load_dotenv = None
 
 
 def run_command(cmd: list[str], env: dict = None) -> int:
@@ -56,6 +60,10 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Load .env once so real API tests can pick up OPENROUTER_API_KEY.
+    if load_dotenv is not None:
+        load_dotenv()
 
     # Base pytest command
     base_cmd = ['pytest']

@@ -12,6 +12,7 @@ import pytest
 from PIL import Image
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
+from openrouter_mcp.handlers import multimodal as multimodal_module
 from openrouter_mcp.handlers.multimodal import (
     ImageInput,
     VisionChatRequest,
@@ -23,7 +24,6 @@ from openrouter_mcp.handlers.multimodal import (
     is_vision_model,
     filter_vision_models,
     get_vision_model_names,
-    get_openrouter_client,
 )
 
 
@@ -109,28 +109,28 @@ class TestGetOpenRouterClient:
         # Create a mock client
         mock_client = MagicMock()
 
-        # Mock get_shared_client to return the mock client
-        with patch("openrouter_mcp.handlers.multimodal.get_shared_client", new_callable=AsyncMock) as mock_get_shared:
-            mock_get_shared.return_value = mock_client
+        # Mock get_openrouter_client to return the mock client
+        with patch("openrouter_mcp.handlers.multimodal.get_openrouter_client", new_callable=AsyncMock) as mock_get_client:
+            mock_get_client.return_value = mock_client
 
             # Call the function
-            client = await get_openrouter_client()
+            client = await multimodal_module.get_openrouter_client()
 
             # Verify the client was retrieved
             assert client is not None
             assert client == mock_client
-            mock_get_shared.assert_called_once()
+            mock_get_client.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_client_missing_api_key(self):
         """Test client creation fails without API key."""
-        # Mock get_shared_client to raise ValueError (simulating missing API key)
-        with patch("openrouter_mcp.handlers.multimodal.get_shared_client", new_callable=AsyncMock) as mock_get_shared:
-            mock_get_shared.side_effect = ValueError("OPENROUTER_API_KEY environment variable is required")
+        # Mock get_openrouter_client to raise ValueError (simulating missing API key)
+        with patch("openrouter_mcp.handlers.multimodal.get_openrouter_client", new_callable=AsyncMock) as mock_get_client:
+            mock_get_client.side_effect = ValueError("OPENROUTER_API_KEY environment variable is required")
 
             # Verify that the error is propagated
             with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
-                await get_openrouter_client()
+                await multimodal_module.get_openrouter_client()
 
 
 class TestEncodeImageToBase64:

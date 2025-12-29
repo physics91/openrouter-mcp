@@ -1,4 +1,3 @@
-import os
 import logging
 import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
@@ -10,9 +9,13 @@ from copy import deepcopy
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
 # Import centralized configuration constants
-from ..config.constants import APIConfig, CacheConfig, EnvVars
+from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults
 # Import sanitizer from utils (extracted for SRP compliance)
 from ..utils.sanitizer import SensitiveDataSanitizer
+from ..utils.http import build_openrouter_headers
+from ..utils.pricing import normalize_pricing
+from ..utils.async_utils import maybe_await
+from ..utils.env import get_env_value, get_required_env
 
 
 class OpenRouterError(Exception):
@@ -123,31 +126,22 @@ class OpenRouterClient:
     @classmethod
     def from_env(cls) -> "OpenRouterClient":
         """Create client from environment variables."""
-        api_key = os.getenv(EnvVars.API_KEY)
-        if not api_key:
-            raise ValueError(f"{EnvVars.API_KEY} environment variable is required")
-
+        api_key = get_required_env(EnvVars.API_KEY)
         return cls(
             api_key=api_key,
-            base_url=os.getenv(EnvVars.BASE_URL, APIConfig.BASE_URL),
-            app_name=os.getenv(EnvVars.APP_NAME),
-            http_referer=os.getenv(EnvVars.HTTP_REFERER)
+            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL),
+            app_name=get_env_value(EnvVars.APP_NAME),
+            http_referer=get_env_value(EnvVars.HTTP_REFERER)
         )
     
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for requests."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        if self.app_name:
-            headers["X-Title"] = self.app_name
-        
-        if self.http_referer:
-            headers["HTTP-Referer"] = self.http_referer
-        
-        return headers
+        return build_openrouter_headers(
+            self.api_key,
+            app_name=self.app_name,
+            http_referer=self.http_referer,
+            fallback_to_env=False,
+        )
     
     def _validate_model(self, model: str) -> None:
         """Validate model parameter."""
@@ -164,10 +158,10 @@ class OpenRouterClient:
         for message in messages:
             if "role" not in message or "content" not in message:
                 raise ValueError("Message must have 'role' and 'content' fields")
-            
+
             if message["role"] not in valid_roles:
                 raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
-    
+
     async def _make_request(
         self,
         method: str,
@@ -218,9 +212,9 @@ class OpenRouterClient:
             )
 
             self.logger.debug(f"Response status: {response.status_code}")
-            response.raise_for_status()
+            await maybe_await(response.raise_for_status())
 
-            response_data = response.json()
+            response_data = await maybe_await(response.json())
 
             # Sanitize response for logging
             if isinstance(response_data, dict):
@@ -292,7 +286,7 @@ class OpenRouterClient:
                 json=json_data
             ) as response:
                 self.logger.debug(f"Stream response status: {response.status_code}")
-                response.raise_for_status()
+                await maybe_await(response.raise_for_status())      
 
                 chunk_count = 0
                 async for line in response.aiter_lines():
@@ -339,7 +333,7 @@ class OpenRouterClient:
         SECURITY: Response bodies are sanitized to prevent leaking sensitive data in error messages.
         """
         try:
-            error_data = response.json()
+            error_data = await maybe_await(response.json())
             error_message = error_data.get("error", {}).get("message", "Unknown error")
         except (json_lib.JSONDecodeError, KeyError):
             # SECURITY: Don't include raw response.text - it may contain sensitive data
@@ -437,14 +431,36 @@ class OpenRouterClient:
         """
         self._validate_model(model)
         return await self._make_request("GET", f"/models/{model}")
+
+    async def get_model_pricing(self, model: str) -> Dict[str, float]:
+        """Get normalized pricing for a specific model.
+
+        Pricing values are normalized to per-token dollars to ensure consistent
+        cost calculations across the codebase.
+        """
+        self._validate_model(model)
+        pricing: Dict[str, Any] = {}
+
+        try:
+            if self._model_cache:
+                model_info = await self._model_cache.get_model_info(model)
+            else:
+                model_info = await self.get_model_info(model)
+
+            if model_info and "pricing" in model_info:
+                pricing = model_info["pricing"]
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch pricing for model {model}: {e}")
+
+        return normalize_pricing(pricing)
     
     async def chat_completion(
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
+        stream: bool = ModelDefaults.STREAM,
         **kwargs
     ) -> Dict[str, Any]:
         """Create a chat completion.
@@ -482,9 +498,9 @@ class OpenRouterClient:
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
+        stream: bool = ModelDefaults.STREAM,
         **kwargs
     ) -> Dict[str, Any]:
         """Create a chat completion with vision/image support.
@@ -527,8 +543,8 @@ class OpenRouterClient:
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Create a streaming chat completion.
@@ -566,8 +582,8 @@ class OpenRouterClient:
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Create a streaming chat completion with vision support.

@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
 import json
+from .pricing import normalize_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -418,6 +419,20 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _pricing_per_1k(model_data: Dict[str, Any]) -> Dict[str, float]:
+    """Normalize prompt/completion pricing into per-1k token units for tiering."""
+    normalized = normalize_pricing(
+        model_data.get("pricing", {}),
+        default_price=0.0,
+        normalize_units=True,
+        fill_missing=False,
+    )
+    return {
+        "prompt": normalized["prompt"] * 1000.0,
+        "completion": normalized["completion"] * 1000.0,
+    }
+
+
 def calculate_quality_score(model_data: Dict[str, Any]) -> float:
     """
     Calculate a quality score for the model based on various factors.
@@ -426,7 +441,7 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
         model_data: Model information dictionary
         
     Returns:
-        Quality score from 0 to 10
+        Quality score from 0 to 10. Pricing thresholds assume per-1k tokens.
     """
     score = 5.0  # Base score
     
@@ -450,8 +465,7 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
         score += 0.5
     
     # Pricing factor (premium models usually better)
-    pricing = model_data.get("pricing", {})
-    prompt_price = float(pricing.get("prompt", "0").replace("$", ""))
+    prompt_price = _pricing_per_1k(model_data)["prompt"]
     
     if prompt_price > 0.01:
         score += 1.5  # Premium model
@@ -488,11 +502,11 @@ def determine_performance_tier(model_data: Dict[str, Any]) -> str:
         model_data: Model information dictionary
         
     Returns:
-        Performance tier string: "premium", "standard", or "economy"
+        Performance tier string: "premium", "standard", or "economy". Pricing
+        thresholds assume per-1k tokens.
     """
     quality_score = calculate_quality_score(model_data)
-    pricing = model_data.get("pricing", {})
-    prompt_price = float(pricing.get("prompt", "0").replace("$", ""))
+    prompt_price = _pricing_per_1k(model_data)["prompt"]
     
     if quality_score >= 7.5 or prompt_price > 0.01:
         return "premium"
@@ -510,11 +524,12 @@ def determine_cost_tier(model_data: Dict[str, Any]) -> str:
         model_data: Model information dictionary
         
     Returns:
-        Cost tier string: "free", "low", "medium", or "high"
+        Cost tier string: "free", "low", "medium", or "high". Pricing thresholds
+        assume per-1k tokens.
     """
-    pricing = model_data.get("pricing", {})
-    prompt_price = float(pricing.get("prompt", "0").replace("$", ""))
-    completion_price = float(pricing.get("completion", "0").replace("$", ""))
+    pricing = _pricing_per_1k(model_data)
+    prompt_price = pricing["prompt"]
+    completion_price = pricing["completion"]
     
     total_price = prompt_price + completion_price
     

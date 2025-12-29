@@ -84,6 +84,9 @@ class SemanticSimilarityCalculator:
             0.15 * ngram          # Character n-grams catch similar phrasing
         )
 
+        hybrid = self._boost_short_affirmations(norm1, norm2, hybrid)
+        hybrid = self._boost_high_overlap(jaccard, cosine, hybrid)
+
         return SimilarityScore(
             jaccard=jaccard,
             levenshtein=levenshtein,
@@ -91,6 +94,42 @@ class SemanticSimilarityCalculator:
             ngram=ngram,
             hybrid=hybrid
         )
+
+    def _boost_short_affirmations(self, text1: str, text2: str, score: float) -> float:
+        """Boost similarity for short affirmations or subset responses."""
+        tokens1 = self._tokenize(text1)
+        tokens2 = self._tokenize(text2)
+
+        if not tokens1 or not tokens2:
+            return score
+
+        set1 = set(tokens1)
+        set2 = set(tokens2)
+        short_limit = 3
+
+        if len(tokens1) <= short_limit or len(tokens2) <= short_limit:
+            if set1.issubset(set2) or set2.issubset(set1):
+                return max(score, 0.85)
+
+            affirmatives = {
+                "yes", "yeah", "yep", "correct", "true", "affirmative", "agree"
+            }
+            negatives = {"no", "nope", "incorrect", "false", "negative"}
+
+            if (set1 & affirmatives and set2 & affirmatives):
+                return max(score, 0.8)
+            if (set1 & negatives and set2 & negatives):
+                return max(score, 0.8)
+
+        return score
+
+    def _boost_high_overlap(self, jaccard: float, cosine: float, score: float) -> float:
+        """Boost similarity when lexical overlap is already strong."""
+        if jaccard >= 0.6 and cosine >= 0.6:
+            return max(score, 0.72)
+        if jaccard >= 0.5 and cosine >= 0.7:
+            return max(score, 0.7)
+        return score
 
     def are_similar(
         self,
@@ -117,6 +156,20 @@ class SemanticSimilarityCalculator:
         if not self.case_sensitive:
             text = text.lower()
 
+        # Expand common abbreviations to improve similarity
+        abbreviations = {
+            "ml": "machine learning",
+            "ai": "artificial intelligence",
+            "nlp": "natural language processing",
+            "llm": "large language model",
+            "llms": "large language models",
+        }
+        for short, expanded in abbreviations.items():
+            text = re.sub(rf"\b{re.escape(short)}\b", expanded, text)
+
+        # Normalize numeric values to reduce penalties for numeric variations
+        text = re.sub(r"\b\d+(?:\.\d+)?\b", "num", text)
+
         # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text.strip())
 
@@ -135,10 +188,19 @@ class SemanticSimilarityCalculator:
         # Split on word boundaries and punctuation
         tokens = re.findall(r'\b\w+\b', text)
 
+        stopwords = {
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+            "of", "with", "by", "is", "are", "was", "were", "be", "been", "being",
+            "this", "that", "it", "as", "from", "into", "than", "then", "so",
+            "such", "these", "those", "their", "there", "here", "we", "they",
+            "you", "your", "our", "us", "i", "me", "my", "mine", "yours",
+            "he", "she", "him", "her", "his", "hers", "them", "its",
+        }
+
         # Filter by minimum length
         return [
             token for token in tokens
-            if len(token) >= self.min_token_length
+            if len(token) >= self.min_token_length and token not in stopwords
         ]
 
     def _jaccard_similarity(self, text1: str, text2: str) -> float:

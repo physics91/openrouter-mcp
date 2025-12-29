@@ -27,11 +27,7 @@ from .adaptive_router import AdaptiveRouter, RoutingDecision
 from .cross_validator import CrossValidator, ValidationResult
 from .operational_controls import (
     OperationalConfig,
-    ConcurrencyLimiter,
-    QuotaTracker,
-    FailureController,
-    StorageManager,
-    TaskCancellationManager
+    init_operational_controls,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,12 +83,13 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         super().__init__(model_provider)
 
         # Initialize operational controls
-        self.operational_config = operational_config or OperationalConfig.conservative()
-        self.concurrency_limiter = ConcurrencyLimiter(self.operational_config.concurrency)
-        self.quota_tracker = QuotaTracker(self.operational_config.quota)
-        self.failure_controller = FailureController(self.operational_config.failure)
-        self.storage_manager = StorageManager(self.operational_config.storage)
-        self.cancellation_manager = TaskCancellationManager()
+        controls = init_operational_controls(operational_config)
+        self.operational_config = controls.config
+        self.concurrency_limiter = controls.concurrency_limiter
+        self.quota_tracker = controls.quota_tracker
+        self.failure_controller = controls.failure_controller
+        self.storage_manager = controls.storage_manager
+        self.cancellation_manager = controls.cancellation_manager
 
         # Initialize component instances with same operational config
         self.consensus_engine = ConsensusEngine(model_provider)
@@ -241,31 +238,47 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             self.concurrency_limiter.release_task_slot(session_id)
             # Reset quota tracking for this request
             self.quota_tracker.reset_request(request_id)
-    
+
+    def _record_component(
+        self,
+        session: SolvingSession,
+        component_name: str,
+        result: Optional[Any] = None
+    ) -> None:
+        """Record component usage and optional intermediate result."""
+        session.components_used.append(component_name)
+        if result is not None:
+            session.intermediate_results.append(result)
+
+    def _select_best_subtask_result(
+        self,
+        ensemble_result: EnsembleResult
+    ) -> Optional[ProcessingResult]:
+        """Select the best sub-task result based on confidence."""
+        if not ensemble_result.sub_task_results:
+            return None
+        best_subtask = max(
+            ensemble_result.sub_task_results,
+            key=lambda x: x.result.confidence if x.success else 0
+        )
+        return best_subtask.result
+
     async def _solve_sequential(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using sequential component workflow."""
         task = session.original_task
         
         # Step 1: Route to best initial model
         router_decision = await self.adaptive_router.process(task)
-        session.components_used.append("adaptive_router")
-        session.intermediate_results.append(router_decision)
-        
+        self._record_component(session, "adaptive_router", router_decision)
+
         # Step 2: Get initial result using ensemble reasoning
         ensemble_result = await self.ensemble_reasoner.process(task)
-        session.components_used.append("ensemble_reasoner")
-        session.intermediate_results.append(ensemble_result)
-        
+        self._record_component(session, "ensemble_reasoner", ensemble_result)
+
         # Step 3: Validate the result
-        if ensemble_result.sub_task_results:
-            # Use the best sub-task result for validation
-            best_subtask = max(
-                ensemble_result.sub_task_results,
-                key=lambda x: x.result.confidence if x.success else 0
-            )
-            validation_result = await self.cross_validator.process(
-                best_subtask.result, task
-            )
+        best_result = self._select_best_subtask_result(ensemble_result)
+        if best_result:
+            validation_result = await self.cross_validator.process(best_result, task)
         else:
             # Create a dummy result for validation
             dummy_result = ProcessingResult(
@@ -275,15 +288,13 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 confidence=0.8
             )
             validation_result = await self.cross_validator.process(dummy_result, task)
-        
-        session.components_used.append("cross_validator")
-        session.intermediate_results.append(validation_result)
-        
+
+        self._record_component(session, "cross_validator", validation_result)
+
         # Step 4: Build consensus if validation suggests improvements
         if not validation_result.is_valid:
             consensus_result = await self.consensus_engine.process(task)
-            session.components_used.append("consensus_engine")
-            session.intermediate_results.append(consensus_result)
+            self._record_component(session, "consensus_engine", consensus_result)
             final_content = consensus_result.consensus_content
         else:
             final_content = ensemble_result.final_content
@@ -304,8 +315,8 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         ensemble_result = results[0] if not isinstance(results[0], Exception) else None
         consensus_result = results[1] if not isinstance(results[1], Exception) else None
         
-        session.components_used.extend(["ensemble_reasoner", "consensus_engine"])
-        session.intermediate_results.extend([r for r in results if not isinstance(r, Exception)])
+        self._record_component(session, "ensemble_reasoner", ensemble_result)
+        self._record_component(session, "consensus_engine", consensus_result)
         
         # Choose best result or combine them
         if ensemble_result and consensus_result:
@@ -330,27 +341,20 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         # Level 1: Route and decompose
         router_decision = await self.adaptive_router.process(task)
         ensemble_result = await self.ensemble_reasoner.process(task)
-        
-        session.components_used.extend(["adaptive_router", "ensemble_reasoner"])
-        session.intermediate_results.extend([router_decision, ensemble_result])
-        
+
+        self._record_component(session, "adaptive_router", router_decision)
+        self._record_component(session, "ensemble_reasoner", ensemble_result)
+
         # Level 2: Validate and improve
-        if ensemble_result.sub_task_results:
-            best_subtask = max(
-                ensemble_result.sub_task_results,
-                key=lambda x: x.result.confidence if x.success else 0
-            )
-            validation_result = await self.cross_validator.process(
-                best_subtask.result, task
-            )
-            session.components_used.append("cross_validator")
-            session.intermediate_results.append(validation_result)
-            
+        best_result = self._select_best_subtask_result(ensemble_result)
+        if best_result:
+            validation_result = await self.cross_validator.process(best_result, task)
+            self._record_component(session, "cross_validator", validation_result)
+
             # Level 3: Consensus if needed
             if not validation_result.is_valid:
                 consensus_result = await self.consensus_engine.process(task)
-                session.components_used.append("consensus_engine")
-                session.intermediate_results.append(consensus_result)
+                self._record_component(session, "consensus_engine", consensus_result)
                 final_content = consensus_result.consensus_content
             else:
                 final_content = ensemble_result.final_content
@@ -372,14 +376,20 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 # Start with ensemble reasoning
                 ensemble_result = await self.ensemble_reasoner.process(task)
                 current_content = ensemble_result.final_content
-                session.components_used.append(f"ensemble_reasoner_iter_{iteration}")
-                session.intermediate_results.append(ensemble_result)
+                self._record_component(
+                    session,
+                    f"ensemble_reasoner_iter_{iteration}",
+                    ensemble_result
+                )
             else:
                 # Use consensus to refine
                 consensus_result = await self.consensus_engine.process(task)
                 current_content = consensus_result.consensus_content
-                session.components_used.append(f"consensus_engine_iter_{iteration}")
-                session.intermediate_results.append(consensus_result)
+                self._record_component(
+                    session,
+                    f"consensus_engine_iter_{iteration}",
+                    consensus_result
+                )
             
             # Validate current solution
             dummy_result = ProcessingResult(
@@ -390,8 +400,11 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             )
             
             validation_result = await self.cross_validator.process(dummy_result, task)
-            session.components_used.append(f"cross_validator_iter_{iteration}")
-            session.intermediate_results.append(validation_result)
+            self._record_component(
+                session,
+                f"cross_validator_iter_{iteration}",
+                validation_result
+            )
             
             # Check if solution is good enough
             if validation_result.is_valid and validation_result.validation_confidence > 0.8:

@@ -3,27 +3,17 @@ from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
 # Import shared MCP instance and client manager from registry
-from ..mcp_registry import mcp, get_shared_client
+from ..mcp_registry import mcp, get_openrouter_client
 # Import centralized configuration constants
-from ..config.constants import ModelDefaults
+from ..models.requests import BaseChatRequest, ChatMessage
 
 
 logger = logging.getLogger(__name__)
 
 
-class ChatMessage(BaseModel):
-    """A chat message."""
-    role: str = Field(..., description="The role of the message sender (system, user, assistant)")
-    content: str = Field(..., description="The content of the message")
-
-
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(BaseChatRequest):
     """Request for chat completion."""
-    model: str = Field(..., description="The model to use for completion")
-    messages: List[ChatMessage] = Field(..., description="List of messages in the conversation")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate")
-    stream: bool = Field(ModelDefaults.STREAM, description="Whether to stream the response")
+    pass
 
 
 class ModelListRequest(BaseModel):
@@ -73,7 +63,7 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
     messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_shared_client()
+    client = await get_openrouter_client()
 
     try:
         if request.stream:
@@ -138,7 +128,7 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
     logger.info(f"Listing models with filter: {request.filter_by or 'none'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_shared_client()
+    client = await get_openrouter_client()
 
     try:
         models = await client.list_models(filter_by=request.filter_by)
@@ -182,7 +172,7 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
     logger.info(f"Getting usage stats from {request.start_date or 'beginning'} to {request.end_date or 'now'}")
 
     # Get shared client (already in async context, no need for 'async with')
-    client = await get_shared_client()
+    client = await get_openrouter_client()
 
     try:
         stats = await client.track_usage(
