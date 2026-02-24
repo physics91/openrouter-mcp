@@ -283,9 +283,11 @@ class TestMCPManager:
     def test_add_server_from_preset(self, manager):
         """Test adding a server from a preset configuration."""
         preset = manager.add_server_from_preset("openrouter", api_key="test-key")
-        
+
         assert "openrouter" in manager.config["mcpServers"]
-        assert manager.config["mcpServers"]["openrouter"]["env"]["OPENROUTER_API_KEY"] == "test-key"
+        # API keys should not be persisted to config for security
+        env = manager.config["mcpServers"]["openrouter"].get("env", {})
+        assert "OPENROUTER_API_KEY" not in env
     
     def test_save_config_error_handling(self, manager):
         """Test error handling when saving configuration fails."""

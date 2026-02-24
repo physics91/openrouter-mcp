@@ -69,9 +69,9 @@ class TaskContext:
 @dataclass
 class ProcessingResult:
     """Result from processing a task."""
-    task_id: str
-    model_id: str
-    content: str
+    task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    model_id: str = "unknown"
+    content: str = ""
     confidence: float = 0.0
     processing_time: float = 0.0
     tokens_used: int = 0

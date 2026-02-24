@@ -7,7 +7,6 @@ in the Claude Code CLI configuration.
 """
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -16,6 +15,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 import platform
 import logging
+from ..config.constants import EnvVars
+from ..utils.env import get_env_value
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +90,11 @@ class MCPManager:
             "command": "cmd" if sys.platform == "win32" else "npx",
             "args": ["/c", "npx", "@physics91/openrouter-mcp"] if sys.platform == "win32" else ["@physics91/openrouter-mcp"],
             "env": {
-                "OPENROUTER_API_KEY": None,  # Will be set by user
-                "OPENROUTER_APP_NAME": "claude-code-mcp",
-                "OPENROUTER_HTTP_REFERER": "https://localhost:3000",
+                # SECURITY: Never store API keys in config files
+                # API key MUST be set as environment variable: export OPENROUTER_API_KEY=sk-or-...
+                # The MCP server will read it from the environment at runtime
+                EnvVars.APP_NAME: "claude-code-mcp",
+                EnvVars.HTTP_REFERER: "https://localhost:3000",
                 "HOST": "localhost",
                 "PORT": "8000",
                 "LOG_LEVEL": "info"
@@ -290,33 +293,67 @@ class MCPManager:
     
     def validate_server(self, config: MCPServerConfig) -> bool:
         """Validate server configuration.
-        
+
         Args:
             config: Server configuration to validate
-        
+
         Returns:
             True if configuration is valid
-        
+
         Raises:
             MCPConfigError: If configuration is invalid
         """
         if not config.name:
             raise MCPConfigError("Server name is required")
-        
+
         if not config.command:
             raise MCPConfigError("Server command is required")
-        
+
+        # SECURITY: Validate environment variable security for OpenRouter server
+        if config.name == "openrouter":
+            self._validate_openrouter_security(config)
+
         # Check if command exists (basic validation)
         if config.command in ["python", "node", "npx", "npm", "dotnet", "java"]:
             # Common commands are assumed to be valid
             return True
-        
+
         # For absolute paths, check if file exists
         command_path = Path(config.command)
         if command_path.is_absolute() and not command_path.exists():
             raise MCPConfigError(f"Command not found: {config.command}")
-        
+
         return True
+
+    def _validate_openrouter_security(self, config: MCPServerConfig) -> None:
+        """Validate OpenRouter server security configuration.
+
+        Args:
+            config: Server configuration to validate
+
+        Raises:
+            MCPConfigError: If API key is stored in config (security issue)
+        """
+        # Check if API key is stored in env dict (SECURITY VIOLATION)
+        if config.env and EnvVars.API_KEY in config.env:
+            api_key_value = config.env[EnvVars.API_KEY]
+            if api_key_value and api_key_value.strip():
+                raise MCPConfigError(
+                    "SECURITY ERROR: API keys must NOT be stored in configuration files. "
+                    f"Please remove the {EnvVars.API_KEY} from the config and set it as an environment variable:\n"
+                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
+                )
+
+        # Check if API key is set in environment
+        env_api_key = get_env_value(EnvVars.API_KEY)
+        if not env_api_key:
+            logger.warning(
+                f"WARNING: {EnvVars.API_KEY} environment variable is not set. "
+                "The server will fail to start without it. Please set it:\n"
+                f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
+            )
     
     def backup_config(self) -> Path:
         """Create a backup of the current configuration.
@@ -416,11 +453,17 @@ class MCPManager:
         
         # Handle special parameters for specific presets
         if preset_name == "openrouter":
+            # SECURITY: NEVER persist API keys to config files
+            # Warn user if they attempt to provide API key as argument
             if "api_key" in kwargs:
-                if "env" not in preset:
-                    preset["env"] = {}
-                preset["env"]["OPENROUTER_API_KEY"] = kwargs["api_key"]
-            
+                logger.warning(
+                    "SECURITY WARNING: API keys should NOT be stored in configuration files. "
+                    f"Please set {EnvVars.API_KEY} as an environment variable instead:\n"
+                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
+                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-...\n"
+                    "The API key argument will be ignored for security."
+                )
+
             # Set CWD to current OpenRouter project directory
             preset["cwd"] = str(Path(__file__).parent.parent.parent.parent.resolve())
         

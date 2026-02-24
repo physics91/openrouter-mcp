@@ -404,17 +404,8 @@ asyncio.run(benchmark_cache())
 
 ### 🔧 Environment Variables
 
-```env
-# Cache Configuration
-CACHE_TTL_HOURS=1                     # Cache lifetime (1-24 hours)
-CACHE_MAX_ITEMS=1000                  # Memory cache limit
-CACHE_FILE=openrouter_model_cache.json # Cache file location
-
-# Performance Tuning
-CACHE_ENABLE_STATS=true               # Enable statistics collection
-CACHE_AUTO_REFRESH=true               # Background refresh enabled
-CACHE_FALLBACK_API=true               # API fallback on cache failure
-```
+Cache settings are configured programmatically. The server does not currently
+read cache-related environment variables.
 
 ### 🛠️ Programmatic Configuration
 

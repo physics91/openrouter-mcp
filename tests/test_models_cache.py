@@ -163,83 +163,127 @@ class TestModelCache:
     async def test_fetch_models_from_api(self, mock_openrouter_models, cache_config):
         """Test fetching models from OpenRouter API."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
-        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
-            mock_client = MagicMock()
-            mock_client_getter.return_value = mock_client
-            
-            async def mock_aenter(self):
-                return mock_client
-                
-            async def mock_aexit(self, *args):
-                return None
-                
-            mock_client.__aenter__ = mock_aenter
-            mock_client.__aexit__ = mock_aexit
-            async def mock_list_models():
-                return mock_openrouter_models["data"]
-            mock_client.list_models = mock_list_models
-            
-            models = await cache._fetch_models_from_api()
-            
-            assert len(models) == 5
-            assert models[0]["id"] == "openai/gpt-5"
-            assert models[1]["id"] == "anthropic/claude-4"
-            assert models[2]["id"] == "google/gemini-2-5-pro"
-            # Verify the mock was called (no direct assert for function)
+
+        # Mock environment variables
+        with patch.dict('os.environ', {
+            'OPENROUTER_API_KEY': 'test-api-key',
+            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
+        }):
+            # Mock httpx.AsyncClient since _fetch_models_from_api now uses raw HTTP
+            with patch('httpx.AsyncClient') as mock_httpx_client:
+                mock_client_instance = MagicMock()
+                mock_httpx_client.return_value = mock_client_instance
+
+                # Mock the context manager
+                async def mock_aenter(self):
+                    return mock_client_instance
+
+                async def mock_aexit(self, *args):
+                    return None
+
+                mock_client_instance.__aenter__ = mock_aenter
+                mock_client_instance.__aexit__ = mock_aexit
+
+                # Mock the GET request
+                mock_response = MagicMock()
+                mock_response.json.return_value = mock_openrouter_models
+                mock_response.raise_for_status = MagicMock()
+
+                async def mock_get(*args, **kwargs):
+                    return mock_response
+
+                mock_client_instance.get = mock_get
+
+                models = await cache._fetch_models_from_api()
+
+                assert len(models) == 5
+                assert models[0]["id"] == "openai/gpt-5"
+                assert models[1]["id"] == "anthropic/claude-4"
+                assert models[2]["id"] == "google/gemini-2-5-pro"
+                # Verify the mock was called
+                mock_response.raise_for_status.assert_called_once()
 
     def test_save_to_file_cache(self, mock_openrouter_models, cache_config):
-        """Test saving models to file cache."""
+        """Test saving models to file cache with file locking."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+        import tempfile
+        import os
+
         cache = ModelCache(**cache_config)
         models = mock_openrouter_models["data"]
-        
-        with patch('builtins.open', mock_open()) as mock_file:
-            cache._save_to_file_cache(models)
-            
-            mock_file.assert_called_once_with(cache_config["cache_file"], 'w', encoding='utf-8')
-            # Verify JSON was written
-            handle = mock_file()
-            written_data = ''.join(call[0][0] for call in handle.write.call_args_list)
-            saved_data = json.loads(written_data)
-            
+
+        # Use a real temporary file to test file locking functionality
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            temp_cache_file = f.name
+
+        try:
+            # Update cache to use temp file
+            cache.cache_file = temp_cache_file
+
+            # Save to cache (use sync version for testing)
+            cache._save_to_file_cache_sync(models)
+
+            # Verify file was created and contains correct data
+            assert os.path.exists(temp_cache_file)
+
+            with open(temp_cache_file, 'r') as f:
+                saved_data = json.load(f)
+
             assert "models" in saved_data
             assert "updated_at" in saved_data
             assert len(saved_data["models"]) == 5
+            assert saved_data["models"][0]["id"] == "openai/gpt-5"
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_cache_file):
+                os.unlink(temp_cache_file)
 
     def test_load_from_file_cache_success(self, mock_openrouter_models, cache_config):
-        """Test loading models from file cache when file exists."""
+        """Test loading models from file cache when file exists with file locking."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+        import tempfile
+        import os
+
         cache = ModelCache(**cache_config)
-        
-        # Mock file content
+
+        # Create a real temp file with test data
         cache_data = {
             "models": mock_openrouter_models["data"],
             "updated_at": datetime.now().isoformat()
         }
-        mock_file_content = json.dumps(cache_data)
-        
-        with patch('builtins.open', mock_open(read_data=mock_file_content)):
-            with patch('pathlib.Path.exists', return_value=True):
-                models, last_update = cache._load_from_file_cache()
-                
-                assert len(models) == 5
-                assert models[0]["id"] == "openai/gpt-5"
-                assert last_update is not None
+
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            temp_cache_file = f.name
+            json.dump(cache_data, f)
+
+        try:
+            # Update cache to use temp file
+            cache.cache_file = temp_cache_file
+
+            # Load from cache (use sync version for testing)
+            models, last_update = cache._load_from_file_cache_sync()
+
+            assert len(models) == 5
+            assert models[0]["id"] == "openai/gpt-5"
+            assert last_update is not None
+
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_cache_file):
+                os.unlink(temp_cache_file)
 
     def test_load_from_file_cache_file_not_exists(self, cache_config):
         """Test loading from file cache when file doesn't exist."""
         from src.openrouter_mcp.models.cache import ModelCache
         
         cache = ModelCache(**cache_config)
-        
+
         with patch('pathlib.Path.exists', return_value=False):
-            models, last_update = cache._load_from_file_cache()
-            
+            models, last_update = cache._load_from_file_cache_sync()
+
             assert models == []
             assert last_update is None
 
@@ -263,36 +307,47 @@ class TestModelCache:
     async def test_get_models_cache_miss(self, mock_openrouter_models, cache_config):
         """Test getting models when cache is expired (cache miss)."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
-        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
-            mock_client = MagicMock()
-            mock_client_getter.return_value = mock_client
-            
-            async def mock_aenter(self):
-                return mock_client
-                
-            async def mock_aexit(self, *args):
-                return None
-                
-            mock_client.__aenter__ = mock_aenter
-            mock_client.__aexit__ = mock_aexit
-            async def mock_list_models():
-                return mock_openrouter_models["data"]
-            mock_client.list_models = mock_list_models
-            
-            with patch.object(cache, '_save_to_file_cache') as mock_save:
-                models = await cache.get_models()
-                
-                assert len(models) == 5
-                assert models[0]["id"] == "openai/gpt-5"
-                mock_save.assert_called_once()
-                # Cache should have enhanced models, not raw data
-                assert len(cache._memory_cache) == 5
-                # Check that models are enhanced with metadata
-                assert "provider" in cache._memory_cache[0]
-                assert "category" in cache._memory_cache[0]
+
+        # Mock environment variables and httpx
+        with patch.dict('os.environ', {
+            'OPENROUTER_API_KEY': 'test-api-key',
+            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
+        }):
+            with patch('httpx.AsyncClient') as mock_httpx_client:
+                mock_client_instance = MagicMock()
+                mock_httpx_client.return_value = mock_client_instance
+
+                async def mock_aenter(self):
+                    return mock_client_instance
+
+                async def mock_aexit(self, *args):
+                    return None
+
+                mock_client_instance.__aenter__ = mock_aenter
+                mock_client_instance.__aexit__ = mock_aexit
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = mock_openrouter_models
+                mock_response.raise_for_status = MagicMock()
+
+                async def mock_get(*args, **kwargs):
+                    return mock_response
+
+                mock_client_instance.get = mock_get
+
+                with patch.object(cache, '_save_to_file_cache') as mock_save:
+                    models = await cache.get_models()
+
+                    assert len(models) == 5
+                    assert models[0]["id"] == "openai/gpt-5"
+                    mock_save.assert_called_once()
+                    # Cache should have enhanced models, not raw data
+                    assert len(cache._memory_cache) == 5
+                    # Check that models are enhanced with metadata
+                    assert "provider" in cache._memory_cache[0]
+                    assert "category" in cache._memory_cache[0]
 
     def test_get_model_metadata(self, mock_openrouter_models, cache_config):
         """Test extracting enhanced model metadata."""
@@ -354,33 +409,44 @@ class TestModelCache:
     async def test_refresh_cache_force(self, mock_openrouter_models, cache_config):
         """Test force refreshing cache even when not expired."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
+
         # Set valid cache
         cache._memory_cache = [{"id": "old/model", "name": "Old Model"}]
         cache._last_update = datetime.now()
-        
-        with patch('src.openrouter_mcp.client.openrouter.OpenRouterClient.from_env') as mock_client_getter:
-            mock_client = MagicMock()
-            mock_client_getter.return_value = mock_client
-            
-            async def mock_aenter(self):
-                return mock_client
-                
-            async def mock_aexit(self, *args):
-                return None
-                
-            mock_client.__aenter__ = mock_aenter
-            mock_client.__aexit__ = mock_aexit
-            async def mock_list_models():
-                return mock_openrouter_models["data"]
-            mock_client.list_models = mock_list_models
-            
-            with patch.object(cache, '_save_to_file_cache') as mock_save:
-                await cache.refresh_cache(force=True)
-                
-                assert len(cache._memory_cache) == 5
+
+        # Mock environment variables and httpx
+        with patch.dict('os.environ', {
+            'OPENROUTER_API_KEY': 'test-api-key',
+            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
+        }):
+            with patch('httpx.AsyncClient') as mock_httpx_client:
+                mock_client_instance = MagicMock()
+                mock_httpx_client.return_value = mock_client_instance
+
+                async def mock_aenter(self):
+                    return mock_client_instance
+
+                async def mock_aexit(self, *args):
+                    return None
+
+                mock_client_instance.__aenter__ = mock_aenter
+                mock_client_instance.__aexit__ = mock_aexit
+
+                mock_response = MagicMock()
+                mock_response.json.return_value = mock_openrouter_models
+                mock_response.raise_for_status = MagicMock()
+
+                async def mock_get(*args, **kwargs):
+                    return mock_response
+
+                mock_client_instance.get = mock_get
+
+                with patch.object(cache, '_save_to_file_cache') as mock_save:
+                    await cache.refresh_cache(force=True)
+
+                    assert len(cache._memory_cache) == 5
                 assert cache._memory_cache[0]["id"] == "openai/gpt-5"
                 mock_save.assert_called_once()
 

@@ -1,32 +1,21 @@
-import os
 import logging
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
-from fastmcp import FastMCP
 
-from ..client.openrouter import OpenRouterClient
-
-
-# Create the MCP instance
-mcp = FastMCP("OpenRouter MCP Server")
+# Import shared MCP instance and client manager from registry
+from ..mcp_registry import mcp, get_openrouter_client
+# Import centralized configuration constants
+from ..models.requests import BaseChatRequest, ChatMessage
+from ..utils.async_utils import collect_async_iterable
+from ..utils.message_utils import serialize_messages
 
 
 logger = logging.getLogger(__name__)
 
 
-class ChatMessage(BaseModel):
-    """A chat message."""
-    role: str = Field(..., description="The role of the message sender (system, user, assistant)")
-    content: str = Field(..., description="The content of the message")
-
-
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(BaseChatRequest):
     """Request for chat completion."""
-    model: str = Field(..., description="The model to use for completion")
-    messages: List[ChatMessage] = Field(..., description="List of messages in the conversation")
-    temperature: float = Field(0.7, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(None, description="Maximum number of tokens to generate")
-    stream: bool = Field(False, description="Whether to stream the response")
+    pass
 
 
 class ModelListRequest(BaseModel):
@@ -38,15 +27,6 @@ class UsageStatsRequest(BaseModel):
     """Request for usage statistics."""
     start_date: Optional[str] = Field(None, description="Start date for usage tracking (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
-
-
-def get_openrouter_client() -> OpenRouterClient:
-    """Get configured OpenRouter client."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError("OPENROUTER_API_KEY environment variable is required")
-    
-    return OpenRouterClient.from_env()
 
 
 @mcp.tool()
@@ -80,40 +60,40 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
         response = await chat_with_model(request)
     """
     logger.info(f"Processing chat completion request for model: {request.model}")
-    
+
     # Convert Pydantic models to dict format expected by client
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    
-    client = get_openrouter_client()
-    
+    messages = serialize_messages(request.messages)
+
+    # Get shared client (already in async context, no need for 'async with')
+    client = await get_openrouter_client()
+
     try:
-        async with client:
-            if request.stream:
-                logger.info("Initiating streaming chat completion")
-                chunks = []
-                async for chunk in client.stream_chat_completion(
-                    model=request.model,
-                    messages=messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens
-                ):
-                    chunks.append(chunk)
-                
-                logger.info(f"Streaming completed with {len(chunks)} chunks")
-                return chunks
-            else:
-                logger.info("Initiating non-streaming chat completion")
-                response = await client.chat_completion(
-                    model=request.model,
-                    messages=messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
-                    stream=False
+        if request.stream:
+            logger.info("Initiating streaming chat completion")
+            chunks = await collect_async_iterable(
+                client.stream_chat_completion(
+                model=request.model,
+                messages=messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
                 )
-                
-                logger.info(f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}")
-                return response
-                
+            )
+
+            logger.info(f"Streaming completed with {len(chunks)} chunks")
+            return chunks
+        else:
+            logger.info("Initiating non-streaming chat completion")
+            response = await client.chat_completion(
+                model=request.model,
+                messages=messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+                stream=False
+            )
+
+            logger.info(f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}")
+            return response
+
     except Exception as e:
         logger.error(f"Chat completion failed: {str(e)}")
         raise
@@ -148,15 +128,15 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
         models = await list_available_models(request)
     """
     logger.info(f"Listing models with filter: {request.filter_by or 'none'}")
-    
-    client = get_openrouter_client()
-    
+
+    # Get shared client (already in async context, no need for 'async with')
+    client = await get_openrouter_client()
+
     try:
-        async with client:
-            models = await client.list_models(filter_by=request.filter_by)
-            logger.info(f"Retrieved {len(models)} models")
-            return models
-            
+        models = await client.list_models(filter_by=request.filter_by)
+        logger.info(f"Retrieved {len(models)} models")
+        return models
+
     except Exception as e:
         logger.error(f"Failed to list models: {str(e)}")
         raise
@@ -192,18 +172,18 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
         stats = await get_usage_stats(request)
     """
     logger.info(f"Getting usage stats from {request.start_date or 'beginning'} to {request.end_date or 'now'}")
-    
-    client = get_openrouter_client()
-    
+
+    # Get shared client (already in async context, no need for 'async with')
+    client = await get_openrouter_client()
+
     try:
-        async with client:
-            stats = await client.track_usage(
-                start_date=request.start_date,
-                end_date=request.end_date
-            )
-            logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
-            return stats
-            
+        stats = await client.track_usage(
+            start_date=request.start_date,
+            end_date=request.end_date
+        )
+        logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
+        return stats
+
     except Exception as e:
         logger.error(f"Failed to get usage stats: {str(e)}")
         raise

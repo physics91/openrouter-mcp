@@ -48,6 +48,16 @@ Help and troubleshooting resources.
 | [Troubleshooting Guide](TROUBLESHOOTING.md) | Common issues and solutions | 2025-01-12 |
 | [FAQ](FAQ.md) | Frequently asked questions | 2025-01-12 |
 
+### Reference & Reports
+Quick references and internal reports.
+
+| Document | Description | Last Updated |
+|----------|-------------|--------------|
+| [Quick Reference](QUICK_REFERENCE.md) | Handy CLI/API notes | 2025-01-12 |
+| [Claude Code Quickref](CLAUDE_CODE_QUICKREF.md) | Command shortcuts | 2025-01-12 |
+| [Secure Storage Integration](SECURE_STORAGE_INTEGRATION.md) | Key storage setup | 2025-01-12 |
+| [Maintenance Reports](reports/README.md) | Fix summaries and verification notes | 2025-01-12 |
+
 ## 🗺️ Quick Navigation Map
 
 ```

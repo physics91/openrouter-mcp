@@ -271,15 +271,13 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 
-# Optional Cache Configuration
-CACHE_TTL_HOURS=1
-CACHE_MAX_ITEMS=1000
-CACHE_FILE=openrouter_model_cache.json
-
 # Optional API Configuration
 OPENROUTER_APP_NAME=my-app
 OPENROUTER_HTTP_REFERER=https://myapp.com
 ```
+
+Cache tuning (TTL, memory size, cache file path) is configured programmatically
+via `ModelCache` and `OpenRouterClient` rather than environment variables.
 
 ### Claude Desktop Integration
 
@@ -423,7 +421,7 @@ When upgrading major versions:
 ```bash
 # Backup current configuration
 cp .env .env.backup
-cp openrouter_model_cache.json cache.backup.json
+cp .cache/openrouter_model_cache.json cache.backup.json
 
 # Run migration
 npx openrouter-mcp migrate
@@ -451,7 +449,7 @@ npm uninstall openrouter-mcp
 rm .env
 
 # Remove cache
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
 
 # Remove logs
 rm -rf logs/

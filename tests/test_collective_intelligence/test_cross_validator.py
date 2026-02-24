@@ -108,7 +108,7 @@ class TestFactCheckValidator:
         """Test successful fact-checking validation."""
         validator = FactCheckValidator(mock_model_provider)
         result = sample_processing_results[0]
-        
+
         # Mock fact-check response indicating issues
         fact_check_response = ProcessingResult(
             task_id="fact_check_test",
@@ -116,14 +116,16 @@ class TestFactCheckValidator:
             content="Found several factual errors and inaccuracies in the response",
             confidence=0.9
         )
-        
+
+        # Clear side_effect to allow return_value to work
+        mock_model_provider.process_task.side_effect = None
         mock_model_provider.process_task.return_value = fact_check_response
-        
+
         issues = await validator.validate(result, sample_task, "fact_checker_model")
-        
+
         assert isinstance(issues, list)
         assert len(issues) > 0  # Should find issues based on content
-        
+
         for issue in issues:
             assert isinstance(issue, ValidationIssue)
             assert issue.criteria == ValidationCriteria.FACTUAL_CORRECTNESS
@@ -184,7 +186,7 @@ class TestBiasDetectionValidator:
         """Test bias detection when bias is found."""
         validator = BiasDetectionValidator(mock_model_provider)
         result = sample_processing_results[0]
-        
+
         # Mock bias detection response indicating bias
         bias_check_response = ProcessingResult(
             task_id="bias_check_test",
@@ -192,14 +194,16 @@ class TestBiasDetectionValidator:
             content="The response shows cultural bias and unfair stereotypes in its analysis",
             confidence=0.8
         )
-        
+
+        # Clear side_effect to allow return_value to work
+        mock_model_provider.process_task.side_effect = None
         mock_model_provider.process_task.return_value = bias_check_response
-        
+
         issues = await validator.validate(result, sample_task, "bias_detector_model")
-        
+
         assert isinstance(issues, list)
         assert len(issues) > 0  # Should find bias issues
-        
+
         for issue in issues:
             assert isinstance(issue, ValidationIssue)
             assert issue.criteria == ValidationCriteria.BIAS_NEUTRALITY
@@ -706,20 +710,25 @@ class TestCrossValidator:
     async def test_validation_with_no_available_models(self, mock_model_provider, sample_task, sample_processing_results):
         """Test validation when no models are available."""
         mock_model_provider.get_available_models.return_value = []
-        
+
         validator = CrossValidator(mock_model_provider)
         result = sample_processing_results[0]
-        
-        # Should handle gracefully or raise appropriate error
-        with pytest.raises(Exception):
-            await validator.process(result, sample_task)
+
+        # Should handle gracefully with empty validators
+        validation_result = await validator.process(result, sample_task)
+
+        # Should return a valid result even with no validators
+        assert isinstance(validation_result, ValidationResult)
+        # With no validators, validation report should have empty or few validators
+        assert isinstance(validation_result.validation_report.issues, list)
+        assert isinstance(validation_result.improvement_suggestions, list)
 
     @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_concurrent_validations(self, mock_model_provider, sample_task):
         """Test concurrent validation requests."""
         validator = CrossValidator(mock_model_provider)
-        
+
         # Create multiple test results
         test_results = [
             ProcessingResult(
@@ -730,7 +739,17 @@ class TestCrossValidator:
             )
             for i in range(3)
         ]
-        
+
+        # Create unique tasks for each validation
+        tasks = [
+            TaskContext(
+                task_id=f"concurrent_task_{i}",
+                task_type=sample_task.task_type,
+                content=f"Test task content {i}"
+            )
+            for i in range(3)
+        ]
+
         # Mock validation responses
         mock_model_provider.process_task.return_value = ProcessingResult(
             task_id="validation",
@@ -738,13 +757,13 @@ class TestCrossValidator:
             content="Validation response",
             confidence=0.8
         )
-        
-        # Run validations concurrently
+
+        # Run validations concurrently - use matching tasks
         validation_results = await asyncio.gather(
-            *[validator.process(result, sample_task) for result in test_results],
+            *[validator.process(result, task) for result, task in zip(test_results, tasks)],
             return_exceptions=True
         )
-        
+
         # All should succeed
         assert len(validation_results) == 3
         assert all(isinstance(result, ValidationResult) for result in validation_results)
