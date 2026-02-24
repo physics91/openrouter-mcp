@@ -9,12 +9,7 @@ to add, list, and manage MCP servers for Claude Code CLI.
 import sys
 import os
 from pathlib import Path
-
-# Fix Windows console encoding for emojis
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+from typing import Tuple, Optional
 
 # Add the project to the path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -41,12 +36,12 @@ def test_mcp_cli_integration():
     print("\n2️⃣ Adding OpenRouter MCP server:")
     api_key = os.getenv("OPENROUTER_API_KEY", "sk-or-test-key-123")
     success = add_mcp_server("openrouter", api_key=api_key, force=True)
-    
+
     if success:
         print("✅ OpenRouter server added successfully!")
     else:
         print("❌ Failed to add OpenRouter server")
-        return False
+        assert False, "Failed to add OpenRouter server"
     
     # Test 3: List servers again (should show openrouter)
     print("\n3️⃣ Listing MCP servers after adding OpenRouter:")
@@ -80,9 +75,7 @@ def test_mcp_cli_integration():
     print("  claude mcp list")
     print("  claude mcp status openrouter")
     print("  claude mcp remove openrouter")
-    print("  claude mcp config openrouter --env OPENROUTER_API_KEY=NEW_KEY")
-    
-    return True
+    print("  claude mcp config openrouter --env OPENROUTER_API_KEY=NEW_KEY")    
 
 
 def demonstrate_cli_syntax():
@@ -116,7 +109,30 @@ def demonstrate_cli_syntax():
         print(f"   - {preset}")
 
 
+def _configure_windows_utf8_stdio() -> Optional[Tuple[object, object]]:
+    """Configure UTF-8 stdio for manual runs on Windows."""
+    if sys.platform != "win32":
+        return None
+
+    import io
+
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    try:
+        sys.stdout = io.TextIOWrapper(original_stdout.buffer, encoding="utf-8")
+        sys.stderr = io.TextIOWrapper(original_stderr.buffer, encoding="utf-8")
+    except Exception:
+        # If stdout/stderr don't support buffer (e.g., pytest capture), leave unchanged
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        return None
+
+    return original_stdout, original_stderr
+
+
 if __name__ == "__main__":
+    stdio_backup = _configure_windows_utf8_stdio()
     try:
         # Run the integration test
         success = test_mcp_cli_integration()
@@ -135,3 +151,6 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+    finally:
+        if stdio_backup:
+            sys.stdout, sys.stderr = stdio_backup

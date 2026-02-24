@@ -7,6 +7,7 @@ and improve overall output quality through peer review processes.
 """
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -127,20 +128,6 @@ class ValidationReport:
     validation_time: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class ValidationResult:
-    """Result of the complete validation process."""
-    task_id: str
-    original_result: ProcessingResult
-    validation_report: ValidationReport
-    is_valid: bool
-    validation_confidence: float
-    improvement_suggestions: List[str]
-    quality_metrics: QualityMetrics
-    processing_time: float
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class SpecializedValidator:
@@ -318,25 +305,37 @@ class CrossValidator(CollectiveIntelligenceComponent):
     Cross-model validation system that uses multiple models to validate
     and improve the quality of AI-generated content.
     """
-    
+
     def __init__(
         self,
         model_provider: ModelProvider,
-        config: Optional[ValidationConfig] = None
+        config: Optional[ValidationConfig] = None,
+        max_history_size: int = 1000
     ):
         super().__init__(model_provider)
         self.config = config or ValidationConfig()
-        
+
         # Specialized validators
         self.specialized_validators = {
             ValidationCriteria.FACTUAL_CORRECTNESS: FactCheckValidator(model_provider),
             ValidationCriteria.BIAS_NEUTRALITY: BiasDetectionValidator(model_provider)
         }
-        
-        # Validation history
-        self.validation_history: List[ValidationResult] = []
+
+        # Validation history with bounded size
+        self._validation_history: deque = deque(maxlen=max_history_size)
         self.validator_performance: Dict[str, Dict[str, float]] = {}
-    
+        self.max_history_size = max_history_size
+
+    @property
+    def validation_history(self) -> List[ValidationResult]:
+        """Get validation history as a list for backward compatibility."""
+        return list(self._validation_history)
+
+    @validation_history.setter
+    def validation_history(self, value: List[ValidationResult]) -> None:
+        """Set validation history for backward compatibility."""
+        self._validation_history = deque(value, maxlen=self.max_history_size)
+
     async def process(
         self, 
         result: ProcessingResult, 
@@ -392,7 +391,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             )
             
             # Update validation history and metrics
-            self.validation_history.append(validation_result)
+            self._validation_history.append(validation_result)
             self._update_validator_performance(validation_report)
             
             logger.info(
@@ -552,7 +551,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
         return ValidationReport(
             original_result=result,
             task_context=task_context,
-            validation_strategy=self.config.strategy,
+            validation_strategy=ValidationStrategy.PEER_REVIEW,
             validator_models=validator_models,
             issues=all_issues,
             overall_score=overall_score,
@@ -560,7 +559,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             consensus_level=consensus_level,
             recommendations=self._generate_recommendations(all_issues)
         )
-    
+
     def _create_peer_review_task(
         self, 
         result: ProcessingResult, 
@@ -699,7 +698,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
         return ValidationReport(
             original_result=result,
             task_context=task_context,
-            validation_strategy=self.config.strategy,
+            validation_strategy=ValidationStrategy.ADVERSARIAL,
             validator_models=validator_models,
             issues=all_issues,
             overall_score=overall_score,
@@ -707,7 +706,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             consensus_level=consensus_level,
             recommendations=self._generate_recommendations(all_issues)
         )
-    
+
     def _parse_adversarial_result(
         self, 
         validation_result: ProcessingResult, 
@@ -770,7 +769,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
         return ValidationReport(
             original_result=result,
             task_context=task_context,
-            validation_strategy=self.config.strategy,
+            validation_strategy=ValidationStrategy.CONSENSUS_CHECK,
             validator_models=validator_models,
             issues=issues,
             overall_score=overall_score,
@@ -778,7 +777,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             consensus_level=consensus_level,
             recommendations=self._generate_recommendations(issues)
         )
-    
+
     def _compare_for_consensus(
         self, 
         original_result: ProcessingResult, 
@@ -850,7 +849,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             return ValidationReport(
                 original_result=result,
                 task_context=task_context,
-                validation_strategy=self.config.strategy,
+                validation_strategy=ValidationStrategy.FACT_CHECK,
                 validator_models=validator_models,
                 issues=all_issues,
                 overall_score=overall_score,
@@ -870,7 +869,19 @@ class CrossValidator(CollectiveIntelligenceComponent):
     ) -> ValidationReport:
         """Perform comprehensive quality assurance validation."""
         # Similar to peer review but with more focus on quality metrics
-        return await self._peer_review_validation(result, task_context, validator_models)
+        # Get the peer review result and override the strategy
+        report = await self._peer_review_validation(result, task_context, validator_models)
+        return ValidationReport(
+            original_result=report.original_result,
+            task_context=report.task_context,
+            validation_strategy=ValidationStrategy.QUALITY_ASSURANCE,
+            validator_models=report.validator_models,
+            issues=report.issues,
+            overall_score=report.overall_score,
+            criteria_scores=report.criteria_scores,
+            consensus_level=report.consensus_level,
+            recommendations=report.recommendations
+        )
     
     async def _bias_detection_validation(
         self,
@@ -897,7 +908,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             return ValidationReport(
                 original_result=result,
                 task_context=task_context,
-                validation_strategy=self.config.strategy,
+                validation_strategy=ValidationStrategy.BIAS_DETECTION,
                 validator_models=validator_models,
                 issues=all_issues,
                 overall_score=overall_score,
@@ -906,7 +917,19 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 recommendations=self._generate_recommendations(all_issues)
             )
         else:
-            return await self._peer_review_validation(result, task_context, validator_models)
+            # Fallback to peer review with overridden strategy
+            report = await self._peer_review_validation(result, task_context, validator_models)
+            return ValidationReport(
+                original_result=report.original_result,
+                task_context=report.task_context,
+                validation_strategy=ValidationStrategy.BIAS_DETECTION,
+                validator_models=report.validator_models,
+                issues=report.issues,
+                overall_score=report.overall_score,
+                criteria_scores=report.criteria_scores,
+                consensus_level=report.consensus_level,
+                recommendations=report.recommendations
+            )
     
     def _calculate_criteria_score(self, criteria_issues: List[ValidationIssue]) -> float:
         """Calculate score for a specific criteria based on issues found."""
@@ -1088,8 +1111,8 @@ class CrossValidator(CollectiveIntelligenceComponent):
     def get_validation_history(self, limit: Optional[int] = None) -> List[ValidationResult]:
         """Get historical validation results."""
         if limit:
-            return self.validation_history[-limit:]
-        return self.validation_history.copy()
+            return list(self._validation_history)[-limit:]
+        return list(self._validation_history)
     
     def get_validator_performance(self) -> Dict[str, Dict[str, float]]:
         """Get performance statistics for validator models."""

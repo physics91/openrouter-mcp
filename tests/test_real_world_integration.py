@@ -29,15 +29,32 @@ from src.openrouter_mcp.handlers.collective_intelligence import (
     CollaborativeSolvingRequest
 )
 
+_REFRESHED_MODEL_CACHE = False
+
 
 class TestRealWorldIntegration:
-    """Real-world integration tests using actual OpenRouter API calls."""
-    
+    """Real-world integration tests using actual OpenRouter API calls."""       
+
     @pytest.fixture(autouse=True)
-    def check_api_key(self):
+    async def check_api_key(self):
         """Ensure API key is available before running tests."""
         if not os.getenv("OPENROUTER_API_KEY"):
             pytest.skip("OPENROUTER_API_KEY not found - skipping real API tests")
+
+        global _REFRESHED_MODEL_CACHE
+        if not _REFRESHED_MODEL_CACHE:
+            from src.openrouter_mcp.mcp_registry import get_shared_client
+            client = await get_shared_client()
+            model_cache = getattr(client, "_model_cache", None)
+            if model_cache:
+                await model_cache.get_models(force_refresh=True)
+            _REFRESHED_MODEL_CACHE = True
+
+        try:
+            yield
+        finally:
+            from src.openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
+            await shutdown_lifecycle_manager()
     
     @pytest.mark.integration
     @pytest.mark.real_api

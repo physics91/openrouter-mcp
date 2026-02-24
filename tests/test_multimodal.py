@@ -65,24 +65,18 @@ def sample_vision_models():
 class TestImageProcessing:
     """Test image processing utilities."""
 
-    def test_encode_image_to_base64_with_file_path(self, tmp_path):
-        """Test encoding image file to base64."""
+    def test_encode_image_to_base64_rejects_file_path(self, tmp_path):
+        """Test that file path is rejected for security reasons."""
         from src.openrouter_mcp.handlers.multimodal import encode_image_to_base64
-        
+
         # Create a test image file
         image = Image.new('RGB', (100, 100), color='green')
         image_path = tmp_path / "test_image.jpg"
         image.save(image_path)
-        
-        # Test encoding
-        base64_string = encode_image_to_base64(str(image_path))
-        
-        # Verify it's a valid base64 string
-        assert isinstance(base64_string, str)
-        assert len(base64_string) > 0
-        # Verify we can decode it back
-        decoded_bytes = base64.b64decode(base64_string)
-        assert len(decoded_bytes) > 0
+
+        # Test that file path is rejected
+        with pytest.raises(TypeError, match="security reasons"):
+            encode_image_to_base64(str(image_path))
 
     def test_encode_image_to_base64_with_bytes(self):
         """Test encoding image bytes to base64."""

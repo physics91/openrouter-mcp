@@ -99,7 +99,8 @@ Memory Cache (LRU)
     └── Recent Responses
 
 File Cache (JSON)
-    ├── openrouter_model_cache.json
+    ├── .cache/
+    │   └── openrouter_model_cache.json
     └── Timestamped entries
 ```
 

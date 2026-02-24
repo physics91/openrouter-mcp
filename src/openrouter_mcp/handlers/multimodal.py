@@ -1,43 +1,41 @@
-import os
 import logging
 import base64
 import io
 from typing import Any, Dict, List, Optional, Union, Tuple
 from pydantic import BaseModel, Field, field_validator
 from PIL import Image
-from fastmcp import FastMCP
 
-from ..client.openrouter import OpenRouterClient
-
-
-# Create the MCP instance
-mcp = FastMCP("OpenRouter MCP Server - Multimodal")
+# Import shared MCP instance and client manager from registry
+from ..mcp_registry import mcp, get_openrouter_client
+# Import centralized request base classes
+from ..models.requests import BaseChatRequest
+from ..utils.async_utils import collect_async_iterable
+from ..utils.message_utils import serialize_messages
 
 
 logger = logging.getLogger(__name__)
 
 
 class ImageInput(BaseModel):
-    """Input for an image in multimodal requests."""
-    data: str = Field(..., description="Image data (file path, base64 string, or URL)")
-    type: str = Field(..., description="Type of image data: 'path', 'base64', or 'url'")
-    
+    """Input for an image in multimodal requests.
+
+    Security Note: File path access has been removed to prevent arbitrary file read vulnerabilities.
+    Images must be provided as base64-encoded data or URLs only.
+    """
+    data: str = Field(..., description="Image data (base64 string or URL)")
+    type: str = Field(..., description="Type of image data: 'base64' or 'url'")
+
     @field_validator('type')
     @classmethod
     def validate_type(cls, v):
-        if v not in ['base64', 'url', 'path']:
-            raise ValueError("Type must be 'base64', 'url', or 'path'")
+        if v not in ['base64', 'url']:
+            raise ValueError("Type must be 'base64' or 'url'. File path access is not supported for security reasons.")
         return v
 
 
-class VisionChatRequest(BaseModel):
+class VisionChatRequest(BaseChatRequest):
     """Request for chat completion with vision."""
-    model: str = Field(..., description="The vision-capable model to use")
-    messages: List[Dict[str, str]] = Field(..., description="List of messages in the conversation")
     images: List[ImageInput] = Field(..., description="List of images to analyze")
-    temperature: float = Field(0.7, description="Sampling temperature (0.0 to 2.0)")
-    max_tokens: Optional[int] = Field(None, description="Maximum number of tokens to generate")
-    stream: bool = Field(False, description="Whether to stream the response")
 
 
 class VisionModelRequest(BaseModel):
@@ -45,39 +43,34 @@ class VisionModelRequest(BaseModel):
     filter_by: Optional[str] = Field(None, description="Filter models by name substring")
 
 
-def get_openrouter_client() -> OpenRouterClient:
-    """Get configured OpenRouter client."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise ValueError("OPENROUTER_API_KEY environment variable is required")
-    
-    return OpenRouterClient.from_env()
-
-
-def encode_image_to_base64(image_input: Union[str, bytes]) -> str:
+def encode_image_to_base64(image_bytes: bytes) -> str:
     """
-    Encode an image to base64 string.
-    
+    Encode image bytes to base64 string.
+
+    Security Note: This function only accepts image bytes, not file paths.
+    File path support was removed to prevent arbitrary file read vulnerabilities.
+    Callers must read files themselves and pass the bytes.
+
     Args:
-        image_input: Either a file path (str) or image bytes
-        
+        image_bytes: Image data as bytes
+
     Returns:
         Base64 encoded string of the image
-        
+
     Raises:
+        TypeError: If image_input is not bytes
         Exception: If the image cannot be processed
     """
     try:
-        if isinstance(image_input, str):
-            # Assume it's a file path
-            with open(image_input, "rb") as image_file:
-                image_bytes = image_file.read()
-        else:
-            # Assume it's bytes
-            image_bytes = image_input
-            
+        if not isinstance(image_bytes, bytes):
+            raise TypeError(
+                "encode_image_to_base64() only accepts bytes. "
+                "File path support has been removed for security reasons. "
+                "Please read the file yourself and pass the bytes."
+            )
+
         return base64.b64encode(image_bytes).decode('utf-8')
-        
+
     except Exception as e:
         logger.error(f"Failed to encode image to base64: {str(e)}")
         raise
@@ -100,32 +93,67 @@ def validate_image_format(format_name: str) -> bool:
 def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
     """
     Process an image: resize if too large, optimize for API usage.
-    
+
     Args:
         base64_data: Base64 encoded image data
         max_size_mb: Maximum size in MB (default: 20MB)
-        
+
     Returns:
         Tuple of (processed_base64_data, was_resized)
-        
+
     Raises:
+        ValueError: If image is too large or has invalid dimensions
         Exception: If image processing fails
     """
+    # Security: Limit maximum base64 string size before decoding (prevents decompression bombs)
+    MAX_BASE64_SIZE = 100 * 1024 * 1024  # 100MB base64 max
+    if len(base64_data) > MAX_BASE64_SIZE:
+        raise ValueError(f"Base64 data too large: {len(base64_data)} bytes exceeds {MAX_BASE64_SIZE} bytes")
+
     try:
         # Decode base64 to bytes
         image_bytes = base64.b64decode(base64_data)
         max_size_bytes = max_size_mb * 1024 * 1024
+
+        # Security: Check decoded size before PIL processing
+        safe_limit = max(max_size_bytes * 5, 1024 * 1024)  # At least 1MB headroom
+        if len(image_bytes) > safe_limit:
+            raise ValueError(
+                f"Decoded image too large: {len(image_bytes)} bytes exceeds safe limit"
+            )
+
+        # If image is already small enough, still validate it
+        # Open and validate the image BEFORE returning it
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Security: Validate image dimensions to prevent pixel bombs
+        MAX_PIXELS = 89_478_485  # PIL's DecompressionBombError default threshold
+        MAX_DIMENSION = 65535  # Reasonable max for width/height
+
+        width, height = image.size
+        if width * height > MAX_PIXELS:
+            raise ValueError(
+                f"Image dimensions too large: {width}x{height} = {width*height} pixels exceeds {MAX_PIXELS} pixels"
+            )
+        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+            raise ValueError(
+                f"Image dimension too large: {width}x{height}, max dimension is {MAX_DIMENSION}"
+            )
+
+        # Security: Validate image format before processing
+        original_format = image.format
+        if not original_format:
+            # Try to detect format from image mode and data
+            original_format = 'JPEG'
+            logger.warning("Image format not detected, defaulting to JPEG")
         
-        # If image is already small enough, return as-is
+        # If image is already small enough, return early
         if len(image_bytes) <= max_size_bytes:
             return base64_data, False
-            
-        # Open and process the image
-        image = Image.open(io.BytesIO(image_bytes))
-        original_format = image.format or 'JPEG'
-        
+
         # Validate format
         if not validate_image_format(original_format):
+            logger.info(f"Converting unsupported format {original_format} to JPEG")
             # Convert unsupported formats to JPEG
             if image.mode in ('RGBA', 'LA', 'P'):
                 # Convert to RGB for JPEG
@@ -303,62 +331,63 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
         response = await chat_with_vision(request)
     """
     logger.info(f"Processing vision chat request for model: {request.model}")
-    
-    client = get_openrouter_client()
-    
+
+    # Get shared client (already in async context, no need for 'async with')
+    client = await get_openrouter_client()
+
     try:
-        async with client:
-            # Process images and create vision messages
-            vision_messages = []
-            
-            for i, message in enumerate(request.messages):
-                if i == len(request.messages) - 1:  # Last message, add images
-                    # Process images
-                    processed_images = []
-                    for img in request.images:
-                        if img.type == "base64":
-                            # Process the image (resize if needed)
-                            processed_data, was_resized = process_image(img.data)
-                            if was_resized:
-                                logger.info(f"Image was resized for API optimization")
-                            processed_images.append({"data": processed_data, "type": "base64"})
-                        else:
-                            processed_images.append({"data": img.data, "type": "url"})
-                    
-                    # Format vision message
-                    vision_message = format_vision_message(
-                        text=message["content"],
-                        images=processed_images
-                    )
-                    vision_messages.append(vision_message)
-                else:
-                    vision_messages.append(message)
-            
-            if request.stream:
-                logger.info("Initiating streaming vision chat completion")
-                chunks = []
-                async for chunk in client.stream_chat_completion_with_vision(
-                    model=request.model,
-                    messages=vision_messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens
-                ):
-                    chunks.append(chunk)
-                
-                logger.info(f"Streaming completed with {len(chunks)} chunks")
-                return chunks
-            else:
-                logger.info("Initiating non-streaming vision chat completion")
-                response = await client.chat_completion_with_vision(
-                    model=request.model,
-                    messages=vision_messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens
+        # Process images and create vision messages
+        base_messages = serialize_messages(request.messages)
+        vision_messages = []
+
+        for i, message_payload in enumerate(base_messages):
+            if i == len(base_messages) - 1:  # Last message, add images
+                # Process images
+                processed_images = []
+                for img in request.images:
+                    if img.type == "base64":
+                        # Process the image (resize if needed)
+                        processed_data, was_resized = process_image(img.data)
+                        if was_resized:
+                            logger.info(f"Image was resized for API optimization")
+                        processed_images.append({"data": processed_data, "type": "base64"})
+                    else:
+                        processed_images.append({"data": img.data, "type": "url"})
+
+                # Format vision message
+                vision_message = format_vision_message(
+                    text=message_payload["content"],
+                    images=processed_images
                 )
-                
-                logger.info(f"Vision chat completion successful")
-                return response
-                
+                vision_messages.append(vision_message)
+            else:
+                vision_messages.append(message_payload)
+
+        if request.stream:
+            logger.info("Initiating streaming vision chat completion")
+            chunks = await collect_async_iterable(
+                client.stream_chat_completion_with_vision(
+                model=request.model,
+                messages=vision_messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+                )
+            )
+
+            logger.info(f"Streaming completed with {len(chunks)} chunks")
+            return chunks
+        else:
+            logger.info("Initiating non-streaming vision chat completion")
+            response = await client.chat_completion_with_vision(
+                model=request.model,
+                messages=vision_messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            )
+
+            logger.info(f"Vision chat completion successful")
+            return response
+
     except Exception as e:
         logger.error(f"Vision chat completion failed: {str(e)}")
         raise
@@ -391,20 +420,20 @@ async def list_vision_models(request: VisionModelRequest) -> List[Dict[str, Any]
         models = await list_vision_models(request)
     """
     logger.info(f"Listing vision models with filter: {request.filter_by or 'none'}")
-    
-    client = get_openrouter_client()
-    
+
+    # Get shared client (already in async context, no need for 'async with')
+    client = await get_openrouter_client()
+
     try:
-        async with client:
-            # Get all models
-            all_models = await client.list_models(filter_by=request.filter_by)
-            
-            # Filter to vision-capable models
-            vision_models = filter_vision_models(all_models)
-            
-            logger.info(f"Retrieved {len(vision_models)} vision models")
-            return vision_models
-            
+        # Get all models
+        all_models = await client.list_models(filter_by=request.filter_by)
+
+        # Filter to vision-capable models
+        vision_models = filter_vision_models(all_models)
+
+        logger.info(f"Retrieved {len(vision_models)} vision models")
+        return vision_models
+
     except Exception as e:
         logger.error(f"Failed to list vision models: {str(e)}")
         raise

@@ -1,12 +1,21 @@
-import os
 import logging
+import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 import httpx
 import json as json_lib
 from contextlib import asynccontextmanager
+from copy import deepcopy
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
+# Import centralized configuration constants
+from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults
+# Import sanitizer from utils (extracted for SRP compliance)
+from ..utils.sanitizer import SensitiveDataSanitizer
+from ..utils.http import build_openrouter_headers
+from ..utils.pricing import normalize_pricing
+from ..utils.async_utils import maybe_await
+from ..utils.env import get_env_value, get_required_env
 
 
 class OpenRouterError(Exception):
@@ -29,6 +38,11 @@ class InvalidRequestError(OpenRouterError):
     pass
 
 
+# Note: SensitiveDataSanitizer has been moved to openrouter_mcp.utils.sanitizer
+# for SRP compliance. Import it from there for new code.
+# The import at module level provides backward compatibility.
+
+
 class OpenRouterClient:
     """Client for OpenRouter API.
     
@@ -47,16 +61,17 @@ class OpenRouterClient:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://openrouter.ai/api/v1",
+        base_url: str = APIConfig.BASE_URL,
         app_name: Optional[str] = None,
         http_referer: Optional[str] = None,
-        timeout: float = 30.0,
+        timeout: float = APIConfig.DEFAULT_TIMEOUT,
         logger: Optional[logging.Logger] = None,
         enable_cache: bool = True,
-        cache_ttl: int = 3600
+        cache_ttl: int = CacheConfig.DEFAULT_TTL_SECONDS,
+        enable_verbose_logging: bool = False
     ) -> None:
         """Initialize OpenRouter client.
-        
+
         Args:
             api_key: OpenRouter API key
             base_url: Base URL for OpenRouter API
@@ -66,13 +81,17 @@ class OpenRouterClient:
             logger: Custom logger instance
             enable_cache: Whether to enable model caching
             cache_ttl: Cache time-to-live in seconds
-            
+            enable_verbose_logging: If True, log truncated request/response content.
+                                   If False (default), only log metadata.
+                                   WARNING: Even with this enabled, sensitive data is sanitized,
+                                   but truncated prompts/responses may still contain PII.
+
         Raises:
             ValueError: If API key is empty or None
         """
         if not api_key or api_key.strip() == "":
             raise ValueError("API key is required")
-        
+
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.app_name = app_name
@@ -80,52 +99,56 @@ class OpenRouterClient:
         self.timeout = timeout
         self.logger = logger or logging.getLogger(__name__)
         self.enable_cache = enable_cache
-        
+        self.enable_verbose_logging = enable_verbose_logging
+
+        # Log warning if verbose logging is enabled
+        if self.enable_verbose_logging:
+            self.logger.warning(
+                "Verbose logging is enabled. Truncated request/response content will be logged. "
+                "This may include sensitive information. Use only for debugging."
+            )
+
         self._client = httpx.AsyncClient(timeout=timeout)
-        
-        # Initialize model cache
+
+        # Initialize model cache with client credentials
         if enable_cache:
-            # Convert seconds to hours for ModelCache
-            ttl_hours = max(1, cache_ttl // 3600)  # Minimum 1 hour
-            self._model_cache = ModelCache(ttl_hours=ttl_hours)
+            # Convert seconds to hours for ModelCache (using float for sub-hour precision)
+            # Minimum TTL to prevent too-frequent refreshes
+            ttl_hours = max(CacheConfig.MIN_TTL_HOURS, cache_ttl / 3600.0)
+            self._model_cache = ModelCache(
+                ttl_hours=ttl_hours,
+                api_key=self.api_key,
+                base_url=self.base_url
+            )
         else:
             self._model_cache = None
     
     @classmethod
     def from_env(cls) -> "OpenRouterClient":
         """Create client from environment variables."""
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable is required")
-        
+        api_key = get_required_env(EnvVars.API_KEY)
         return cls(
             api_key=api_key,
-            base_url=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
-            app_name=os.getenv("OPENROUTER_APP_NAME"),
-            http_referer=os.getenv("OPENROUTER_HTTP_REFERER")
+            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL),
+            app_name=get_env_value(EnvVars.APP_NAME),
+            http_referer=get_env_value(EnvVars.HTTP_REFERER)
         )
     
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for requests."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        if self.app_name:
-            headers["X-Title"] = self.app_name
-        
-        if self.http_referer:
-            headers["HTTP-Referer"] = self.http_referer
-        
-        return headers
+        return build_openrouter_headers(
+            self.api_key,
+            app_name=self.app_name,
+            http_referer=self.http_referer,
+            fallback_to_env=False,
+        )
     
     def _validate_model(self, model: str) -> None:
         """Validate model parameter."""
         if not model or model.strip() == "":
             raise ValueError("Model cannot be empty")
     
-    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:
+    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:       
         """Validate messages parameter."""
         if not messages:
             raise ValueError("Messages cannot be empty")
@@ -135,10 +158,42 @@ class OpenRouterClient:
         for message in messages:
             if "role" not in message or "content" not in message:
                 raise ValueError("Message must have 'role' and 'content' fields")
-            
+
             if message["role"] not in valid_roles:
                 raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
-    
+
+    def _validate_messages_if_text(self, messages: List[Dict[str, Any]]) -> None:
+        """Validate messages when they are simple text-only payloads."""
+        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
+            self._validate_messages(messages)  # type: ignore[arg-type]
+
+    def _build_chat_payload(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: Optional[int],
+        stream: bool,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Build a chat completion payload with shared validation."""
+        self._validate_model(model)
+        self._validate_messages_if_text(messages)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": stream,
+            **kwargs,
+        }
+
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+
+        return payload
+
     async def _make_request(
         self,
         method: str,
@@ -147,28 +202,38 @@ class OpenRouterClient:
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Make HTTP request to OpenRouter API.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path
             json: JSON payload for POST/PUT requests
             params: URL parameters
-            
+
         Returns:
             Response data as dictionary
-            
+
         Raises:
             OpenRouterError: For API errors, network issues, or unexpected errors
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-        
+
+        # Sanitize headers for logging
+        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
         self.logger.debug(f"Making {method} request to {url}")
+        self.logger.debug(f"Request headers: {sanitized_headers}")
+
+        # Sanitize payload for logging based on verbosity setting
         if json:
-            self.logger.debug(f"Request payload: {json}")
+            sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
+                json, enable_verbose=self.enable_verbose_logging
+            )
+            self.logger.debug(f"Request payload: {sanitized_payload}")
+
         if params:
+            # URL params are generally not sensitive, but log them carefully
             self.logger.debug(f"Request params: {params}")
-        
+
         try:
             response = await self._client.request(
                 method=method,
@@ -177,15 +242,31 @@ class OpenRouterClient:
                 json=json,
                 params=params
             )
-            
+
             self.logger.debug(f"Response status: {response.status_code}")
-            response.raise_for_status()
-            
-            response_data = response.json()
-            self.logger.debug(f"Response data keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'non-dict response'}")
-            
+            await maybe_await(response.raise_for_status())
+
+            response_data = await maybe_await(response.json())
+
+            # Sanitize response for logging
+            if isinstance(response_data, dict):
+                if "choices" in response_data or "data" in response_data:
+                    # This looks like a completion or model list response
+                    if "choices" in response_data:
+                        sanitized_response = SensitiveDataSanitizer.sanitize_response(
+                            response_data, enable_verbose=self.enable_verbose_logging
+                        )
+                        self.logger.debug(f"Response data: {sanitized_response}")
+                    else:
+                        # For non-completion responses (like model lists), log keys only
+                        self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+                else:
+                    self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+            else:
+                self.logger.debug("Response data type: non-dict response")
+
             return response_data
-        
+
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
             await self._handle_http_error(e.response)
@@ -205,23 +286,30 @@ class OpenRouterClient:
         json_data: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Make streaming request to OpenRouter API.
-        
+
         Args:
             endpoint: API endpoint path
             json_data: JSON payload for the request
-            
+
         Yields:
             Streaming response chunks as dictionaries
-            
+
         Raises:
             OpenRouterError: For API errors, network issues, or unexpected errors
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-        
+
+        # Sanitize headers and payload for logging
+        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
         self.logger.debug(f"Making streaming POST request to {url}")
-        self.logger.debug(f"Stream payload: {json_data}")
-        
+        self.logger.debug(f"Request headers: {sanitized_headers}")
+
+        sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
+            json_data, enable_verbose=self.enable_verbose_logging
+        )
+        self.logger.debug(f"Stream payload: {sanitized_payload}")
+
         try:
             async with self._client.stream(
                 "POST",
@@ -230,8 +318,8 @@ class OpenRouterClient:
                 json=json_data
             ) as response:
                 self.logger.debug(f"Stream response status: {response.status_code}")
-                response.raise_for_status()
-                
+                await maybe_await(response.raise_for_status())      
+
                 chunk_count = 0
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
@@ -242,12 +330,22 @@ class OpenRouterClient:
                         try:
                             chunk = json_lib.loads(data)
                             chunk_count += 1
-                            self.logger.debug(f"Yielding chunk {chunk_count}")
+
+                            # Log chunk metadata only (don't log content even in verbose mode for streaming)
+                            if chunk_count % 10 == 1:  # Log every 10th chunk to reduce noise
+                                self.logger.debug(
+                                    f"Streaming chunk {chunk_count} "
+                                    f"(keys: {list(chunk.keys()) if isinstance(chunk, dict) else 'non-dict'})"
+                                )
+
                             yield chunk
                         except json_lib.JSONDecodeError as e:
-                            self.logger.warning(f"Failed to parse stream chunk: {data[:100]}...")
+                            # Don't log the actual data content - could contain sensitive info
+                            self.logger.warning(
+                                f"Failed to parse stream chunk (length: {len(data)}): {str(e)}"
+                            )
                             continue
-        
+
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
             await self._handle_http_error(e.response)
@@ -262,13 +360,21 @@ class OpenRouterClient:
             raise OpenRouterError(f"Unexpected error: {str(e)}")
     
     async def _handle_http_error(self, response: httpx.Response) -> None:
-        """Handle HTTP errors from OpenRouter API."""
+        """Handle HTTP errors from OpenRouter API.
+
+        SECURITY: Response bodies are sanitized to prevent leaking sensitive data in error messages.
+        """
         try:
-            error_data = response.json()
+            error_data = await maybe_await(response.json())
             error_message = error_data.get("error", {}).get("message", "Unknown error")
         except (json_lib.JSONDecodeError, KeyError):
-            error_message = f"HTTP {response.status_code}: {response.text}"
-        
+            # SECURITY: Don't include raw response.text - it may contain sensitive data
+            # Truncate and sanitize the response body
+            response_preview = SensitiveDataSanitizer.truncate_content(
+                response.text, max_length=100
+            ) if response.text else "No response body"
+            error_message = f"HTTP {response.status_code}: {response_preview}"
+
         if response.status_code == 401:
             raise AuthenticationError(error_message)
         elif response.status_code == 429:
@@ -281,17 +387,19 @@ class OpenRouterClient:
     async def list_models(
         self,
         filter_by: Optional[str] = None,
-        use_cache: bool = True
+        use_cache: bool = True,
+        _bypass_cache: bool = False
     ) -> List[Dict[str, Any]]:
         """List available models from OpenRouter.
-        
+
         Retrieves a list of all available AI models, optionally filtered by name.
         Each model includes information about pricing, context length, and capabilities.
-        
+
         Args:
             filter_by: Optional string to filter model names (case-insensitive)
             use_cache: Whether to use cached models if available
-            
+            _bypass_cache: Internal flag to bypass cache (prevents recursion)
+
         Returns:
             List of dictionaries containing model information with keys:
             - id: Model identifier (e.g., "openai/gpt-4")
@@ -300,27 +408,27 @@ class OpenRouterClient:
             - pricing: Dictionary with prompt/completion pricing
             - context_length: Maximum context window size
             - architecture: Model architecture details
-            
+
         Raises:
             OpenRouterError: If the API request fails
-            
+
         Example:
             >>> models = await client.list_models()
             >>> gpt_models = await client.list_models(filter_by="gpt")
         """
-        # Use cache system if enabled
-        if use_cache and self._model_cache:
+        # Use cache system if enabled and not explicitly bypassed
+        if use_cache and self._model_cache and not _bypass_cache:
             try:
                 all_models = await self._model_cache.get_models()
                 if all_models:
                     self.logger.info(f"Retrieved {len(all_models)} models from cache")
-                    
+
                     # Apply filter if specified
                     if filter_by:
                         filter_lower = filter_by.lower()
                         filtered_models = [
-                            model for model in all_models 
-                            if filter_lower in model.get("name", "").lower() 
+                            model for model in all_models
+                            if filter_lower in model.get("name", "").lower()
                             or filter_lower in model.get("id", "").lower()
                         ]
                         self.logger.info(f"Filtered to {len(filtered_models)} models")
@@ -330,17 +438,17 @@ class OpenRouterClient:
             except Exception as e:
                 self.logger.warning(f"Failed to get cached models: {e}")
                 # Continue to API fetch
-        
+
         # Fallback: Fetch directly from API if cache is disabled or failed
         self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
-        
+
         params = {}
         if filter_by:
             params["filter"] = filter_by
-            
+
         response = await self._make_request("GET", "/models", params=params)
         models = response.get("data", [])
-        
+
         self.logger.info(f"Retrieved {len(models)} models from API")
         return models
     
@@ -355,14 +463,36 @@ class OpenRouterClient:
         """
         self._validate_model(model)
         return await self._make_request("GET", f"/models/{model}")
+
+    async def get_model_pricing(self, model: str) -> Dict[str, float]:
+        """Get normalized pricing for a specific model.
+
+        Pricing values are normalized to per-token dollars to ensure consistent
+        cost calculations across the codebase.
+        """
+        self._validate_model(model)
+        pricing: Dict[str, Any] = {}
+
+        try:
+            if self._model_cache:
+                model_info = await self._model_cache.get_model_info(model)
+            else:
+                model_info = await self.get_model_info(model)
+
+            if model_info and "pricing" in model_info:
+                pricing = model_info["pricing"]
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch pricing for model {model}: {e}")
+
+        return normalize_pricing(pricing)
     
     async def chat_completion(
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
+        stream: bool = ModelDefaults.STREAM,
         **kwargs
     ) -> Dict[str, Any]:
         """Create a chat completion.
@@ -378,31 +508,24 @@ class OpenRouterClient:
         Returns:
             Chat completion response
         """
-        self._validate_model(model)
-        # Skip message validation for multimodal messages (they have different structure)
-        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
-            self._validate_messages(messages)
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": stream,
-            **kwargs
-        }
-        
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        
+        payload = self._build_chat_payload(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=stream,
+            **kwargs,
+        )
+
         return await self._make_request("POST", "/chat/completions", json=payload)
     
     async def chat_completion_with_vision(
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        stream: bool = False,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
+        stream: bool = ModelDefaults.STREAM,
         **kwargs
     ) -> Dict[str, Any]:
         """Create a chat completion with vision/image support.
@@ -445,8 +568,8 @@ class OpenRouterClient:
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Create a streaming chat completion.
@@ -461,22 +584,15 @@ class OpenRouterClient:
         Yields:
             Chat completion chunks
         """
-        self._validate_model(model)
-        # Skip message validation for multimodal messages
-        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
-            self._validate_messages(messages)
-        
-        payload = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": True,
-            **kwargs
-        }
-        
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-        
+        payload = self._build_chat_payload(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            **kwargs,
+        )
+
         async for chunk in self._stream_request("/chat/completions", payload):
             yield chunk
     
@@ -484,8 +600,8 @@ class OpenRouterClient:
         self,
         model: str,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Create a streaming chat completion with vision support.

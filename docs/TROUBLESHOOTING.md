@@ -1,4 +1,4 @@
-# Troubleshooting Guide
+﻿# Troubleshooting Guide
 
 This guide helps you resolve common issues with the OpenRouter MCP Server.
 
@@ -174,11 +174,15 @@ npx openrouter-mcp start --debug
 1. **Clear cache**:
 ```bash
 # Delete cache file
-rm openrouter_model_cache.json
+rm .cache/openrouter_model_cache.json
+```
 
-# Reduce cache size in .env
-CACHE_MAX_ITEMS=100
-CACHE_TTL_HOURS=0.5
+# Reduce cache size in code (ModelCache settings)
+```python
+from openrouter_mcp.models.cache import ModelCache
+
+cache = ModelCache(ttl_hours=0.5, max_memory_items=100)
+print(cache.get_cache_stats())
 ```
 
 2. **Increase memory limit**:
@@ -301,7 +305,7 @@ curl -w "@curl-format.txt" https://openrouter.ai/api/v1
 cat .env | grep CACHE
 
 # Check cache file exists
-ls -la openrouter_model_cache.json
+ls -la .cache/openrouter_model_cache.json
 ```
 
 ### High Token Usage
@@ -361,7 +365,7 @@ npx openrouter-mcp start --verbose
 cat ~/.claude/claude_code_config.json
 
 # Test MCP connection
-claude-code "test connection"
+claude "test connection"
 ```
 
 2. **Update configuration**:

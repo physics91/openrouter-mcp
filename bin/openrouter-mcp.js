@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 
 const packageJson = require('../package.json');
+const secureCredentials = require('./secure-credentials');
 
 program
   .name('openrouter-mcp')
@@ -75,6 +76,42 @@ program
     await installClaudeCodeConfig();
   });
 
+// Rotate API key command
+program
+  .command('rotate-key')
+  .description('Rotate OpenRouter API key in all configured locations')
+  .action(async () => {
+    console.log(chalk.blue('🔄 API Key Rotation'));
+    await rotateApiKey();
+  });
+
+// Delete credentials command
+program
+  .command('delete-credentials')
+  .description('Remove API key from all configured locations')
+  .action(async () => {
+    console.log(chalk.red('🗑️  Delete Credentials'));
+    await deleteCredentials();
+  });
+
+// Security audit command
+program
+  .command('security-audit')
+  .description('Audit security configuration and credential storage')
+  .action(async () => {
+    console.log(chalk.blue('🔒 Security Audit'));
+    await securityAudit();
+  });
+
+// Migrate encryption command
+program
+  .command('migrate-encryption')
+  .description('Migrate credentials from v1.0 to v2.0 encryption')
+  .action(async () => {
+    console.log(chalk.blue('🔐 Encryption Migration'));
+    await migrateEncryption();
+  });
+
 async function checkPythonRequirements() {
   console.log(chalk.blue('🐍 Checking Python environment...'));
   
@@ -119,67 +156,74 @@ async function checkPythonRequirements() {
 }
 
 async function checkApiKey() {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (apiKey) {
-    console.log(chalk.green('✓ OpenRouter API key is configured'));
+  // Use the unified secure credential retrieval method
+  const keyResult = await secureCredentials.getApiKey();
+
+  if (keyResult.key) {
+    const maskedKey = secureCredentials.maskApiKey(keyResult.key);
+    console.log(chalk.green(`✓ OpenRouter API key configured (${keyResult.source})`));
+    console.log(chalk.gray(`  Masked key: ${maskedKey}`));
     return true;
   }
-  
-  // Check .env file in multiple locations
-  const possibleEnvPaths = [
-    path.join(process.cwd(), '.env'),
-    path.join(__dirname, '..', '.env'),
-    path.join(os.homedir(), '.openrouter-mcp.env')
-  ];
-  
-  for (const envPath of possibleEnvPaths) {
-    if (fs.existsSync(envPath) && fs.statSync(envPath).isFile()) {
-      try {
-        const envContent = fs.readFileSync(envPath, 'utf8');
-        if (envContent.includes('OPENROUTER_API_KEY=')) {
-          console.log(chalk.green(`✓ OpenRouter API key found in ${envPath}`));
-          return true;
-        }
-      } catch (error) {
-        // Ignore read errors and continue
-        continue;
-      }
-    }
-  }
-  
+
   return false;
 }
 
 async function startServer(options) {
   const serverPath = path.join(__dirname, '..', 'src', 'openrouter_mcp', 'server.py');
-  
+
   const env = {
     ...process.env,
     HOST: options.host,
     PORT: options.port.toString(),
     LOG_LEVEL: program.opts().debug ? 'debug' : (program.opts().verbose ? 'info' : 'warning')
   };
-  
+
+  // Retrieve API key from secure storage if not already in environment
+  if (!env.OPENROUTER_API_KEY) {
+    console.log(chalk.blue('🔑 Retrieving API key from secure storage...'));
+
+    const keyResult = await secureCredentials.getApiKey();
+
+    if (keyResult.key) {
+      env.OPENROUTER_API_KEY = keyResult.key;
+      const maskedKey = secureCredentials.maskApiKey(keyResult.key);
+      console.log(chalk.green(`✓ API key loaded from ${keyResult.source}`));
+      console.log(chalk.gray(`  Masked key: ${maskedKey}`));
+
+      // Audit log for security tracking
+      secureCredentials.auditLog('key-loaded-for-server', { source: keyResult.source });
+    } else {
+      console.log(chalk.yellow('⚠️  No API key found in secure storage'));
+      console.log(chalk.blue('💡 To configure API key, run: openrouter-mcp init'));
+      console.log(chalk.gray('   Server will start but API calls will fail without a valid key\n'));
+    }
+  } else {
+    console.log(chalk.green('✓ Using API key from environment variable'));
+    const maskedKey = secureCredentials.maskApiKey(env.OPENROUTER_API_KEY);
+    console.log(chalk.gray(`  Masked key: ${maskedKey}`));
+  }
+
   console.log(chalk.blue(`Starting server on ${options.host}:${options.port}`));
-  
+
   const python = spawn('python', [serverPath], {
     env,
     stdio: 'inherit'
   });
-  
+
   python.on('close', (code) => {
     if (code !== 0) {
       console.log(chalk.red(`Server exited with code ${code}`));
       process.exit(code);
     }
   });
-  
+
   // Handle graceful shutdown
   process.on('SIGINT', () => {
     console.log(chalk.yellow('\n🛑 Shutting down server...'));
     python.kill('SIGINT');
   });
-  
+
   process.on('SIGTERM', () => {
     console.log(chalk.yellow('\n🛑 Shutting down server...'));
     python.kill('SIGTERM');
@@ -188,13 +232,49 @@ async function startServer(options) {
 
 async function initializeConfig() {
   const inquirer = (await import('inquirer')).default;
-  
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.cyan('  OpenRouter MCP - Secure Configuration Wizard'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+
+  // Security notice
+  console.log(chalk.yellow('🔒 SECURITY NOTICE'));
+  console.log(chalk.white('This wizard will help you securely configure your OpenRouter API key.'));
+  console.log(chalk.white('We recommend using OS Keychain for maximum security.\n'));
+
+  // Detect shared environment
+  if (secureCredentials.isSharedEnvironment()) {
+    secureCredentials.displaySecurityWarning('SHARED_ENVIRONMENT');
+
+    const { continueSetup } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'continueSetup',
+        message: chalk.yellow('Do you understand the risks and wish to continue?'),
+        default: false
+      }
+    ]);
+
+    if (!continueSetup) {
+      console.log(chalk.blue('Setup cancelled. Please consult your security team.'));
+      return;
+    }
+  }
+
+  // API key input
   const answers = await inquirer.prompt([
     {
-      type: 'input',
+      type: 'password',
       name: 'apiKey',
       message: 'Enter your OpenRouter API key:',
-      validate: (input) => input.length > 0 || 'API key cannot be empty'
+      mask: '*',
+      validate: (input) => {
+        if (input.length === 0) return 'API key cannot be empty';
+        if (!input.startsWith('sk-or-')) {
+          return chalk.yellow('Warning: OpenRouter API keys typically start with "sk-or-". Continue anyway? (y/n)');
+        }
+        return true;
+      }
     },
     {
       type: 'input',
@@ -209,10 +289,54 @@ async function initializeConfig() {
       default: 'https://localhost'
     }
   ]);
-  
-  // Create .env file
-  const envContent = `# OpenRouter API Configuration
-OPENROUTER_API_KEY=${answers.apiKey}
+
+  console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────\n'));
+  console.log(chalk.bold('Storage Options\n'));
+
+  // Show available storage options
+  const storageChoices = [];
+
+  if (secureCredentials.keytarAvailable) {
+    storageChoices.push({
+      name: `${chalk.green('●')} ${secureCredentials.StorageOptions.KEYCHAIN.name} ${chalk.green('[RECOMMENDED]')}`,
+      short: 'OS Keychain',
+      value: 'keychain'
+    });
+  } else {
+    console.log(chalk.yellow('⚠️  OS Keychain not available. To enable, run: npm install keytar\n'));
+  }
+
+  storageChoices.push({
+    name: `${chalk.cyan('●')} ${secureCredentials.StorageOptions.ENCRYPTED_FILE.name} ${chalk.cyan('[RECOMMENDED FOR CI/CD]')}`,
+    short: 'Encrypted File',
+    value: 'encrypted'
+  });
+
+  storageChoices.push({
+    name: `${chalk.yellow('●')} ${secureCredentials.StorageOptions.ENV_FILE.name}`,
+    short: '.env file',
+    value: 'env'
+  });
+
+  // Ask for storage preference
+  const { storageMethod } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'storageMethod',
+      message: 'Where would you like to store your API key?',
+      choices: storageChoices,
+      default: secureCredentials.keytarAvailable ? 'keychain' : 'env'
+    }
+  ]);
+
+  // Store API key based on choice
+  if (storageMethod === 'keychain') {
+    try {
+      await secureCredentials.storeInKeychain(answers.apiKey);
+
+      // Also create .env file WITHOUT the API key for other settings
+      const envContent = `# OpenRouter Configuration
+# API key is stored securely in OS Keychain
 OPENROUTER_APP_NAME=${answers.appName}
 OPENROUTER_HTTP_REFERER=${answers.httpReferer}
 
@@ -221,32 +345,173 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 `;
-  
-  fs.writeFileSync('.env', envContent);
-  console.log(chalk.green('✓ Configuration saved to .env file'));
-  
-  // Ask about Claude integrations
+      fs.writeFileSync('.env', envContent, { mode: 0o600 });
+      secureCredentials.setSecurePermissions('.env');
+      console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
+    } catch (error) {
+      console.log(chalk.red(`✗ Failed to store in keychain: ${error.message}`));
+      console.log(chalk.yellow('Falling back to encrypted file storage...'));
+
+      try {
+        secureCredentials.storeInEncryptedFile(answers.apiKey);
+
+        // Also create .env file WITHOUT the API key
+        const envContent = `# OpenRouter Configuration
+# API key is stored securely in encrypted file
+OPENROUTER_APP_NAME=${answers.appName}
+OPENROUTER_HTTP_REFERER=${answers.httpReferer}
+
+# Server Configuration
+HOST=localhost
+PORT=8000
+LOG_LEVEL=info
+`;
+        fs.writeFileSync('.env', envContent, { mode: 0o600 });
+        secureCredentials.setSecurePermissions('.env');
+        console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
+      } catch (encError) {
+        console.log(chalk.red(`✗ Failed to store in encrypted file: ${encError.message}`));
+        console.log(chalk.yellow('Falling back to .env file storage...'));
+        secureCredentials.displaySecurityWarning('PLAINTEXT_STORAGE');
+
+        const { confirmPlaintext } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmPlaintext',
+            message: 'Store API key in plaintext .env file?',
+            default: false
+          }
+        ]);
+
+        if (!confirmPlaintext) {
+          console.log(chalk.blue('Setup cancelled.'));
+          return;
+        }
+
+        secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+      }
+    }
+  } else if (storageMethod === 'encrypted') {
+    try {
+      secureCredentials.storeInEncryptedFile(answers.apiKey);
+
+      // Also create .env file WITHOUT the API key
+      const envContent = `# OpenRouter Configuration
+# API key is stored securely in encrypted file
+OPENROUTER_APP_NAME=${answers.appName}
+OPENROUTER_HTTP_REFERER=${answers.httpReferer}
+
+# Server Configuration
+HOST=localhost
+PORT=8000
+LOG_LEVEL=info
+`;
+      fs.writeFileSync('.env', envContent, { mode: 0o600 });
+      secureCredentials.setSecurePermissions('.env');
+      console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
+    } catch (error) {
+      console.log(chalk.red(`✗ Failed to store in encrypted file: ${error.message}`));
+      console.log(chalk.yellow('Falling back to .env file storage...'));
+      secureCredentials.displaySecurityWarning('PLAINTEXT_STORAGE');
+
+      const { confirmPlaintext } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmPlaintext',
+          message: 'Store API key in plaintext .env file?',
+          default: false
+        }
+      ]);
+
+      if (!confirmPlaintext) {
+        console.log(chalk.blue('Setup cancelled.'));
+        return;
+      }
+
+      secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+    }
+  } else if (storageMethod === 'env') {
+    // Show security warning for plaintext storage
+    secureCredentials.displaySecurityWarning('PLAINTEXT_STORAGE');
+
+    const { confirmPlaintext } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmPlaintext',
+        message: chalk.yellow('I understand the risks. Store API key in plaintext .env file?'),
+        default: false
+      }
+    ]);
+
+    if (!confirmPlaintext) {
+      console.log(chalk.blue('Setup cancelled. Consider installing keytar for secure storage:'));
+      console.log(chalk.gray('  npm install keytar'));
+      return;
+    }
+
+    secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+  }
+
+  console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────\n'));
+  console.log(chalk.bold('Claude Integration Configuration\n'));
+
+  // Ask about Claude integrations with security warnings
   const { integrations } = await inquirer.prompt([
     {
       type: 'checkbox',
       name: 'integrations',
       message: 'Which Claude integrations would you like to configure?',
       choices: [
-        { name: 'Claude Desktop', value: 'desktop', checked: true },
-        { name: 'Claude Code CLI', value: 'code', checked: true }
+        {
+          name: `Claude Desktop ${chalk.gray('(stores API key in config file)')}`,
+          value: 'desktop',
+          checked: false
+        },
+        {
+          name: `Claude Code CLI ${chalk.gray('(stores API key in config file)')}`,
+          value: 'code',
+          checked: false
+        }
       ]
     }
   ]);
-  
-  if (integrations.includes('desktop')) {
-    await installClaudeConfig();
+
+  if (integrations.length > 0) {
+    console.log(chalk.yellow('\n⚠️  Claude integrations require storing the API key in configuration files.'));
+    console.log(chalk.yellow('These files will contain your API key in PLAINTEXT.\n'));
+
+    const { confirmClaudeConfigs } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmClaudeConfigs',
+        message: 'Do you consent to storing your API key in Claude configuration files?',
+        default: false
+      }
+    ]);
+
+    if (confirmClaudeConfigs) {
+      if (integrations.includes('desktop')) {
+        await installClaudeConfig(answers.apiKey);
+      }
+
+      if (integrations.includes('code')) {
+        await installClaudeCodeConfig(answers.apiKey);
+      }
+    } else {
+      console.log(chalk.blue('Skipping Claude integrations.'));
+      console.log(chalk.gray('You can configure these later using:'));
+      console.log(chalk.gray('  openrouter-mcp install-claude'));
+      console.log(chalk.gray('  openrouter-mcp install-claude-code'));
+    }
   }
-  
-  if (integrations.includes('code')) {
-    await installClaudeCodeConfig();
-  }
-  
-  console.log(chalk.green('🎉 Initialization complete! Run "openrouter-mcp start" to begin.'));
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.green('✅ Initialization complete!\n'));
+  console.log(chalk.white('Next steps:'));
+  console.log(chalk.gray('  1. Run: openrouter-mcp start'));
+  console.log(chalk.gray('  2. Review security documentation: docs/SECURITY.md'));
+  console.log(chalk.gray('  3. Set up API key rotation reminders (recommended: every 90 days)'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
 }
 
 async function checkStatus() {
@@ -284,87 +549,45 @@ async function checkStatus() {
   }
 }
 
-async function installClaudeConfig() {
-  const homeDir = os.homedir();
-  let configPath;
-  
-  // Determine Claude Desktop config path based on OS
-  switch (os.platform()) {
-    case 'darwin':
-      configPath = path.join(homeDir, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-      break;
-    case 'win32':
-      configPath = path.join(homeDir, 'AppData', 'Roaming', 'Claude', 'claude_desktop_config.json');
-      break;
-    default:
-      configPath = path.join(homeDir, '.config', 'claude', 'claude_desktop_config.json');
-  }
-  
-  // Create directory if it doesn't exist
-  const configDir = path.dirname(configPath);
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-  }
-  
-  // Read existing config or create new one
-  let config = { mcpServers: {} };
-  if (fs.existsSync(configPath)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch (error) {
-      console.log(chalk.yellow('⚠️  Existing config file is invalid, creating new one'));
-    }
-  }
-  
-  // Add OpenRouter MCP server
-  config.mcpServers = config.mcpServers || {};
-  config.mcpServers.openrouter = {
-    command: "npx",
-    args: ["openrouter-mcp", "start"],
-    env: {
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "your-openrouter-api-key"
-    }
-  };
-  
-  // Write config
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  console.log(chalk.green(`✓ Claude Desktop configuration updated: ${configPath}`));
-  console.log(chalk.blue('💡 Restart Claude Desktop to use OpenRouter tools'));
-}
+async function installClaudeConfig(apiKey = null) {
+  const inquirer = (await import('inquirer')).default;
 
-async function installClaudeCodeConfig() {
-  const homeDir = os.homedir();
-  let configPath;
-  
-  // Determine Claude Code CLI config path based on OS
-  switch (os.platform()) {
-    case 'darwin':
-      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
-      break;
-    case 'win32':
-      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
-      break;
-    default:
-      configPath = path.join(homeDir, '.claude', 'claude_code_config.json');
+  // Get API key if not provided
+  if (!apiKey) {
+    const keyResult = await secureCredentials.getApiKey();
+    if (!keyResult.key) {
+      console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp init" first.'));
+      return;
+    }
+    apiKey = keyResult.key;
+
+    // Show security warning and get consent
+    console.log(chalk.yellow('\n⚠️  Claude Desktop requires storing the API key in a configuration file.'));
+    console.log(chalk.yellow('The API key will be stored in PLAINTEXT.\n'));
+
+    const { confirmInstall } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmInstall',
+        message: 'Do you consent to storing your API key in Claude Desktop config?',
+        default: false
+      }
+    ]);
+
+    if (!confirmInstall) {
+      console.log(chalk.blue('Installation cancelled.'));
+      return;
+    }
   }
-  
-  // Check if Claude Code CLI is installed
-  try {
-    await runCommand('claude-code', ['--version']);
-    console.log(chalk.green('✓ Claude Code CLI detected'));
-  } catch (error) {
-    console.log(chalk.yellow('⚠️  Claude Code CLI not found. Please install it first:'));
-    console.log(chalk.blue('   npm install -g @anthropic/claude-code'));
-    console.log(chalk.blue('   or visit: https://docs.anthropic.com/en/docs/claude-code'));
-    return;
-  }
-  
+
+  const configPath = secureCredentials.getClaudeDesktopConfigPath();
+
   // Create directory if it doesn't exist
   const configDir = path.dirname(configPath);
   if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
   }
-  
+
   // Read existing config or create new one
   let config = { mcpServers: {} };
   if (fs.existsSync(configPath)) {
@@ -374,16 +597,7 @@ async function installClaudeCodeConfig() {
       console.log(chalk.yellow('⚠️  Existing config file is invalid, creating new one'));
     }
   }
-  
-  // Check if API key is available
-  const apiKey = process.env.OPENROUTER_API_KEY || 
-    (fs.existsSync('.env') && fs.readFileSync('.env', 'utf8').match(/OPENROUTER_API_KEY=(.+)/)?.[1]) ||
-    'your-openrouter-api-key';
-  
-  if (apiKey === 'your-openrouter-api-key') {
-    console.log(chalk.yellow('⚠️  No API key found. Run "openrouter-mcp init" first to configure your API key.'));
-  }
-  
+
   // Add OpenRouter MCP server
   config.mcpServers = config.mcpServers || {};
   config.mcpServers.openrouter = {
@@ -393,13 +607,82 @@ async function installClaudeCodeConfig() {
       OPENROUTER_API_KEY: apiKey
     }
   };
-  
-  // Write config
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+  // Write config with secure permissions
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  secureCredentials.setSecurePermissions(configPath);
+
+  console.log(chalk.green(`✓ Claude Desktop configuration updated: ${configPath}`));
+  console.log(chalk.blue('💡 Restart Claude Desktop to use OpenRouter tools'));
+}
+
+async function installClaudeCodeConfig(apiKey = null) {
+  const inquirer = (await import('inquirer')).default;
+
+  // Get API key if not provided
+  if (!apiKey) {
+    const keyResult = await secureCredentials.getApiKey();
+    if (!keyResult.key) {
+      console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp init" first.'));
+      return;
+    }
+    apiKey = keyResult.key;
+
+    // Show security warning and get consent
+    console.log(chalk.yellow('\n⚠️  Claude Code CLI requires storing the API key in a configuration file.'));
+    console.log(chalk.yellow('The API key will be stored in PLAINTEXT.\n'));
+
+    const { confirmInstall } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmInstall',
+        message: 'Do you consent to storing your API key in Claude Code config?',
+        default: false
+      }
+    ]);
+
+    if (!confirmInstall) {
+      console.log(chalk.blue('Installation cancelled.'));
+      return;
+    }
+  }
+
+  const configPath = secureCredentials.getClaudeCodeConfigPath();
+
+  // Create directory if it doesn't exist
+  const configDir = path.dirname(configPath);
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  }
+
+  // Read existing config or create new one
+  let config = { mcpServers: {} };
+  if (fs.existsSync(configPath)) {
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (error) {
+      console.log(chalk.yellow('⚠️  Existing config file is invalid, creating new one'));
+    }
+  }
+
+  // Add OpenRouter MCP server
+  config.mcpServers = config.mcpServers || {};
+  config.mcpServers.openrouter = {
+    command: "npx",
+    args: ["openrouter-mcp", "start"],
+    env: {
+      OPENROUTER_API_KEY: apiKey
+    }
+  };
+
+  // Write config with secure permissions
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  secureCredentials.setSecurePermissions(configPath);
+
   console.log(chalk.green(`✓ Claude Code CLI configuration updated: ${configPath}`));
   console.log(chalk.blue('💡 OpenRouter tools are now available in Claude Code CLI'));
   console.log(chalk.blue('💡 Use commands like: "List available AI models using OpenRouter"'));
-  
+
   // Show configuration example
   console.log(chalk.cyan('\n📝 Configuration added:'));
   console.log(chalk.gray(JSON.stringify({
@@ -415,20 +698,472 @@ async function installClaudeCodeConfig() {
   }, null, 2)));
 }
 
+async function rotateApiKey() {
+  const inquirer = (await import('inquirer')).default;
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.cyan('  API Key Rotation'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+
+  console.log(chalk.white('This will update your API key in all configured locations.\n'));
+
+  // Get new API key
+  const { newApiKey, confirmRotation } = await inquirer.prompt([
+    {
+      type: 'password',
+      name: 'newApiKey',
+      message: 'Enter your new OpenRouter API key:',
+      mask: '*',
+      validate: (input) => input.length > 0 || 'API key cannot be empty'
+    },
+    {
+      type: 'confirm',
+      name: 'confirmRotation',
+      message: 'Update API key in all configured locations?',
+      default: true
+    }
+  ]);
+
+  if (!confirmRotation) {
+    console.log(chalk.blue('Rotation cancelled.'));
+    return;
+  }
+
+  try {
+    const locations = await secureCredentials.rotateApiKey(newApiKey);
+
+    if (locations.length > 0) {
+      console.log(chalk.green('\n✅ API key rotation complete!'));
+      console.log(chalk.white('\nNext steps:'));
+      console.log(chalk.gray('  1. Revoke your old API key on OpenRouter dashboard'));
+      console.log(chalk.gray('  2. Restart Claude Desktop/Code if they were configured'));
+      console.log(chalk.gray('  3. Test the new key: openrouter-mcp start'));
+    } else {
+      console.log(chalk.yellow('\n⚠️  No existing credential storage found.'));
+      console.log(chalk.blue('Run "openrouter-mcp init" to configure credentials.'));
+    }
+  } catch (error) {
+    console.log(chalk.red(`\n✗ Rotation failed: ${error.message}`));
+  }
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════\n'));
+}
+
+async function deleteCredentials() {
+  const inquirer = (await import('inquirer')).default;
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.cyan('  Delete Credentials'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+
+  console.log(chalk.red('⚠️  WARNING: This will remove your API key from all locations:'));
+  console.log(chalk.gray('  • OS Keychain (if configured)'));
+  console.log(chalk.gray('  • .env file'));
+  console.log(chalk.gray('  • Claude Desktop config'));
+  console.log(chalk.gray('  • Claude Code config\n'));
+
+  const { confirmDelete } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'confirmDelete',
+      message: chalk.red('Are you sure you want to delete all credentials?'),
+      default: false
+    }
+  ]);
+
+  if (!confirmDelete) {
+    console.log(chalk.blue('Deletion cancelled.'));
+    return;
+  }
+
+  try {
+    const locations = await secureCredentials.deleteAllCredentials();
+
+    if (locations.length > 0) {
+      console.log(chalk.green('\n✅ Credentials deleted successfully!'));
+      console.log(chalk.gray('Run "openrouter-mcp init" to reconfigure.'));
+    } else {
+      console.log(chalk.yellow('\n⚠️  No credentials found to delete.'));
+    }
+  } catch (error) {
+    console.log(chalk.red(`\n✗ Deletion failed: ${error.message}`));
+  }
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════\n'));
+}
+
+async function securityAudit() {
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.cyan('  Security Audit'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+
+  // Perform comprehensive audit
+  const audit = await secureCredentials.performSecurityAudit();
+
+  const issues = [];
+  const warnings = [];
+  const good = [];
+
+  // Display environment analysis
+  console.log(chalk.bold('Environment Analysis:\n'));
+  if (audit.environment.shared) {
+    issues.push('! Shared/enterprise environment detected');
+    console.log(chalk.red('  ! Shared Environment: Detected'));
+    audit.environment.indicators.forEach(ind => {
+      console.log(chalk.yellow(`    - ${ind.type} (${ind.severity} severity)`));
+    });
+    console.log(chalk.yellow(`\n  Recommendation: ${audit.environment.recommendation}\n`));
+  } else {
+    good.push('✓ Single-user environment detected');
+    console.log(chalk.green('  ✓ Environment: Single-user\n'));
+  }
+
+  // Check for API key storage locations
+  console.log(chalk.bold('Credential Storage:\n'));
+
+  // Check OS Keychain
+  if (secureCredentials.keytarAvailable) {
+    const keychainKey = await secureCredentials.getFromKeychain();
+    if (keychainKey) {
+      good.push('✓ API key stored in OS Keychain (encrypted)');
+      console.log(chalk.green('  ✓ OS Keychain: API key found (encrypted)'));
+      console.log(chalk.gray(`    Masked key: ${secureCredentials.maskApiKey(keychainKey)}`));
+    } else {
+      console.log(chalk.gray('  ○ OS Keychain: Not configured'));
+    }
+  } else {
+    warnings.push('⚠ OS Keychain not available - install keytar for secure storage');
+    console.log(chalk.yellow('  ⚠  OS Keychain: Not available (install keytar)'));
+  }
+
+  // Check encrypted file
+  const encryptedKey = secureCredentials.getFromEncryptedFile();
+  if (encryptedKey) {
+    good.push('✓ API key stored in encrypted file');
+    console.log(chalk.green('  ✓ Encrypted File: API key found (AES-256-GCM)'));
+    console.log(chalk.gray(`    Masked key: ${secureCredentials.maskApiKey(encryptedKey)}`));
+  } else {
+    console.log(chalk.gray('  ○ Encrypted File: Not configured'));
+  }
+
+  // Check .env file
+  const envPath = path.join(process.cwd(), '.env');
+  if (fs.existsSync(envPath)) {
+    const stats = fs.statSync(envPath);
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    const hasApiKey = envContent.includes('OPENROUTER_API_KEY=sk-or-');
+
+    if (hasApiKey) {
+      console.log(chalk.yellow('  ⚠  .env file: Contains API key (plaintext)'));
+      warnings.push('⚠ API key stored in plaintext .env file');
+
+      // Check file permissions
+      if (os.platform() !== 'win32') {
+        const mode = stats.mode & parseInt('777', 8);
+        if (mode === parseInt('600', 8)) {
+          good.push('✓ .env file has secure permissions (600)');
+          console.log(chalk.green('    ✓ Permissions: 600 (secure)'));
+        } else {
+          issues.push(`! .env file has insecure permissions (${mode.toString(8)})`);
+          console.log(chalk.red(`    ! Permissions: ${mode.toString(8)} (should be 600)`));
+        }
+      }
+    } else {
+      console.log(chalk.green('  ✓ .env file: No API key (settings only)'));
+      good.push('✓ .env file does not contain API key');
+    }
+  } else {
+    console.log(chalk.gray('  ○ .env file: Not found'));
+  }
+
+  // Check .gitignore
+  const gitignorePath = path.join(process.cwd(), '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    const gitignoreContent = fs.readFileSync(gitignorePath, 'utf8');
+    if (gitignoreContent.includes('.env')) {
+      good.push('✓ .env is in .gitignore');
+      console.log(chalk.green('  ✓ .gitignore: .env is excluded from version control'));
+    } else {
+      issues.push('! .env not in .gitignore - risk of credential exposure');
+      console.log(chalk.red('  ! .gitignore: .env NOT excluded (add it!)'));
+    }
+  }
+
+  // Check Claude configs
+  console.log(chalk.bold('\n\nClaude Integrations:\n'));
+
+  const claudeDesktopPath = secureCredentials.getClaudeDesktopConfigPath();
+  if (fs.existsSync(claudeDesktopPath)) {
+    const stats = fs.statSync(claudeDesktopPath);
+    console.log(chalk.yellow('  ⚠  Claude Desktop: Config contains API key (plaintext)'));
+    warnings.push('⚠ Claude Desktop config contains plaintext API key');
+
+    if (os.platform() !== 'win32') {
+      const mode = stats.mode & parseInt('777', 8);
+      if (mode === parseInt('600', 8)) {
+        good.push('✓ Claude Desktop config has secure permissions');
+        console.log(chalk.green('    ✓ Permissions: 600 (secure)'));
+      } else {
+        issues.push('! Claude Desktop config has insecure permissions');
+        console.log(chalk.red(`    ! Permissions: ${mode.toString(8)} (should be 600)`));
+      }
+    }
+  } else {
+    console.log(chalk.gray('  ○ Claude Desktop: Not configured'));
+  }
+
+  const claudeCodePath = secureCredentials.getClaudeCodeConfigPath();
+  if (fs.existsSync(claudeCodePath)) {
+    const stats = fs.statSync(claudeCodePath);
+    console.log(chalk.yellow('  ⚠  Claude Code: Config contains API key (plaintext)'));
+    warnings.push('⚠ Claude Code config contains plaintext API key');
+
+    if (os.platform() !== 'win32') {
+      const mode = stats.mode & parseInt('777', 8);
+      if (mode === parseInt('600', 8)) {
+        good.push('✓ Claude Code config has secure permissions');
+        console.log(chalk.green('    ✓ Permissions: 600 (secure)'));
+      } else {
+        issues.push('! Claude Code config has insecure permissions');
+        console.log(chalk.red(`    ! Permissions: ${mode.toString(8)} (should be 600)`));
+      }
+    }
+  } else {
+    console.log(chalk.gray('  ○ Claude Code: Not configured'));
+  }
+
+  // Environment detection
+  console.log(chalk.bold('\n\nEnvironment Analysis:\n'));
+
+  if (secureCredentials.isSharedEnvironment()) {
+    issues.push('! Shared/enterprise environment detected');
+    console.log(chalk.red('  ! Shared Environment: Detected'));
+    console.log(chalk.red('    Recommend: Use enterprise secrets management'));
+  } else {
+    good.push('✓ Single-user environment detected');
+    console.log(chalk.green('  ✓ Environment: Single-user'));
+  }
+
+  // Summary
+  console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────'));
+  console.log(chalk.bold('Summary:\n'));
+
+  if (issues.length > 0) {
+    console.log(chalk.red(`  Critical Issues (${issues.length}):`));
+    issues.forEach(issue => console.log(chalk.red(`    ${issue}`)));
+    console.log('');
+  }
+
+  if (warnings.length > 0) {
+    console.log(chalk.yellow(`  Warnings (${warnings.length}):`));
+    warnings.forEach(warning => console.log(chalk.yellow(`    ${warning}`)));
+    console.log('');
+  }
+
+  if (good.length > 0) {
+    console.log(chalk.green(`  Good Practices (${good.length}):`));
+    good.forEach(item => console.log(chalk.green(`    ${item}`)));
+    console.log('');
+  }
+
+  console.log(chalk.bold('Recommendations:\n'));
+
+  if (!secureCredentials.keytarAvailable) {
+    console.log(chalk.blue('  1. Install keytar for OS Keychain support:'));
+    console.log(chalk.gray('     npm install keytar'));
+  }
+
+  if (warnings.some(w => w.includes('plaintext'))) {
+    console.log(chalk.blue('  2. Consider migrating to OS Keychain storage'));
+    console.log(chalk.gray('     openrouter-mcp rotate-key'));
+  }
+
+  if (issues.some(i => i.includes('.gitignore'))) {
+    console.log(chalk.blue('  3. Add .env to .gitignore immediately'));
+    console.log(chalk.gray('     echo ".env" >> .gitignore'));
+  }
+
+  console.log(chalk.blue('  4. Review security documentation:'));
+  console.log(chalk.gray('     docs/SECURITY.md'));
+
+  console.log(chalk.blue('  5. Set up API key rotation reminder (every 90 days)'));
+
+  // Offer to fix permissions
+  if (audit.vulnerabilities.some(v => v.issue.includes('permissions'))) {
+    console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────'));
+    console.log(chalk.yellow('\nPermission issues detected. Would you like to fix them automatically?'));
+    console.log(chalk.gray('This will set file permissions to 600 (owner read/write only)\n'));
+
+    const inquirer = (await import('inquirer')).default;
+    const { fixPerms } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'fixPerms',
+        message: 'Fix file permissions now?',
+        default: true
+      }
+    ]);
+
+    if (fixPerms) {
+      const fixed = secureCredentials.fixPermissions();
+      if (fixed.length > 0) {
+        console.log(chalk.green('\n✓ Fixed permissions for:'));
+        fixed.forEach(f => console.log(chalk.gray(`  - ${f.path}`)));
+      }
+    }
+  }
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════\n'));
+}
+
+async function migrateEncryption() {
+  const inquirer = (await import('inquirer')).default;
+  const cryptoManager = require('./crypto-manager');
+
+  console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
+  console.log(chalk.cyan('  Encryption Migration v1.0 → v2.0'));
+  console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+
+  console.log(chalk.white('This will migrate your encrypted credentials from v1.0 to v2.0:'));
+  console.log(chalk.gray('  • v1.0: Deterministic key derivation (INSECURE - machine-specific)'));
+  console.log(chalk.gray('  • v2.0: Random 256-bit master key + OS Keystore (SECURE)\n'));
+
+  // Check if keytar is available
+  if (!cryptoManager.isKeystoreAvailable()) {
+    console.log(chalk.red('✗ OS Keystore not available'));
+    console.log(chalk.yellow('⚠️  v2.0 requires keytar for OS Keystore integration'));
+    console.log(chalk.blue('\nInstall keytar to continue:'));
+    console.log(chalk.gray('  npm install keytar\n'));
+    return;
+  }
+
+  // Check for v1.0 encrypted file
+  const CONFIG_DIR = path.join(os.homedir(), '.openrouter-mcp');
+  const ENCRYPTED_FILE = path.join(CONFIG_DIR, '.credentials.enc');
+
+  if (!fs.existsSync(ENCRYPTED_FILE)) {
+    console.log(chalk.yellow('⚠️  No encrypted credentials file found'));
+    console.log(chalk.gray('  Location: ' + ENCRYPTED_FILE));
+    console.log(chalk.blue('\nNothing to migrate.'));
+    return;
+  }
+
+  // Read and detect version
+  try {
+    const encryptedData = JSON.parse(fs.readFileSync(ENCRYPTED_FILE, 'utf8'));
+    const version = cryptoManager.detectEncryptionVersion(encryptedData);
+
+    if (version === '2.0') {
+      console.log(chalk.green('✓ Credentials are already using v2.0 encryption'));
+      console.log(chalk.gray('  No migration needed.\n'));
+      return;
+    }
+
+    console.log(chalk.yellow(`⚠️  Detected v${version} encryption format`));
+    console.log(chalk.gray(`  File: ${ENCRYPTED_FILE}\n`));
+
+    // Confirm migration
+    const { confirmMigration } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmMigration',
+        message: 'Proceed with migration to v2.0?',
+        default: true
+      }
+    ]);
+
+    if (!confirmMigration) {
+      console.log(chalk.blue('Migration cancelled.'));
+      return;
+    }
+
+    console.log(chalk.blue('\n🔄 Starting migration...\n'));
+
+    // Step 1: Decrypt using v1.0
+    console.log(chalk.gray('  [1/4] Decrypting v1.0 credentials...'));
+    const decrypted = cryptoManager.decryptLegacyV1(encryptedData);
+    console.log(chalk.green('  ✓ Decryption successful'));
+
+    // Step 2: Generate and store master key
+    console.log(chalk.gray('  [2/4] Generating 256-bit master key...'));
+    const masterKey = cryptoManager.generateMasterKey();
+    console.log(chalk.green('  ✓ Master key generated'));
+
+    console.log(chalk.gray('  [3/4] Storing master key in OS Keystore...'));
+    await cryptoManager.storeMasterKeySecurely(masterKey);
+    console.log(chalk.green('  ✓ Master key stored securely'));
+
+    // Step 3: Re-encrypt with v2.0
+    console.log(chalk.gray('  [4/4] Re-encrypting with v2.0...'));
+    const encryptedV2 = cryptoManager.encryptWithMasterKey(decrypted, masterKey);
+
+    const newData = JSON.stringify({
+      ...encryptedV2,
+      created: new Date().toISOString(),
+      hostname: os.hostname(),
+      migratedFrom: version,
+      migratedAt: new Date().toISOString()
+    });
+
+    // Backup old file
+    const backupFile = ENCRYPTED_FILE + '.v1.backup';
+    fs.copyFileSync(ENCRYPTED_FILE, backupFile);
+    console.log(chalk.gray(`  ✓ Backup created: ${backupFile}`));
+
+    // Write new encrypted file
+    fs.writeFileSync(ENCRYPTED_FILE, newData, { mode: 0o600 });
+    secureCredentials.setSecurePermissions(ENCRYPTED_FILE);
+
+    console.log(chalk.green('  ✓ Migration complete!\n'));
+
+    // Verify migration
+    console.log(chalk.gray('  Verifying migration...'));
+    const verification = JSON.parse(fs.readFileSync(ENCRYPTED_FILE, 'utf8'));
+    const verifiedDecrypted = cryptoManager.decryptWithMasterKey(verification, masterKey);
+
+    if (verifiedDecrypted === decrypted) {
+      console.log(chalk.green('  ✓ Verification successful\n'));
+    } else {
+      throw new Error('Verification failed - decrypted data does not match');
+    }
+
+    console.log(chalk.cyan('─────────────────────────────────────────────────────────────'));
+    console.log(chalk.green('\n✅ Migration Complete!\n'));
+    console.log(chalk.white('Summary:'));
+    console.log(chalk.gray(`  • Old version: v${version} (deterministic key)`));
+    console.log(chalk.gray('  • New version: v2.0 (random master key + OS Keystore)'));
+    console.log(chalk.gray(`  • Backup location: ${backupFile}`));
+    console.log(chalk.gray(`  • Master key stored in: OS Keystore`));
+
+    console.log(chalk.white('\nNext steps:'));
+    console.log(chalk.gray('  1. Test decryption: openrouter-mcp start'));
+    console.log(chalk.gray('  2. Run security audit: openrouter-mcp security-audit'));
+    console.log(chalk.gray('  3. Delete backup once verified: rm ' + backupFile));
+
+    console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════\n'));
+
+  } catch (error) {
+    console.log(chalk.red(`\n✗ Migration failed: ${error.message}\n`));
+    console.log(chalk.yellow('Your original credentials are still intact.'));
+    console.log(chalk.blue('Please report this issue with the error message above.'));
+    console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════\n'));
+  }
+}
+
 function runCommand(command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     let error = '';
-    
+
     child.stdout.on('data', (data) => {
       output += data.toString();
     });
-    
+
     child.stderr.on('data', (data) => {
       error += data.toString();
     });
-    
+
     child.on('close', (code) => {
       if (code === 0) {
         resolve(output);

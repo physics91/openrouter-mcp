@@ -70,18 +70,77 @@ logs/
 # Test files
 test_real_api.py
 
+# Demo and development files
+demo_*.py
+test_recursion*.py
+test_*_registry.py
+*_FIX*.md
+*_SUMMARY.md
+*_REPORT.md
+VERIFICATION_*.md
+CODE_REVIEW*.md
+SECOND_REVIEW*.md
+FINAL_IMPROVEMENTS*.md
+
 # Temporary files
 *.tmp
 *.temp
+.cache/
+!.cache/
+.cache/*
+!.cache/.gitkeep
 
 # Benchmark and cache files
 *_cache.json
+openrouter_model_cache.json
 *_results_*.json
 *_report_*.json
 *_report_*.md
 benchmark_*.json
-test_results_*.json
+test_results*.json
 performance_*.json
 mock_test_*.json
 fixed_performance_*.json
 simple_test_*.json
+
+# Benchmark outputs (CSV, MD reports, JSON results)
+benchmarks/*.csv
+benchmarks/test_*.json
+benchmarks/*_report_*.csv
+benchmarks/*_report_*.md
+benchmarks/*_report_*.json
+benchmarks/*_report*.markdown
+*_report*.markdown
+# Keep benchmark documentation but ignore generated reports
+!benchmarks/README.md
+
+# Security and implementation documentation (auto-generated)
+*_FIX_*.md
+*_IMPLEMENTATION*.md
+*_INTEGRATION*.md
+QUICK_REFERENCE.md
+SECURE_STORAGE_INTEGRATION.md
+
+# Keep curated documentation copies in docs/
+!docs/QUICK_REFERENCE.md
+!docs/SECURE_STORAGE_INTEGRATION.md
+!docs/CLAUDE_CODE_QUICKREF.md
+!docs/reports/
+!docs/reports/*.md
+
+# Generated security advisories and reports
+docs/SECURITY_ADVISORY_*.md
+docs/*_SECURITY_*.md
+docs/LOGGING_SECURITY*.md
+docs/MULTIMODAL_SECURITY*.md
+docs/PERFORMANCE_IMPROVEMENTS.md
+docs/SEMANTIC_SIMILARITY*.md
+docs/*_COMPARISON.md
+docs/CHANGES_SUMMARY.md
+IMPLEMENTATION_SUMMARY.md
+SECURITY_FIX_*.md
+
+# Test coverage reports
+.coverage.*
+htmlcov/
+coverage.xml

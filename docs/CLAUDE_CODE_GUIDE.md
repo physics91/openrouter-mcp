@@ -127,12 +127,12 @@ After configuration:
 
 1. **Test with a simple command**:
    ```bash
-   claude-code "List available AI models using OpenRouter"
+   claude "List available AI models using OpenRouter"
    ```
 
 2. **Check available tools**:
    ```bash
-   claude-code "What tools do I have available?"
+   claude "What tools do I have available?"
    ```
 
 ### Status Check via CLI
@@ -157,39 +157,39 @@ Once integrated, you can use these commands with Claude Code CLI:
 
 ```bash
 # Chat with different models
-claude-code "Use GPT-4 to explain quantum computing"
-claude-code "Have Claude Opus write a creative story"
-claude-code "Ask Llama 2 to review this code file"
+claude "Use GPT-4 to explain quantum computing"
+claude "Have Claude Opus write a creative story"
+claude "Ask Llama 2 to review this code file"
 ```
 
 ### 2. Model Discovery and Comparison
 
 ```bash
 # Explore available models
-claude-code "List all available GPT models and their pricing"
-claude-code "Show me the cheapest models for code generation"
-claude-code "Compare OpenAI and Anthropic model capabilities"
+claude "List all available GPT models and their pricing"
+claude "Show me the cheapest models for code generation"
+claude "Compare OpenAI and Anthropic model capabilities"
 ```
 
 ### 3. Development Workflow Integration
 
 ```bash
 # Code analysis with different models
-claude-code "Use multiple AI models to review my Python script"
-claude-code "Compare code suggestions from GPT-4 and Claude Sonnet"
+claude "Use multiple AI models to review my Python script"
+claude "Compare code suggestions from GPT-4 and Claude Sonnet"
 
 # Documentation and explanation
-claude-code "Have different models explain this complex algorithm"
-claude-code "Generate API documentation using the best model for technical writing"
+claude "Have different models explain this complex algorithm"
+claude "Generate API documentation using the best model for technical writing"
 ```
 
 ### 4. Usage Tracking and Cost Management
 
 ```bash
 # Monitor usage and costs
-claude-code "Show my OpenRouter API usage for today"
-claude-code "Which AI models am I using most frequently?"
-claude-code "Calculate the cost difference between using GPT-4 vs Claude"
+claude "Show my OpenRouter API usage for today"
+claude "Which AI models am I using most frequently?"
+claude "Calculate the cost difference between using GPT-4 vs Claude"
 ```
 
 ### Available Models
@@ -220,7 +220,7 @@ Popular models you can access through Claude Code:
 **Symptoms:** No OpenRouter tools available in Claude Code
 
 **Solutions:**
-- Verify Claude Code CLI installation: `claude-code --version`
+- Verify Claude Code CLI installation: `claude --version`
 - Check config file location and format
 - Ensure JSON syntax is valid
 - Verify file permissions
@@ -228,7 +228,7 @@ Popular models you can access through Claude Code:
 **Debug steps:**
 ```bash
 # Check Claude Code CLI installation
-claude-code --version
+claude --version
 
 # Validate JSON configuration
 python -c "import json; print(json.load(open('~/.claude/claude_code_config.json')))"
@@ -298,7 +298,7 @@ Enable debug logging for detailed troubleshooting:
 npx openrouter-mcp start --debug
 
 # Check configuration in detail
-claude-code "Debug: Show me all available MCP tools and their status"
+claude "Debug: Show me all available MCP tools and their status"
 ```
 
 ## Advanced Configuration
@@ -413,17 +413,17 @@ For high-volume development usage:
 
 ```bash
 # Morning development routine
-claude-code "Show me my OpenRouter usage for yesterday"
-claude-code "List the most cost-effective models for code review"
+claude "Show me my OpenRouter usage for yesterday"
+claude "List the most cost-effective models for code review"
 
 # During development
-claude-code "Use Claude Sonnet to review this function for bugs"
-claude-code "Have GPT-4 explain this complex algorithm"
-claude-code "Compare different models' suggestions for optimizing this code"
+claude "Use Claude Sonnet to review this function for bugs"
+claude "Have GPT-4 explain this complex algorithm"
+claude "Compare different models' suggestions for optimizing this code"
 
 # End of day
-claude-code "Summarize my AI model usage today"
-claude-code "Calculate costs for my development assistant usage"
+claude "Summarize my AI model usage today"
+claude "Calculate costs for my development assistant usage"
 ```
 
 ### 3. Security Considerations

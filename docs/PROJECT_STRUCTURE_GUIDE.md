@@ -10,6 +10,7 @@
 - `package.json`, `requirements*.txt`: 의존성 관리
 - `*.ini`: 설정 파일들
 - `.env.example`: 환경 변수 템플릿 (실제 .env는 제외)
+- `.cache/`: 실행 중 생성되는 캐시/결과물 (gitignore)
 
 ### 소스코드 (/src/): 모든 Python 코드
 - `openrouter_mcp/`: 메인 패키지
@@ -32,7 +33,7 @@
 
 ### 벤치마크 (/benchmarks/): 성능 측정
 - **벤치마크 스크립트**: 성능 측정 코드
-- **결과 파일**: 자동 생성되는 결과들 (.gitignore로 제외)
+- **결과 파일**: `.cache/benchmarks/`에 자동 생성 (.gitignore로 제외)
 
 ### 스크립트 (/scripts/): 유틸리티 스크립트
 - 설치 스크립트, 개발 도구 등
@@ -44,6 +45,7 @@
 - `*_test.py`: tests/ 디렉토리로  
 - `*_results_*.json`: .gitignore로 제외
 - `*_report_*.json/md`: docs/reports/로
+- `.coverage`: .cache/로
 - `debug_*.py`: 개발 후 삭제
 - `quick_*.py`: 개발 후 삭제
 - 하드코딩된 API 키가 있는 파일
@@ -70,7 +72,7 @@
 ./benchmarks/new_benchmark.py  ✅
 
 # 결과 (자동 .gitignore)
-./benchmarks/results_*.json  ✅
+./.cache/benchmarks/benchmark_*.json  ✅
 ```
 
 ### 문서
