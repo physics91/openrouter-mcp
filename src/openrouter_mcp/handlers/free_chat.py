@@ -1,5 +1,6 @@
 """Free chat MCP tool handler -- zero-cost AI chat using free OpenRouter models."""
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -8,19 +9,30 @@ from pydantic import BaseModel, Field
 from ..mcp_registry import mcp, get_openrouter_client
 from ..config.constants import FreeChatConfig, ModelDefaults
 from ..free.router import FreeModelRouter
-from ..client.openrouter import RateLimitError, OpenRouterError
+from ..client.openrouter import RateLimitError, OpenRouterError, AuthenticationError, InvalidRequestError
 
 logger = logging.getLogger(__name__)
 
 _router: Optional[FreeModelRouter] = None
+_router_lock: Optional[asyncio.Lock] = None
+
+
+def _get_router_lock() -> asyncio.Lock:
+    global _router_lock
+    if _router_lock is None:
+        _router_lock = asyncio.Lock()
+    return _router_lock
 
 
 async def _get_router() -> FreeModelRouter:
     """Get or create the module-level FreeModelRouter singleton."""
     global _router
-    if _router is None:
-        client = await get_openrouter_client()
-        _router = FreeModelRouter(client.model_cache)
+    if _router is not None:
+        return _router
+    async with _get_router_lock():
+        if _router is None:
+            client = await get_openrouter_client()
+            _router = FreeModelRouter(client.model_cache)
     return _router
 
 
@@ -105,6 +117,9 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
             router.report_rate_limit(model_id)
             last_error = e
             continue
+
+        except (AuthenticationError, InvalidRequestError):
+            raise
 
         except OpenRouterError as e:
             logger.error(f"OpenRouter error with model {model_id}: {e}")
