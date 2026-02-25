@@ -2,7 +2,9 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.openrouter_mcp.handlers.free_chat import free_chat, FreeChatRequest
-from src.openrouter_mcp.client.openrouter import RateLimitError, OpenRouterError
+from src.openrouter_mcp.client.openrouter import (
+    RateLimitError, OpenRouterError, AuthenticationError, InvalidRequestError,
+)
 
 
 @pytest.fixture
@@ -117,6 +119,44 @@ class TestFreeChatHandler:
             assert messages[0]["role"] == "system"
             assert messages[0]["content"] == "You are a helpful assistant."
             assert messages[1]["role"] == "user"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_authentication_error_propagates_immediately(self):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = AuthenticationError("Invalid API key")
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello")
+            with pytest.raises(AuthenticationError, match="Invalid API key"):
+                await free_chat(request)
+
+            mock_router.report_rate_limit.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_invalid_request_error_propagates_immediately(self):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = InvalidRequestError("Bad request")
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello")
+            with pytest.raises(InvalidRequestError, match="Bad request"):
+                await free_chat(request)
+
+            mock_router.report_rate_limit.assert_not_called()
 
     @pytest.mark.unit
     def test_request_validation_defaults(self):

@@ -18,6 +18,7 @@ _router_lock: Optional[asyncio.Lock] = None
 
 
 def _get_router_lock() -> asyncio.Lock:
+    # Safe under single-threaded asyncio (GIL + cooperative scheduling)
     global _router_lock
     if _router_lock is None:
         _router_lock = asyncio.Lock()
