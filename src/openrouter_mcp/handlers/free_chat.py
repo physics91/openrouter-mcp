@@ -107,3 +107,34 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
             continue
 
     raise last_error or RuntimeError("사용 가능한 free 모델이 없습니다.")
+
+
+@mcp.tool()
+async def list_free_models() -> Dict[str, Any]:
+    """
+    List all available free models with quality scores and availability status.
+
+    Returns:
+        Dictionary with models list, each including id, name, score, and availability.
+    """
+    router = await _get_router()
+    free_models = router._cache.filter_models(free_only=True)
+
+    models_info = []
+    for model in free_models:
+        models_info.append({
+            "id": model.get("id", ""),
+            "name": model.get("name", ""),
+            "context_length": model.get("context_length", 0),
+            "provider": model.get("provider", "unknown"),
+            "quality_score": round(router._score_model(model), 3),
+            "available": router._is_available(model.get("id", "")),
+        })
+
+    models_info.sort(key=lambda m: -m["quality_score"])
+
+    return {
+        "models": models_info,
+        "total_count": len(models_info),
+        "available_count": sum(1 for m in models_info if m["available"]),
+    }
