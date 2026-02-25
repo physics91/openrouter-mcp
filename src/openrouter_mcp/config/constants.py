@@ -135,12 +135,14 @@ class ImageProcessingConfig:
 class FreeChatConfig:
     """Configuration for free_chat tool."""
 
+    MAX_CONTEXT_LENGTH: int = 262144
     DEFAULT_COOLDOWN_SECONDS: float = 60.0
     MAX_RETRY_COUNT: int = 3
     MAX_TOKENS: int = 4096
     CONTEXT_LENGTH_WEIGHT: float = 0.4
     REPUTATION_WEIGHT: float = 0.4
     FEATURES_WEIGHT: float = 0.2
+    USAGE_PENALTY_FACTOR: float = 0.06
     DEFAULT_REPUTATION: float = 0.5
     MODEL_REPUTATION: dict = {
         "google": 0.9,
