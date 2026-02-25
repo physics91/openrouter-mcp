@@ -100,7 +100,7 @@ class FreeModelRouter:
         # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
         candidates = [
-            (model, self._score_model(model) - self._usage_counts.get(model["id"], 0) * usage_penalty)
+            (model, max(0.0, self._score_model(model) - self._usage_counts.get(model["id"], 0) * usage_penalty))
             for model in free_models
             if self._is_available(model["id"])
         ]

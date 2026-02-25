@@ -123,6 +123,8 @@ class OpenRouterClient:
     @property
     def model_cache(self) -> "ModelCache":
         """Public accessor for the model cache."""
+        if self._model_cache is None:
+            raise RuntimeError("Model cache is not available (caching is disabled)")
         return self._model_cache
 
     @classmethod
