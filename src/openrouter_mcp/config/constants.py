@@ -132,6 +132,26 @@ class ImageProcessingConfig:
     SUPPORTED_FORMATS: tuple = ('JPEG', 'PNG', 'WEBP', 'GIF')
 
 
+class FreeChatConfig:
+    """Configuration for free_chat tool."""
+
+    DEFAULT_COOLDOWN_SECONDS: float = 60.0
+    MAX_RETRY_COUNT: int = 3
+    MAX_TOKENS: int = 4096
+    CONTEXT_LENGTH_WEIGHT: float = 0.4
+    REPUTATION_WEIGHT: float = 0.4
+    FEATURES_WEIGHT: float = 0.2
+    DEFAULT_REPUTATION: float = 0.5
+    MODEL_REPUTATION: dict = {
+        "google": 0.9,
+        "meta": 0.85,
+        "qwen": 0.8,
+        "mistral": 0.75,
+        "microsoft": 0.7,
+        "deepseek": 0.7,
+    }
+
+
 __all__ = [
     "APIConfig",
     "CacheConfig",
@@ -143,4 +163,5 @@ __all__ = [
     "PricingDefaults",
     "BenchmarkDefaults",
     "ImageProcessingConfig",
+    "FreeChatConfig",
 ]
