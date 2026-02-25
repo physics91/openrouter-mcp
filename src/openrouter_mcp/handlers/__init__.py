@@ -13,10 +13,12 @@ from . import chat
 from . import multimodal
 from . import mcp_benchmark
 from . import collective_intelligence
+from . import free_chat
 
 __all__ = [
     "chat",
     "multimodal",
     "mcp_benchmark",
-    "collective_intelligence"
+    "collective_intelligence",
+    "free_chat",
 ]
