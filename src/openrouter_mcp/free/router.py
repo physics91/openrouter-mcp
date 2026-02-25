@@ -90,12 +90,22 @@ class FreeModelRouter:
         if not free_models:
             raise RuntimeError("사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요.")
 
-        # Try preferred models first
+        # Try preferred models first (only if they are actually free)
         if preferred_models:
+            free_model_ids = {m["id"] for m in free_models}
             for pref_id in preferred_models:
-                if self._is_available(pref_id):
+                if pref_id in free_model_ids and self._is_available(pref_id):
                     self._usage_counts[pref_id] = self._usage_counts.get(pref_id, 0) + 1
                     return pref_id
+
+        # Decay usage counts when all free models have been used at least once
+        if self._usage_counts and len(self._usage_counts) >= len(free_models):
+            min_count = min(
+                self._usage_counts.get(m["id"], 0) for m in free_models
+            )
+            if min_count > 0:
+                for mid in list(self._usage_counts):
+                    self._usage_counts[mid] -= min_count
 
         # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR

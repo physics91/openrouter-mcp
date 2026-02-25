@@ -81,6 +81,29 @@ class TestSelectModel:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_usage_counts_decay_prevents_stagnation(self, router):
+        """After all models are used, decay resets relative counts so rotation continues."""
+        # Use each model enough times that scores would all be 0.0 without decay
+        selected = set()
+        for _ in range(20):
+            selected.add(await router.select_model())
+        # All 3 models should have been used (rotation works)
+        assert len(selected) == 3
+        # After decay, rotation still works (doesn't stagnate)
+        next_batch = set()
+        for _ in range(6):
+            next_batch.add(await router.select_model())
+        assert len(next_batch) >= 2
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_preferred_paid_model_ignored(self, router):
+        """Preferred model that is not in the free list should be ignored."""
+        model_id = await router.select_model(preferred_models=["openai/gpt-4"])
+        assert model_id != "openai/gpt-4"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_no_free_models_available(self):
         cache = MagicMock()
         cache.filter_models.return_value = []
