@@ -62,6 +62,7 @@ try:
     from .handlers import multimodal  # noqa: F401
     from .handlers import mcp_benchmark  # noqa: F401
     from .handlers import collective_intelligence  # noqa: F401
+    from .handlers import free_chat  # noqa: F401
 except ImportError:
     # Fallback for direct execution
     import sys
@@ -70,6 +71,7 @@ except ImportError:
     from openrouter_mcp.handlers import multimodal  # noqa: F401
     from openrouter_mcp.handlers import mcp_benchmark  # noqa: F401
     from openrouter_mcp.handlers import collective_intelligence  # noqa: F401
+    from openrouter_mcp.handlers import free_chat  # noqa: F401
 
 # Import lifecycle shutdown at module level for patching in tests
 try:
