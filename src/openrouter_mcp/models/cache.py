@@ -99,8 +99,19 @@ class HTTPTransport:
             self._client = None
 
     def close(self):
-        """Close transport (sync, for compatibility)."""
-        pass
+        """Close transport synchronously by closing the underlying client."""
+        if self._client is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._client.aclose())
+            except RuntimeError:
+                # No running loop — best-effort sync close
+                import asyncio as _asyncio
+                try:
+                    _asyncio.run(self._client.aclose())
+                except RuntimeError:
+                    pass  # Already in an event loop or shutting down
+            self._client = None
 
 
 class ModelCache:

@@ -73,7 +73,7 @@ async def test_vision_with_generated_image():
     
     try:
         async with client:
-            response = await client.chat_completion_with_vision(
+            response = await client.chat_completion(
                 model=model,
                 messages=messages,
                 temperature=0.7,
@@ -126,7 +126,7 @@ async def test_vision_with_url():
     
     try:
         async with client:
-            response = await client.chat_completion_with_vision(
+            response = await client.chat_completion(
                 model=model,
                 messages=messages,
                 temperature=0.7,
@@ -214,7 +214,7 @@ async def test_multiple_images():
     
     try:
         async with client:
-            response = await client.chat_completion_with_vision(
+            response = await client.chat_completion(
                 model=model,
                 messages=messages,
                 temperature=0.7,
