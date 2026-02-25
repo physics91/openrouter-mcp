@@ -66,3 +66,43 @@ class FreeModelRouter:
         self._cooldowns = {
             mid: until for mid, until in self._cooldowns.items() if until > now
         }
+
+    async def select_model(self, preferred_models: Optional[List[str]] = None) -> str:
+        """Select the best available free model."""
+        self._cleanup_expired_cooldowns()
+
+        free_models = self._cache.filter_models(free_only=True)
+
+        if not free_models:
+            raise RuntimeError("사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요.")
+
+        # Try preferred models first
+        if preferred_models:
+            for pref_id in preferred_models:
+                if self._is_available(pref_id):
+                    self._usage_counts[pref_id] = self._usage_counts.get(pref_id, 0) + 1
+                    return pref_id
+
+        # Filter available models and score with usage-based rotation penalty
+        usage_penalty = FreeChatConfig.REPUTATION_WEIGHT * 0.15
+        candidates = [
+            (model, self._score_model(model) - self._usage_counts.get(model["id"], 0) * usage_penalty)
+            for model in free_models
+            if self._is_available(model["id"])
+        ]
+
+        if not candidates:
+            soonest = min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
+            raise RuntimeError(
+                f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요."
+            )
+
+        # Sort by effective score descending
+        candidates.sort(key=lambda x: -x[1])
+
+        selected = candidates[0][0]
+        model_id = selected["id"]
+        self._usage_counts[model_id] = self._usage_counts.get(model_id, 0) + 1
+
+        logger.info(f"Selected free model: {model_id} (score={candidates[0][1]:.3f})")
+        return model_id
