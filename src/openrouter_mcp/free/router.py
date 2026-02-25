@@ -45,3 +45,24 @@ class FreeModelRouter:
             + FreeChatConfig.REPUTATION_WEIGHT * reputation
             + FreeChatConfig.FEATURES_WEIGHT * feature_score
         )
+
+    def _is_available(self, model_id: str) -> bool:
+        """Check if a model is not in cooldown."""
+        cooldown_until = self._cooldowns.get(model_id)
+        if cooldown_until is None:
+            return True
+        return time.time() >= cooldown_until
+
+    def report_rate_limit(
+        self, model_id: str, cooldown_seconds: float = FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+    ) -> None:
+        """Register a model for cooldown after rate limit."""
+        self._cooldowns[model_id] = time.time() + cooldown_seconds
+        logger.info(f"Model {model_id} in cooldown for {cooldown_seconds}s")
+
+    def _cleanup_expired_cooldowns(self) -> None:
+        """Remove expired cooldown entries."""
+        now = time.time()
+        self._cooldowns = {
+            mid: until for mid, until in self._cooldowns.items() if until > now
+        }
