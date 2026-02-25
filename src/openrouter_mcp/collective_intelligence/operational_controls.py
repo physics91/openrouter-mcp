@@ -382,9 +382,9 @@ class StorageManager:
         """
         if self.config.enable_auto_cleanup and not self._cleanup_started:
             try:
-                loop = asyncio.get_running_loop()
-                self._start_cleanup_task()
+                asyncio.get_running_loop()
                 self._cleanup_started = True
+                self._start_cleanup_task()
             except RuntimeError:
                 # No running event loop - cleanup will be started later
                 pass
@@ -393,8 +393,14 @@ class StorageManager:
         """Start background cleanup task."""
         async def cleanup_loop():
             while True:
-                await asyncio.sleep(self.config.cleanup_interval_minutes * 60)
-                await self.cleanup_expired()
+                try:
+                    await asyncio.sleep(self.config.cleanup_interval_minutes * 60)
+                    await self.cleanup_expired()
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Cleanup task error: {e}", exc_info=True)
+                    await asyncio.sleep(60)
 
         self._cleanup_task = asyncio.create_task(cleanup_loop())
 

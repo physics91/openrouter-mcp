@@ -26,7 +26,7 @@ from .operational_controls import (
 )
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
 from ..utils.token_counter import count_tokens
-from ..config.constants import PricingDefaults
+from ..config.constants import PricingDefaults, ConsensusDefaults
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +53,13 @@ class AgreementLevel(Enum):
 class ConsensusConfig:
     """Configuration for consensus building."""
     strategy: ConsensusStrategy = ConsensusStrategy.MAJORITY_VOTE
-    min_models: int = 3
-    max_models: int = 5
-    confidence_threshold: float = 0.7
-    agreement_threshold: float = 0.6
-    similarity_threshold: float = 0.7  # Semantic similarity threshold for grouping
-    timeout_seconds: float = 30.0
-    retry_attempts: int = 2
+    min_models: int = ConsensusDefaults.MIN_MODELS
+    max_models: int = ConsensusDefaults.MAX_MODELS
+    confidence_threshold: float = ConsensusDefaults.CONFIDENCE_THRESHOLD
+    agreement_threshold: float = ConsensusDefaults.AGREEMENT_THRESHOLD
+    similarity_threshold: float = ConsensusDefaults.SIMILARITY_THRESHOLD
+    timeout_seconds: float = ConsensusDefaults.TIMEOUT_SECONDS
+    retry_attempts: int = ConsensusDefaults.RETRY_ATTEMPTS
     model_weights: Dict[str, float] = field(default_factory=dict)
     exclude_models: Set[str] = field(default_factory=set)
     operational_config: Optional[OperationalConfig] = None
@@ -412,16 +412,15 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         responses: List[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus from model responses using the configured strategy."""
-        
-        if self.config.strategy == ConsensusStrategy.MAJORITY_VOTE:
-            return self._majority_vote_consensus(task, responses)
-        elif self.config.strategy == ConsensusStrategy.WEIGHTED_AVERAGE:
-            return self._weighted_average_consensus(task, responses)
-        elif self.config.strategy == ConsensusStrategy.CONFIDENCE_THRESHOLD:
-            return self._confidence_threshold_consensus(task, responses)
-        else:
-            # Default to majority vote
-            return self._majority_vote_consensus(task, responses)
+        strategy_dispatch = {
+            ConsensusStrategy.MAJORITY_VOTE: self._majority_vote_consensus,
+            ConsensusStrategy.WEIGHTED_AVERAGE: self._weighted_average_consensus,
+            ConsensusStrategy.CONFIDENCE_THRESHOLD: self._confidence_threshold_consensus,
+        }
+        handler = strategy_dispatch.get(
+            self.config.strategy, self._majority_vote_consensus
+        )
+        return handler(task, responses)
     
     def _majority_vote_consensus(
         self, 

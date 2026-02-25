@@ -9,6 +9,7 @@ from PIL import Image
 from ..mcp_registry import mcp, get_openrouter_client
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
+from ..config.constants import ImageProcessingConfig
 from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
 
@@ -86,11 +87,10 @@ def validate_image_format(format_name: str) -> bool:
     Returns:
         True if format is supported, False otherwise
     """
-    supported_formats = ['JPEG', 'PNG', 'WEBP', 'GIF']
-    return format_name.upper() in supported_formats
+    return format_name.upper() in ImageProcessingConfig.SUPPORTED_FORMATS
 
 
-def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
+def process_image(base64_data: str, max_size_mb: int = ImageProcessingConfig.MAX_SIZE_MB) -> Tuple[str, bool]:
     """
     Process an image: resize if too large, optimize for API usage.
 
@@ -106,9 +106,8 @@ def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
         Exception: If image processing fails
     """
     # Security: Limit maximum base64 string size before decoding (prevents decompression bombs)
-    MAX_BASE64_SIZE = 100 * 1024 * 1024  # 100MB base64 max
-    if len(base64_data) > MAX_BASE64_SIZE:
-        raise ValueError(f"Base64 data too large: {len(base64_data)} bytes exceeds {MAX_BASE64_SIZE} bytes")
+    if len(base64_data) > ImageProcessingConfig.MAX_BASE64_SIZE:
+        raise ValueError(f"Base64 data too large: {len(base64_data)} bytes exceeds {ImageProcessingConfig.MAX_BASE64_SIZE} bytes")
 
     try:
         # Decode base64 to bytes
@@ -127,17 +126,14 @@ def process_image(base64_data: str, max_size_mb: int = 20) -> Tuple[str, bool]:
         image = Image.open(io.BytesIO(image_bytes))
 
         # Security: Validate image dimensions to prevent pixel bombs
-        MAX_PIXELS = 89_478_485  # PIL's DecompressionBombError default threshold
-        MAX_DIMENSION = 65535  # Reasonable max for width/height
-
         width, height = image.size
-        if width * height > MAX_PIXELS:
+        if width * height > ImageProcessingConfig.MAX_PIXELS:
             raise ValueError(
-                f"Image dimensions too large: {width}x{height} = {width*height} pixels exceeds {MAX_PIXELS} pixels"
+                f"Image dimensions too large: {width}x{height} = {width*height} pixels exceeds {ImageProcessingConfig.MAX_PIXELS} pixels"
             )
-        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+        if width > ImageProcessingConfig.MAX_DIMENSION or height > ImageProcessingConfig.MAX_DIMENSION:
             raise ValueError(
-                f"Image dimension too large: {width}x{height}, max dimension is {MAX_DIMENSION}"
+                f"Image dimension too large: {width}x{height}, max dimension is {ImageProcessingConfig.MAX_DIMENSION}"
             )
 
         # Security: Validate image format before processing
@@ -366,7 +362,7 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
         if request.stream:
             logger.info("Initiating streaming vision chat completion")
             chunks = await collect_async_iterable(
-                client.stream_chat_completion_with_vision(
+                client.stream_chat_completion(
                 model=request.model,
                 messages=vision_messages,
                 temperature=request.temperature,
@@ -378,7 +374,7 @@ async def chat_with_vision(request: VisionChatRequest) -> Union[Dict[str, Any], 
             return chunks
         else:
             logger.info("Initiating non-streaming vision chat completion")
-            response = await client.chat_completion_with_vision(
+            response = await client.chat_completion(
                 model=request.model,
                 messages=vision_messages,
                 temperature=request.temperature,

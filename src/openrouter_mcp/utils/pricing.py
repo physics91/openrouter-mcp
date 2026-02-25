@@ -29,6 +29,19 @@ def _normalize_unit(price: float) -> float:
     return price
 
 
+def _fill_missing_prices(
+    prompt_price: float, completion_price: float, default_price: float
+) -> Tuple[float, float]:
+    """Fill missing or zero prices using cross-fill or default fallback."""
+    if prompt_price <= 0 and completion_price <= 0:
+        return default_price, default_price
+    if prompt_price <= 0:
+        return (completion_price if completion_price > 0 else default_price), completion_price
+    if completion_price <= 0:
+        return prompt_price, (prompt_price if prompt_price > 0 else default_price)
+    return prompt_price, completion_price
+
+
 def normalize_pricing(
     pricing: Optional[Dict[str, Any]],
     default_price: float = PricingDefaults.DEFAULT_TOKEN_PRICE,
@@ -51,17 +64,9 @@ def normalize_pricing(
         completion_price = _normalize_unit(completion_price)
 
     if fill_missing:
-        if prompt_price <= 0 and completion_price <= 0:
-            prompt_price = default_price
-            completion_price = default_price
-        elif prompt_price <= 0:
-            prompt_price = (
-                completion_price if completion_price > 0 else default_price
-            )
-        elif completion_price <= 0:
-            completion_price = (
-                prompt_price if prompt_price > 0 else default_price
-            )
+        prompt_price, completion_price = _fill_missing_prices(
+            prompt_price, completion_price, default_price
+        )
 
     return {"prompt": prompt_price, "completion": completion_price}
 
@@ -92,14 +97,9 @@ def estimate_cost_from_usage(
     """Estimate total cost from usage and pricing."""
     prompt_price = parse_price(pricing.get("prompt"))
     completion_price = parse_price(pricing.get("completion"))
-
-    if prompt_price <= 0 and completion_price <= 0:
-        prompt_price = default_price
-        completion_price = default_price
-    elif prompt_price <= 0:
-        prompt_price = completion_price if completion_price > 0 else default_price
-    elif completion_price <= 0:
-        completion_price = prompt_price if prompt_price > 0 else default_price
+    prompt_price, completion_price = _fill_missing_prices(
+        prompt_price, completion_price, default_price
+    )
 
     prompt_tokens = usage.get("prompt_tokens", 0) or 0
     completion_tokens = usage.get("completion_tokens", 0) or 0

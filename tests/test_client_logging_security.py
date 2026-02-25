@@ -306,7 +306,7 @@ class TestClientLoggingSecurity:
         base64_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
         with patch.object(client._client, 'request', return_value=mock_response):
-            await client.chat_completion_with_vision(
+            await client.chat_completion(
                 model="openai/gpt-4-vision",
                 messages=[{
                     "role": "user",

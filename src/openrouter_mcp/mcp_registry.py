@@ -40,9 +40,16 @@ mcp = FastMCP("openrouter-mcp")
 
 # Singleton client instance and lock for thread-safe initialization
 _client_instance: Optional[object] = None  # Will be OpenRouterClient
-_client_lock = asyncio.Lock()
+_client_lock: Optional[asyncio.Lock] = None
 _client_initialized = False
 _client_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def _get_client_lock() -> asyncio.Lock:
+    global _client_lock
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+    return _client_lock
 
 
 async def get_shared_client():
@@ -81,7 +88,7 @@ async def get_shared_client():
             return _client_instance
 
     # Slow path: acquire lock and initialize
-    async with _client_lock:
+    async with _get_client_lock():
         current_loop = asyncio.get_running_loop()
         env_key = get_env_value(EnvVars.API_KEY)
 

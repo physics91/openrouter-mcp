@@ -321,42 +321,10 @@ class CancellationAware(Protocol):
         ...
 
 
-@runtime_checkable
-class OperationalControlsAware(Protocol):
-    """
-    Combined protocol for components that need full operational controls.
-
-    This is a marker protocol that requires all individual operational
-    control protocols. Use individual protocols when possible for
-    better interface segregation.
-    """
-
-    # Concurrency methods
-    async def acquire_task_slot(self, task_id: str) -> bool: ...
-    def release_task_slot(self, task_id: str) -> None: ...
-
-    # Quota methods
-    async def check_and_increment(
-        self,
-        request_id: str,
-        tokens: int = 0,
-        cost: float = 0.0
-    ) -> Tuple[bool, str]: ...
-
-    # Failure methods
-    async def record_failure(
-        self,
-        request_id: str,
-        error_msg: str,
-        is_critical: bool = False
-    ) -> bool: ...
-
-
 __all__ = [
     "ConcurrencyAware",
     "QuotaAware",
     "FailureAware",
     "StorageAware",
     "CancellationAware",
-    "OperationalControlsAware",
 ]

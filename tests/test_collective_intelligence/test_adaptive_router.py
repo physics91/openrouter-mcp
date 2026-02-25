@@ -412,7 +412,8 @@ class TestAdaptiveRouter:
         assert isinstance(router.load_monitor, ModelLoadMonitor)
         assert isinstance(router.performance_predictor, PerformancePredictor)
         assert isinstance(router.model_performance_history, dict)
-        assert isinstance(router.routing_decisions, list)
+        from collections import deque
+        assert isinstance(router.routing_decisions, deque)
         assert isinstance(router.routing_metrics, RoutingMetrics)
 
     @pytest.mark.unit

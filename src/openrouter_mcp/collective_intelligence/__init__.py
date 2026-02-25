@@ -55,7 +55,6 @@ from .protocols import (
     FailureAware,
     StorageAware,
     CancellationAware,
-    OperationalControlsAware,
 )
 
 __all__ = [
@@ -106,7 +105,6 @@ __all__ = [
     'FailureAware',
     'StorageAware',
     'CancellationAware',
-    'OperationalControlsAware',
 ]
 
 __version__ = "1.0.0"

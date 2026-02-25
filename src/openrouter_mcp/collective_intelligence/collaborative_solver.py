@@ -179,16 +179,15 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 raise RuntimeError(f"Quota check failed: {reason}")
 
             # Execute strategy with cancellation support
-            if strategy == SolvingStrategy.SEQUENTIAL:
-                result = await self._solve_sequential(session, request_id)
-            elif strategy == SolvingStrategy.PARALLEL:
-                result = await self._solve_parallel(session, request_id)
-            elif strategy == SolvingStrategy.HIERARCHICAL:
-                result = await self._solve_hierarchical(session, request_id)
-            elif strategy == SolvingStrategy.ITERATIVE:
-                result = await self._solve_iterative(session, request_id)
-            else:  # ADAPTIVE
-                result = await self._solve_adaptive(session, request_id)
+            strategy_dispatch = {
+                SolvingStrategy.SEQUENTIAL: self._solve_sequential,
+                SolvingStrategy.PARALLEL: self._solve_parallel,
+                SolvingStrategy.HIERARCHICAL: self._solve_hierarchical,
+                SolvingStrategy.ITERATIVE: self._solve_iterative,
+                SolvingStrategy.ADAPTIVE: self._solve_adaptive,
+            }
+            handler = strategy_dispatch.get(strategy, self._solve_adaptive)
+            result = await handler(session, request_id)
 
             # Finalize session
             session.end_time = datetime.now()
