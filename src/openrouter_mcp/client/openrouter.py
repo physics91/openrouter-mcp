@@ -287,8 +287,6 @@ class OpenRouterClient:
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
             await self._handle_http_error(e.response)
-        except httpx.HTTPStatusError:
-            raise  # already handled above
         except Exception as e:
             self._handle_request_error(e, method, url)
 
@@ -352,8 +350,6 @@ class OpenRouterClient:
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
             await self._handle_http_error(e.response)
-        except httpx.HTTPStatusError:
-            raise  # already handled above
         except Exception as e:
             self._handle_request_error(e, "streaming POST", url)
     
