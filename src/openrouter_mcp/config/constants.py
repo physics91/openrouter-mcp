@@ -63,7 +63,7 @@ class ConsensusDefaults:
     CONFIDENCE_THRESHOLD: float = 0.7
     AGREEMENT_THRESHOLD: float = 0.6
     SIMILARITY_THRESHOLD: float = 0.7
-    TIMEOUT_SECONDS: float = 60.0
+    TIMEOUT_SECONDS: float = 30.0
     RETRY_ATTEMPTS: int = 2
 
 

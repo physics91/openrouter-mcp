@@ -547,7 +547,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
     ) -> float:
         """Maximize output quality regardless of cost/time."""
-        return predicted_metrics['quality'] * predicted_metrics['success_probability']
+        return self._score_performance_based(predicted_metrics, load_status)
 
     def _score_load_balanced(
         self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
@@ -734,9 +734,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
     
     def get_routing_history(self, limit: Optional[int] = None) -> List[RoutingDecision]:
         """Get historical routing decisions."""
-        if limit:
-            return list(itertools.islice(reversed(self.routing_decisions), limit))[::-1]
-        return list(self.routing_decisions)
+        decisions = list(self.routing_decisions)
+        return decisions[-limit:] if limit else decisions
     
     def get_routing_metrics(self) -> RoutingMetrics:
         """Get current routing metrics."""

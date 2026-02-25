@@ -36,9 +36,9 @@ def _fill_missing_prices(
     if prompt_price <= 0 and completion_price <= 0:
         return default_price, default_price
     if prompt_price <= 0:
-        return (completion_price if completion_price > 0 else default_price), completion_price
+        return completion_price, completion_price
     if completion_price <= 0:
-        return prompt_price, (prompt_price if prompt_price > 0 else default_price)
+        return prompt_price, prompt_price
     return prompt_price, completion_price
 
 

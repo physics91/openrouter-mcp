@@ -208,12 +208,11 @@ class OpenRouterModelProvider:
             return self._model_pricing_cache[model_id]
 
         try:
-            pricing = await self.client.get_model_pricing(model_id)
+            normalized = await self.client.get_model_pricing(model_id)
         except Exception as e:
             logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
-            pricing = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
+            normalized = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
 
-        normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
         self._model_pricing_cache[model_id] = normalized
         return normalized
 
