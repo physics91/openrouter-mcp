@@ -112,22 +112,15 @@ class TestCostEstimation:
 
     @pytest.mark.asyncio
     async def test_get_model_pricing(self):
-        """Test fetching model pricing from cache."""
-        # Mock client with model cache
-        mock_client = Mock()
-        mock_cache = AsyncMock()
-        mock_cache.get_model_info = AsyncMock(return_value={
-            "id": "openai/gpt-4",
-            "pricing": {
-                "prompt": 0.00003,
-                "completion": 0.00006
-            }
+        """Test fetching model pricing via client public API."""
+        mock_client = AsyncMock()
+        mock_client.get_model_pricing = AsyncMock(return_value={
+            "prompt": 0.00003,
+            "completion": 0.00006,
         })
-        mock_client._model_cache = mock_cache
 
         provider = OpenRouterModelProvider(mock_client)
 
-        # Get pricing
         pricing = await provider._get_model_pricing("openai/gpt-4")
 
         assert pricing["prompt"] == 0.00003
@@ -136,14 +129,12 @@ class TestCostEstimation:
 
     @pytest.mark.asyncio
     async def test_get_model_pricing_fallback(self):
-        """Test pricing fallback when cache unavailable."""
-        # Mock client without cache
-        mock_client = Mock()
-        mock_client._model_cache = None
+        """Test pricing fallback when client raises."""
+        mock_client = AsyncMock()
+        mock_client.get_model_pricing = AsyncMock(side_effect=Exception("fail"))
 
         provider = OpenRouterModelProvider(mock_client)
 
-        # Get pricing - should use fallback
         pricing = await provider._get_model_pricing("openai/gpt-4")
 
         assert pricing["prompt"] == 0.00002
@@ -152,17 +143,11 @@ class TestCostEstimation:
     @pytest.mark.asyncio
     async def test_estimate_cost(self):
         """Test cost estimation with real pricing."""
-        # Mock client
-        mock_client = Mock()
-        mock_cache = AsyncMock()
-        mock_cache.get_model_info = AsyncMock(return_value={
-            "id": "openai/gpt-4",
-            "pricing": {
-                "prompt": 0.00003,
-                "completion": 0.00006
-            }
+        mock_client = AsyncMock()
+        mock_client.get_model_pricing = AsyncMock(return_value={
+            "prompt": 0.00003,
+            "completion": 0.00006,
         })
-        mock_client._model_cache = mock_cache
 
         provider = OpenRouterModelProvider(mock_client)
 

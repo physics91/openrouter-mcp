@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+import httpx
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from pydantic import BaseModel, Field
@@ -163,7 +165,7 @@ class OpenRouterModelProvider:
 
             return models
 
-        except Exception as e:
+        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(f"Failed to fetch models: {str(e)}")
             return []
     
@@ -172,7 +174,7 @@ class OpenRouterModelProvider:
         # This is a simplified confidence calculation
         # In practice, this could use more sophisticated methods
         
-        base_confidence = 0.7
+        base_confidence = ConsensusDefaults.CONFIDENCE_THRESHOLD
         
         # Adjust based on response length (longer responses often more confident)
         if len(content) > 100:
@@ -191,7 +193,10 @@ class OpenRouterModelProvider:
     
     async def _get_model_pricing(self, model_id: str) -> Dict[str, float]:
         """
-        Get pricing information for a specific model from cache.
+        Get pricing information for a specific model.
+
+        Delegates to the client's public ``get_model_pricing()`` API which
+        already handles cache look-up, fallback, and normalisation.
 
         Args:
             model_id: Model identifier
@@ -199,43 +204,18 @@ class OpenRouterModelProvider:
         Returns:
             Dictionary with 'prompt' and 'completion' cost per token
         """
-        # Check if already cached
         if model_id in self._model_pricing_cache:
             return self._model_pricing_cache[model_id]
 
-        # Prefer client-level pricing accessor when available
         try:
-            get_pricing = getattr(self.client, "get_model_pricing", None)
-            if callable(get_pricing):
-                pricing = await maybe_await(get_pricing(model_id))
-                if isinstance(pricing, dict) and pricing:
-                    normalized = normalize_pricing(
-                        pricing,
-                        PricingDefaults.DEFAULT_TOKEN_PRICE,
-                    )
-                    self._model_pricing_cache[model_id] = normalized
-                    return normalized
+            pricing = await self.client.get_model_pricing(model_id)
         except Exception as e:
             logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
+            pricing = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
 
-        # Fallback to internal cache access
-        try:
-            if getattr(self.client, "_model_cache", None):
-                model_info = await self.client._model_cache.get_model_info(model_id)
-                if model_info and "pricing" in model_info:
-                    cost_data = normalize_pricing(
-                        model_info.get("pricing", {}),
-                        PricingDefaults.DEFAULT_TOKEN_PRICE,
-                    )
-                    self._model_pricing_cache[model_id] = cost_data
-                    return cost_data
-        except Exception as e:
-            logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
-
-        # Fallback to conservative default
-        default_pricing = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
-        self._model_pricing_cache[model_id] = default_pricing
-        return default_pricing
+        normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
+        self._model_pricing_cache[model_id] = normalized
+        return normalized
 
     async def _estimate_cost(self, model_id: str, usage: Dict[str, int]) -> float:
         """

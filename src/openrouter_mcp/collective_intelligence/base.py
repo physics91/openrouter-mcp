@@ -99,28 +99,23 @@ class ModelProvider(Protocol):
 
 class CollectiveIntelligenceComponent(ABC):
     """Base class for all collective intelligence components."""
-    
+
     def __init__(self, model_provider: ModelProvider):
         self.model_provider = model_provider
         self.metrics: Dict[str, Any] = {}
-        self.config: Dict[str, Any] = {}
-    
+
     @abstractmethod
     async def process(self, task: TaskContext, **kwargs) -> Any:
         """Process a task using this component."""
         pass
-    
+
     def update_metrics(self, metrics: Dict[str, Any]) -> None:
         """Update component metrics."""
         self.metrics.update(metrics)
-    
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get current component metrics."""
         return self.metrics.copy()
-    
-    def configure(self, config: Dict[str, Any]) -> None:
-        """Configure the component."""
-        self.config.update(config)
 
 
 @dataclass

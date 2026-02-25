@@ -1,10 +1,7 @@
 import logging
-import warnings
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 import json as json_lib
-from contextlib import asynccontextmanager
-from copy import deepcopy
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
@@ -194,6 +191,41 @@ class OpenRouterClient:
 
         return payload
 
+    def _log_request(
+        self,
+        method_label: str,
+        url: str,
+        headers: Dict[str, str],
+        payload: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log sanitized request details."""
+        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
+        self.logger.debug(f"Making {method_label} request to {url}")
+        self.logger.debug(f"Request headers: {sanitized_headers}")
+        if payload:
+            sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
+                payload, enable_verbose=self.enable_verbose_logging
+            )
+            self.logger.debug(f"Request payload: {sanitized_payload}")
+        if params:
+            self.logger.debug(f"Request params: {params}")
+
+    def _handle_request_error(self, e: Exception, context: str, url: str) -> None:
+        """Handle non-HTTP request errors (connect, timeout, generic)."""
+        if isinstance(e, httpx.ConnectError):
+            self.logger.error(f"Connection error for {context} {url}: {str(e)}")
+            raise OpenRouterError(
+                "Network error: Failed to connect to OpenRouter API"
+            ) from e
+        if isinstance(e, httpx.TimeoutException):
+            self.logger.error(f"Timeout error for {context} {url}: {str(e)}")
+            raise OpenRouterError(
+                f"Request timeout after {self.timeout} seconds"
+            ) from e
+        self.logger.error(f"Unexpected error for {context} {url}: {str(e)}")
+        raise OpenRouterError(f"Unexpected error: {str(e)}") from e
+
     async def _make_request(
         self,
         method: str,
@@ -217,22 +249,7 @@ class OpenRouterClient:
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-
-        # Sanitize headers for logging
-        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
-        self.logger.debug(f"Making {method} request to {url}")
-        self.logger.debug(f"Request headers: {sanitized_headers}")
-
-        # Sanitize payload for logging based on verbosity setting
-        if json:
-            sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
-                json, enable_verbose=self.enable_verbose_logging
-            )
-            self.logger.debug(f"Request payload: {sanitized_payload}")
-
-        if params:
-            # URL params are generally not sensitive, but log them carefully
-            self.logger.debug(f"Request params: {params}")
+        self._log_request(method, url, headers, payload=json, params=params)
 
         try:
             response = await self._client.request(
@@ -270,16 +287,11 @@ class OpenRouterClient:
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
             await self._handle_http_error(e.response)
-        except httpx.ConnectError as e:
-            self.logger.error(f"Connection error for {method} {url}: {str(e)}")
-            raise OpenRouterError("Network error: Failed to connect to OpenRouter API")
-        except httpx.TimeoutException as e:
-            self.logger.error(f"Timeout error for {method} {url}: {str(e)}")
-            raise OpenRouterError(f"Request timeout after {self.timeout} seconds")
+        except httpx.HTTPStatusError:
+            raise  # already handled above
         except Exception as e:
-            self.logger.error(f"Unexpected error for {method} {url}: {str(e)}")
-            raise OpenRouterError(f"Unexpected error: {str(e)}")
-    
+            self._handle_request_error(e, method, url)
+
     async def _stream_request(
         self,
         endpoint: str,
@@ -299,16 +311,7 @@ class OpenRouterClient:
         """
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
-
-        # Sanitize headers and payload for logging
-        sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
-        self.logger.debug(f"Making streaming POST request to {url}")
-        self.logger.debug(f"Request headers: {sanitized_headers}")
-
-        sanitized_payload = SensitiveDataSanitizer.sanitize_payload(
-            json_data, enable_verbose=self.enable_verbose_logging
-        )
-        self.logger.debug(f"Stream payload: {sanitized_payload}")
+        self._log_request("streaming POST", url, headers, payload=json_data)
 
         try:
             async with self._client.stream(
@@ -349,15 +352,10 @@ class OpenRouterClient:
         except httpx.HTTPStatusError as e:
             self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
             await self._handle_http_error(e.response)
-        except httpx.ConnectError as e:
-            self.logger.error(f"Connection error for streaming POST {url}: {str(e)}")
-            raise OpenRouterError("Network error: Failed to connect to OpenRouter API")
-        except httpx.TimeoutException as e:
-            self.logger.error(f"Timeout error for streaming POST {url}: {str(e)}")
-            raise OpenRouterError(f"Request timeout after {self.timeout} seconds")
+        except httpx.HTTPStatusError:
+            raise  # already handled above
         except Exception as e:
-            self.logger.error(f"Unexpected error for streaming POST {url}: {str(e)}")
-            raise OpenRouterError(f"Unexpected error: {str(e)}")
+            self._handle_request_error(e, "streaming POST", url)
     
     async def _handle_http_error(self, response: httpx.Response) -> None:
         """Handle HTTP errors from OpenRouter API.
@@ -519,51 +517,6 @@ class OpenRouterClient:
 
         return await self._make_request("POST", "/chat/completions", json=payload)
     
-    async def chat_completion_with_vision(
-        self,
-        model: str,
-        messages: List[Dict[str, Any]],
-        temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
-        stream: bool = ModelDefaults.STREAM,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Create a chat completion with vision/image support.
-        
-        This method specifically handles messages that contain images,
-        properly formatting them for vision-capable models.
-        
-        Args:
-            model: Vision-capable model to use
-            messages: List of message dictionaries with potential image content
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            stream: Whether to stream the response
-            **kwargs: Additional parameters
-            
-        Returns:
-            Chat completion response
-            
-        Example:
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "What's in this image?"},
-                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
-                    ]
-                }
-            ]
-        """
-        return await self.chat_completion(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=stream,
-            **kwargs
-        )
-    
     async def stream_chat_completion(
         self,
         model: str,
@@ -594,35 +547,6 @@ class OpenRouterClient:
         )
 
         async for chunk in self._stream_request("/chat/completions", payload):
-            yield chunk
-    
-    async def stream_chat_completion_with_vision(
-        self,
-        model: str,
-        messages: List[Dict[str, Any]],
-        temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
-        **kwargs
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Create a streaming chat completion with vision support.
-        
-        Args:
-            model: Vision-capable model to use
-            messages: List of message dictionaries with potential image content
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            **kwargs: Additional parameters
-            
-        Yields:
-            Chat completion chunks
-        """
-        async for chunk in self.stream_chat_completion(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **kwargs
-        ):
             yield chunk
     
     async def track_usage(
@@ -664,9 +588,7 @@ class OpenRouterClient:
     async def clear_cache(self) -> None:
         """Clear the model cache."""
         if self._model_cache:
-            # Clear memory cache
-            self._model_cache._memory_cache = []
-            self._model_cache._last_update = None
+            self._model_cache.clear()
             self.logger.info("Model cache cleared")
     
     async def __aenter__(self) -> "OpenRouterClient":

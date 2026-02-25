@@ -32,6 +32,7 @@ class CacheConfig:
     MIN_TTL_HOURS: float = 0.08334   # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
     MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
+    BENCHMARK_CACHE_TTL_HOURS: float = 6.0
 
 
 class ModelDefaults:
@@ -63,6 +64,7 @@ class ConsensusDefaults:
     AGREEMENT_THRESHOLD: float = 0.6
     SIMILARITY_THRESHOLD: float = 0.7
     TIMEOUT_SECONDS: float = 60.0
+    RETRY_ATTEMPTS: int = 2
 
 
 class RateLimitConfig:
@@ -106,6 +108,28 @@ class BenchmarkDefaults:
     DEFAULT_MCP_RUNS: int = 3
     DEFAULT_RESULTS_DIR: str = ".cache/benchmarks"
     DEFAULT_TIMEOUT_SECONDS: float = 60.0
+    CATEGORY_COMPARE_RUNS: int = 2
+    CATEGORY_COMPARE_DELAY: float = 0.5
+    PERFORMANCE_COMPARE_RUNS: int = 3
+    PERFORMANCE_COMPARE_DELAY: float = 0.8
+    PERFORMANCE_COMPARE_PROMPT: str = (
+        "\ub2e4\uc74c \ud30c\uc774\uc36c \ucf54\ub4dc\ub97c \uc124\uba85\ud558\uace0 "
+        "\uac1c\uc120\uc810\uc744 \uc81c\uc548\ud574\uc8fc\uc138\uc694:\n\n"
+        "def fibonacci(n):\n"
+        "    if n <= 1:\n"
+        "        return n\n"
+        "    return fibonacci(n-1) + fibonacci(n-2)"
+    )
+
+
+class ImageProcessingConfig:
+    """Configuration for image processing and validation."""
+
+    MAX_BASE64_SIZE: int = 100 * 1024 * 1024
+    MAX_PIXELS: int = 89_478_485
+    MAX_DIMENSION: int = 65535
+    MAX_SIZE_MB: int = 20
+    SUPPORTED_FORMATS: tuple = ('JPEG', 'PNG', 'WEBP', 'GIF')
 
 
 __all__ = [
@@ -118,4 +142,5 @@ __all__ = [
     "LoggingConfig",
     "PricingDefaults",
     "BenchmarkDefaults",
+    "ImageProcessingConfig",
 ]

@@ -89,7 +89,7 @@ class TestTaskDecomposer:
             content="Analyze the impact of climate change on agriculture"
         )
         
-        sub_tasks = await decomposer._decompose_sequential(task)
+        sub_tasks = decomposer._decompose_sequential(task)
         
         assert isinstance(sub_tasks, list)
         assert len(sub_tasks) >= 3
@@ -112,7 +112,7 @@ class TestTaskDecomposer:
             content="Analyze market trends in renewable energy sector"
         )
         
-        sub_tasks = await decomposer._decompose_parallel(task)
+        sub_tasks = decomposer._decompose_parallel(task)
         
         assert isinstance(sub_tasks, list)
         assert len(sub_tasks) >= 3
@@ -133,7 +133,7 @@ class TestTaskDecomposer:
             content="Create a comprehensive marketing campaign for a new product"
         )
         
-        sub_tasks = await decomposer._decompose_hierarchical(task)
+        sub_tasks = decomposer._decompose_hierarchical(task)
         
         assert isinstance(sub_tasks, list)
         assert len(sub_tasks) >= 6  # Main categories + sub-categories

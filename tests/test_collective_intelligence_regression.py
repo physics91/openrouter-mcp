@@ -109,15 +109,14 @@ def create_mock_client(mock_models):
 
         mock_client.list_models.return_value = models
 
-        # Setup model cache for pricing lookups
-        mock_cache = AsyncMock()
-        async def get_model_info(model_id):
+        # Setup get_model_pricing (public API)
+        from openrouter_mcp.utils.pricing import normalize_pricing
+        async def _get_model_pricing(model_id):
             for model in models:
                 if model["id"] == model_id:
-                    return model
-            return None
-        mock_cache.get_model_info.side_effect = get_model_info
-        mock_client._model_cache = mock_cache
+                    return normalize_pricing(model.get("pricing", {}))
+            return normalize_pricing({})
+        mock_client.get_model_pricing.side_effect = _get_model_pricing
 
         # Setup chat_completion
         if chat_responses:
@@ -431,9 +430,8 @@ class TestQuotaAndCostTracking:
 
         # Check that individual responses contain cost data
         if "individual_responses" in result and len(result["individual_responses"]) > 0:
-            # Cost should be calculated (may be in result metadata)
-            # The key is that the pricing cache was accessed
-            assert mock_client._model_cache.get_model_info.called
+            # Cost should be calculated via the public pricing API
+            assert mock_client.get_model_pricing.called
 
     @pytest.mark.asyncio
     @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')

@@ -7,6 +7,7 @@ from past decisions to continuously improve model selection accuracy.
 """
 
 import asyncio
+import itertools
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -348,7 +349,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         
         # Performance tracking
         self.model_performance_history: Dict[str, ModelPerformanceHistory] = {}
-        self.routing_decisions: List[RoutingDecision] = []
+        self.routing_decisions: deque = deque(maxlen=1000)
         self.routing_metrics = RoutingMetrics()
         
         # Configuration
@@ -508,36 +509,59 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         strategy: RoutingStrategy
     ) -> float:
         """Calculate score based on the routing strategy."""
-        
-        if strategy == RoutingStrategy.PERFORMANCE_BASED:
-            # Prioritize models with best historical performance
-            return predicted_metrics['quality'] * predicted_metrics['success_probability']
-        
-        elif strategy == RoutingStrategy.COST_OPTIMIZED:
-            # Minimize cost while maintaining reasonable quality
-            cost_score = 1.0 / max(predicted_metrics['cost'], 0.001)
-            quality_threshold = 0.7
-            quality_penalty = max(0, quality_threshold - predicted_metrics['quality'])
-            return cost_score - quality_penalty * 2.0
-        
-        elif strategy == RoutingStrategy.SPEED_OPTIMIZED:
-            # Minimize response time
-            time_score = 1.0 / max(predicted_metrics['response_time'], 0.1)
-            return time_score * predicted_metrics['success_probability']
-        
-        elif strategy == RoutingStrategy.QUALITY_OPTIMIZED:
-            # Maximize output quality regardless of cost/time
-            return predicted_metrics['quality'] * predicted_metrics['success_probability']
-        
-        elif strategy == RoutingStrategy.LOAD_BALANCED:
-            # Distribute load evenly across models
-            load_factor = 1.0 / max(load_status.active_requests + 1, 1)
-            base_score = predicted_metrics['quality'] * predicted_metrics['success_probability']
-            return base_score * load_factor
-        
-        else:  # ADAPTIVE
-            # Balance multiple factors based on optimization objective
-            return self._calculate_adaptive_score(predicted_metrics, load_status)
+
+        score_calculators = {
+            RoutingStrategy.PERFORMANCE_BASED: self._score_performance_based,
+            RoutingStrategy.COST_OPTIMIZED: self._score_cost_optimized,
+            RoutingStrategy.SPEED_OPTIMIZED: self._score_speed_optimized,
+            RoutingStrategy.QUALITY_OPTIMIZED: self._score_quality_optimized,
+            RoutingStrategy.LOAD_BALANCED: self._score_load_balanced,
+            RoutingStrategy.ADAPTIVE: self._score_adaptive,
+        }
+        calculator = score_calculators.get(strategy, self._score_adaptive)
+        return calculator(predicted_metrics, load_status)
+
+    def _score_performance_based(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Prioritize models with best historical performance."""
+        return predicted_metrics['quality'] * predicted_metrics['success_probability']
+
+    def _score_cost_optimized(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Minimize cost while maintaining reasonable quality."""
+        cost_score = 1.0 / max(predicted_metrics['cost'], 0.001)
+        quality_threshold = 0.7
+        quality_penalty = max(0, quality_threshold - predicted_metrics['quality'])
+        return cost_score - quality_penalty * 2.0
+
+    def _score_speed_optimized(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Minimize response time."""
+        time_score = 1.0 / max(predicted_metrics['response_time'], 0.1)
+        return time_score * predicted_metrics['success_probability']
+
+    def _score_quality_optimized(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Maximize output quality regardless of cost/time."""
+        return predicted_metrics['quality'] * predicted_metrics['success_probability']
+
+    def _score_load_balanced(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Distribute load evenly across models."""
+        load_factor = 1.0 / max(load_status.active_requests + 1, 1)
+        base_score = predicted_metrics['quality'] * predicted_metrics['success_probability']
+        return base_score * load_factor
+
+    def _score_adaptive(
+        self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus
+    ) -> float:
+        """Balance multiple factors based on optimization objective."""
+        return self._calculate_adaptive_score(predicted_metrics, load_status)
     
     def _calculate_adaptive_score(
         self,
@@ -604,8 +628,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
     def _should_explore(self, model_id: str) -> bool:
         """Determine if we should explore this model for learning."""
         # Simple exploration strategy based on usage frequency
+        recent_decisions = itertools.islice(reversed(self.routing_decisions), 100)
         recent_usage = sum(
-            1 for decision in self.routing_decisions[-100:]
+            1 for decision in recent_decisions
             if decision.selected_model_id == model_id
         )
         
@@ -710,8 +735,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
     def get_routing_history(self, limit: Optional[int] = None) -> List[RoutingDecision]:
         """Get historical routing decisions."""
         if limit:
-            return self.routing_decisions[-limit:]
-        return self.routing_decisions.copy()
+            return list(itertools.islice(reversed(self.routing_decisions), limit))[::-1]
+        return list(self.routing_decisions)
     
     def get_routing_metrics(self) -> RoutingMetrics:
         """Get current routing metrics."""

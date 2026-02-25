@@ -172,14 +172,14 @@ class TaskDecomposer:
         )
         
         # Decompose based on strategy
-        if strategy == DecompositionStrategy.SEQUENTIAL:
-            sub_tasks = await self._decompose_sequential(task)
-        elif strategy == DecompositionStrategy.PARALLEL:
-            sub_tasks = await self._decompose_parallel(task)
-        elif strategy == DecompositionStrategy.HIERARCHICAL:
-            sub_tasks = await self._decompose_hierarchical(task)
-        else:  # DYNAMIC
-            sub_tasks = await self._decompose_dynamic(task)
+        decompose_dispatch = {
+            DecompositionStrategy.SEQUENTIAL: self._decompose_sequential,
+            DecompositionStrategy.PARALLEL: self._decompose_parallel,
+            DecompositionStrategy.HIERARCHICAL: self._decompose_hierarchical,
+            DecompositionStrategy.DYNAMIC: self._decompose_dynamic,
+        }
+        handler = decompose_dispatch.get(strategy, self._decompose_sequential)
+        sub_tasks = handler(task)
         
         ensemble_task.sub_tasks = sub_tasks
         
@@ -210,7 +210,7 @@ class TaskDecomposer:
         
         return default_strategy
     
-    async def _decompose_sequential(self, task: TaskContext) -> List[SubTask]:
+    def _decompose_sequential(self, task: TaskContext) -> List[SubTask]:
         """Decompose task into sequential sub-tasks."""
         sub_tasks = []
         
@@ -239,7 +239,7 @@ class TaskDecomposer:
         
         return sub_tasks
     
-    async def _decompose_parallel(self, task: TaskContext) -> List[SubTask]:
+    def _decompose_parallel(self, task: TaskContext) -> List[SubTask]:
         """Decompose task into parallel sub-tasks."""
         sub_tasks = []
         
@@ -265,7 +265,7 @@ class TaskDecomposer:
         
         return sub_tasks
     
-    async def _decompose_hierarchical(self, task: TaskContext) -> List[SubTask]:
+    def _decompose_hierarchical(self, task: TaskContext) -> List[SubTask]:
         """Decompose task into hierarchical sub-tasks."""
         sub_tasks = []
         
@@ -309,11 +309,11 @@ class TaskDecomposer:
         
         return sub_tasks
     
-    async def _decompose_dynamic(self, task: TaskContext) -> List[SubTask]:
+    def _decompose_dynamic(self, task: TaskContext) -> List[SubTask]:
         """Decompose task dynamically based on content analysis."""
         # This would use more sophisticated NLP analysis in practice
         # For now, fall back to sequential decomposition
-        return await self._decompose_sequential(task)
+        return self._decompose_sequential(task)
     
     def _get_phase_capabilities(self, phase: str, task_type: TaskType) -> List[ModelCapability]:
         """Get required capabilities for a specific phase."""
@@ -584,15 +584,17 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
     
     async def _execute_sub_tasks(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
         """Execute all sub-tasks according to their dependencies and strategy."""
-        
-        if ensemble_task.decomposition_strategy == DecompositionStrategy.SEQUENTIAL:
-            return await self._execute_sequential(ensemble_task)
-        elif ensemble_task.decomposition_strategy == DecompositionStrategy.PARALLEL:
-            return await self._execute_parallel(ensemble_task)
-        elif ensemble_task.decomposition_strategy == DecompositionStrategy.HIERARCHICAL:
-            return await self._execute_hierarchical(ensemble_task)
-        else:  # DYNAMIC
-            return await self._execute_dynamic(ensemble_task)
+
+        execute_dispatch = {
+            DecompositionStrategy.SEQUENTIAL: self._execute_sequential,
+            DecompositionStrategy.PARALLEL: self._execute_parallel,
+            DecompositionStrategy.HIERARCHICAL: self._execute_hierarchical,
+            DecompositionStrategy.DYNAMIC: self._execute_dynamic,
+        }
+        handler = execute_dispatch.get(
+            ensemble_task.decomposition_strategy, self._execute_sequential
+        )
+        return await handler(ensemble_task)
     
     async def _execute_sequential(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
         """Execute sub-tasks sequentially."""

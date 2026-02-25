@@ -374,23 +374,21 @@ class TestClientIntegration:
     """Test integration with OpenRouter client for vision functionality."""
 
     @pytest.mark.asyncio
-    async def test_openrouter_client_vision_method_exists(self):
-        """Test that OpenRouter client has vision methods."""
+    async def test_openrouter_client_chat_method_exists(self):
+        """Test that OpenRouter client has chat completion methods."""
         from src.openrouter_mcp.client.openrouter import OpenRouterClient
-        
-        # Check if the methods exist (will be implemented in GREEN phase)
-        client = OpenRouterClient(api_key="test")
-        
-        assert hasattr(client, 'chat_completion_with_vision')
-        assert hasattr(client, 'stream_chat_completion_with_vision')
 
-    @pytest.mark.asyncio 
-    async def test_client_vision_methods_callable(self):
-        """Test that vision methods are callable."""
-        from src.openrouter_mcp.client.openrouter import OpenRouterClient
-        
         client = OpenRouterClient(api_key="test")
-        
-        # Methods should be callable (even if not implemented yet)
-        assert callable(getattr(client, 'chat_completion_with_vision', None))
-        assert callable(getattr(client, 'stream_chat_completion_with_vision', None))
+
+        assert hasattr(client, 'chat_completion')
+        assert hasattr(client, 'stream_chat_completion')
+
+    @pytest.mark.asyncio
+    async def test_client_chat_methods_callable(self):
+        """Test that chat completion methods are callable."""
+        from src.openrouter_mcp.client.openrouter import OpenRouterClient
+
+        client = OpenRouterClient(api_key="test")
+
+        assert callable(getattr(client, 'chat_completion', None))
+        assert callable(getattr(client, 'stream_chat_completion', None))

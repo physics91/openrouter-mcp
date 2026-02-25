@@ -130,12 +130,20 @@ async def shutdown_handler():
 
 def _run_shutdown():
     """Run shutdown handler safely, avoiding un-awaited coroutine warnings."""
-    coro = shutdown_handler()
     try:
-        return asyncio.run(coro)
-    finally:
-        if inspect.iscoroutine(coro):
-            coro.close()
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        loop.create_task(shutdown_handler())
+    else:
+        coro = shutdown_handler()
+        try:
+            asyncio.run(coro)
+        finally:
+            if inspect.iscoroutine(coro):
+                coro.close()
 
 
 def main():
@@ -148,13 +156,7 @@ def main():
         # Register shutdown handler for graceful cleanup
         def signal_handler(sig, frame):
             logger.info(f"Received signal {sig}, shutting down...")
-            try:
-                # Run async shutdown in the event loop
-                _run_shutdown()
-            except Exception as e:
-                logger.error(f"Error in signal handler: {e}")
-            finally:
-                raise KeyboardInterrupt()
+            raise KeyboardInterrupt()
 
         # Register signal handlers for clean shutdown
         signal.signal(signal.SIGINT, signal_handler)

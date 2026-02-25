@@ -14,10 +14,10 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 from ..models.cache import ModelCache
-from .benchmark import EnhancedBenchmarkHandler, BenchmarkReportExporter, ModelPerformanceAnalyzer
+from .benchmark import EnhancedBenchmarkHandler, BenchmarkReportExporter, ModelPerformanceAnalyzer, BenchmarkError
 # Import shared MCP instance from registry to prevent duplicate registration
 from ..mcp_registry import mcp
-from ..config.constants import EnvVars, BenchmarkDefaults
+from ..config.constants import EnvVars, BenchmarkDefaults, CacheConfig
 from ..utils.async_utils import maybe_await
 from ..utils.env import get_required_env
 
@@ -28,10 +28,6 @@ _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
 _benchmark_handler_factory: Optional[object] = None
 
-
-class McpError(Exception):
-    """MCP benchmark tool error."""
-    pass
 
 
 
@@ -62,7 +58,7 @@ async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
         
         # 모델 캐시 초기화
         if _model_cache is None:
-            _model_cache = ModelCache(ttl_hours=6)
+            _model_cache = ModelCache(ttl_hours=CacheConfig.BENCHMARK_CACHE_TTL_HOURS)
 
         _benchmark_handler = handler_factory(
             api_key=api_key,
@@ -177,7 +173,7 @@ async def benchmark_models(
         
     except Exception as e:
         logger.error(f"벤치마킹 중 오류 발생: {e}")
-        raise McpError(f"벤치마킹 실패: {str(e)}")
+        raise BenchmarkError(f"벤치마킹 실패: {str(e)}") from e
 
 
 async def get_benchmark_history(
@@ -198,7 +194,7 @@ async def get_benchmark_history(
     """
     try:
         handler = await get_benchmark_handler()
-        
+
         # 결과 디렉토리에서 파일 목록 가져오기
         results_dir = handler.results_dir
         if not os.path.exists(results_dir):
@@ -207,60 +203,18 @@ async def get_benchmark_history(
                 "total_files": 0,
                 "message": "벤치마크 기록이 없습니다."
             }
-        
+
         # 최근 파일들 찾기
         cutoff_date = datetime.now() - timedelta(days=days_back)
-        recent_files = []
-        
-        for filename in os.listdir(results_dir):
-            if not filename.endswith('.json'):
-                continue
-            
-            filepath = os.path.join(results_dir, filename)
-            file_time = datetime.fromtimestamp(os.path.getctime(filepath))
-            
-            if file_time >= cutoff_date:
-                recent_files.append((filename, filepath, file_time))
-        
-        # 시간순 정렬 (최신 먼저)
-        recent_files.sort(key=lambda x: x[2], reverse=True)
-        recent_files = recent_files[:limit]
-        
-        history = []
-        for filename, filepath, file_time in recent_files:
-            try:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                # 모델 필터 적용
-                if model_filter:
-                    models_in_file = list(data.get('results', {}).keys())
-                    if not any(model_filter.lower() in model.lower() for model in models_in_file):
-                        continue
-                
-                # 요약 정보 생성
-                results = data.get('results', {})
-                successful = sum(1 for r in results.values() if r.get('success', False))
-                total = len(results)
-                
-                history.append({
-                    "filename": filename,
-                    "timestamp": file_time.isoformat(),
-                    "models_tested": list(results.keys()),
-                    "success_rate": f"{successful}/{total}",
-                    "config": data.get('config', {}),
-                    "summary": {
-                        "total_models": total,
-                        "successful_models": successful,
-                        "avg_response_time": _calculate_avg_response_time(results),
-                        "best_model": _get_best_model(results)
-                    }
-                })
-                
-            except Exception as e:
-                logger.warning(f"파일 {filename} 읽기 실패: {e}")
-                continue
-        
+
+        # 블로킹 I/O를 executor에서 실행
+        loop = asyncio.get_running_loop()
+        history = await loop.run_in_executor(
+            None,
+            _read_benchmark_files,
+            results_dir, cutoff_date, limit, model_filter,
+        )
+
         return {
             "history": history,
             "total_files": len(history),
@@ -268,10 +222,10 @@ async def get_benchmark_history(
             "period_days": days_back,
             "message": "벤치마크 기록이 없습니다." if not history else None
         }
-        
+
     except Exception as e:
         logger.error(f"벤치마크 기록 조회 중 오류: {e}")
-        raise McpError(f"기록 조회 실패: {str(e)}")
+        raise BenchmarkError(f"기록 조회 실패: {str(e)}") from e
 
 
 async def compare_model_categories(
@@ -358,8 +312,8 @@ async def compare_model_categories(
             handler.benchmark_models(
                 model_ids=model_ids,
                 prompt=prompt,
-                runs=2,  # 빠른 비교를 위해 2회만 실행
-                delay_between_requests=0.5
+                runs=BenchmarkDefaults.CATEGORY_COMPARE_RUNS,
+                delay_between_requests=BenchmarkDefaults.CATEGORY_COMPARE_DELAY
             )
         )
         
@@ -425,7 +379,7 @@ async def compare_model_categories(
         
     except Exception as e:
         logger.error(f"카테고리별 모델 비교 중 오류: {e}")
-        raise McpError(f"카테고리 비교 실패: {str(e)}")
+        raise BenchmarkError(f"카테고리 비교 실패: {str(e)}") from e
 
 
 async def export_benchmark_report(
@@ -451,7 +405,7 @@ async def export_benchmark_report(
         results_path = os.path.join(handler.results_dir, benchmark_file)
         
         if not os.path.exists(results_path):
-            raise McpError(f"벤치마크 파일을 찾을 수 없습니다: {benchmark_file}")
+            raise BenchmarkError(f"벤치마크 파일을 찾을 수 없습니다: {benchmark_file}")
         
         # 결과 로드
         with open(results_path, 'r', encoding='utf-8') as f:
@@ -497,7 +451,7 @@ async def export_benchmark_report(
         elif format == "json":
             await exporter.export_json(results, output_path)
         else:
-            raise McpError(f"지원하지 않는 형식: {format}. markdown, csv, json 중 선택하세요.")
+            raise BenchmarkError(f"지원하지 않는 형식: {format}. markdown, csv, json 중 선택하세요.")
         
         return {
             "message": f"{format.upper()} 보고서가 성공적으로 생성되었습니다.",
@@ -510,7 +464,7 @@ async def export_benchmark_report(
         
     except Exception as e:
         logger.error(f"벤치마크 보고서 내보내기 중 오류: {e}")
-        raise McpError(f"보고서 내보내기 실패: {str(e)}")
+        raise BenchmarkError(f"보고서 내보내기 실패: {str(e)}") from e
 
 
 async def compare_model_performance(
@@ -553,9 +507,9 @@ async def compare_model_performance(
         results = await maybe_await(
             handler.benchmark_models(
                 model_ids=models,
-                prompt="다음 파이썬 코드를 설명하고 개선점을 제안해주세요: def factorial(n): return 1 if n <= 1 else n * factorial(n-1)",
-                runs=3,
-                delay_between_requests=0.8
+                prompt=BenchmarkDefaults.PERFORMANCE_COMPARE_PROMPT,
+                runs=BenchmarkDefaults.PERFORMANCE_COMPARE_RUNS,
+                delay_between_requests=BenchmarkDefaults.PERFORMANCE_COMPARE_DELAY
             )
         )
         
@@ -644,10 +598,75 @@ async def compare_model_performance(
         
     except Exception as e:
         logger.error(f"고급 성능 비교 중 오류: {e}")
-        raise McpError(f"성능 비교 실패: {str(e)}")
+        raise BenchmarkError(f"성능 비교 실패: {str(e)}") from e
 
 
 # 유틸리티 함수들
+
+def _read_benchmark_files(
+    results_dir: str,
+    cutoff_date: datetime,
+    limit: int,
+    model_filter: Optional[str],
+) -> List[Dict[str, Any]]:
+    """벤치마크 결과 파일들을 읽어 히스토리 목록을 반환하는 동기 헬퍼.
+
+    ``get_benchmark_history`` 에서 ``run_in_executor`` 를 통해 호출되어
+    블로킹 I/O(os.listdir, os.path, open) 가 이벤트 루프를 차단하지 않도록 합니다.
+    """
+    recent_files = []
+
+    for filename in os.listdir(results_dir):
+        if not filename.endswith('.json'):
+            continue
+
+        filepath = os.path.join(results_dir, filename)
+        file_time = datetime.fromtimestamp(os.path.getctime(filepath))
+
+        if file_time >= cutoff_date:
+            recent_files.append((filename, filepath, file_time))
+
+    # 시간순 정렬 (최신 먼저)
+    recent_files.sort(key=lambda x: x[2], reverse=True)
+    recent_files = recent_files[:limit]
+
+    history: List[Dict[str, Any]] = []
+    for filename, filepath, file_time in recent_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 모델 필터 적용
+            if model_filter:
+                models_in_file = list(data.get('results', {}).keys())
+                if not any(model_filter.lower() in model.lower() for model in models_in_file):
+                    continue
+
+            # 요약 정보 생성
+            results = data.get('results', {})
+            successful = sum(1 for r in results.values() if r.get('success', False))
+            total = len(results)
+
+            history.append({
+                "filename": filename,
+                "timestamp": file_time.isoformat(),
+                "models_tested": list(results.keys()),
+                "success_rate": f"{successful}/{total}",
+                "config": data.get('config', {}),
+                "summary": {
+                    "total_models": total,
+                    "successful_models": successful,
+                    "avg_response_time": _calculate_avg_response_time(results),
+                    "best_model": _get_best_model(results)
+                }
+            })
+
+        except (json.JSONDecodeError, OSError, KeyError) as e:
+            logger.warning(f"파일 {filename} 읽기 실패: {e}")
+            continue
+
+    return history
+
 
 def _calculate_avg_response_time(results: Dict[str, Any]) -> Optional[float]:
     """결과들의 평균 응답 시간 계산"""

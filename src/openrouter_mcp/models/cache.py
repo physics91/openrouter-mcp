@@ -68,6 +68,13 @@ class HTTPTransport:
         """Get HTTP headers for requests."""
         return build_openrouter_headers(self.api_key, fallback_to_env=True)
 
+    def _ensure_client(self):
+        """Lazily create the shared AsyncClient."""
+        if self._client is None:
+            import httpx
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
     async def get(self, endpoint: str) -> Dict[str, Any]:
         """
         Make GET request to API.
@@ -78,18 +85,21 @@ class HTTPTransport:
         Returns:
             Response data as dictionary
         """
-        import httpx
-
         url = f"{self.base_url}{endpoint}"
         headers = self._get_headers()
+        client = self._ensure_client()
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    async def aclose(self):
+        """Close the underlying HTTP client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     def close(self):
-        """Close transport (for compatibility)."""
+        """Close transport (sync, for compatibility)."""
         pass
 
 
@@ -213,7 +223,7 @@ class ModelCache:
             logger.info(f"Fetched {len(raw_models)} models from OpenRouter API (raw)")
 
             # Enhance models with metadata in thread executor (CPU-bound)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             enhanced_models = await loop.run_in_executor(
                 self._executor,
                 batch_enhance_models,
@@ -763,6 +773,12 @@ class ModelCache:
                 "ttl_seconds": self.ttl_seconds
             }
 
+    def clear(self) -> None:
+        """Clear the in-memory cache."""
+        with self._cache_lock:
+            self._memory_cache = []
+            self._last_update = None
+
     def shutdown(self) -> None:
         """
         Shutdown the cache and clean up resources.
@@ -776,13 +792,6 @@ class ModelCache:
 
         if hasattr(self, '_transport') and self._transport is not None:
             self._transport.close()
-
-    def __del__(self):
-        """Destructor to ensure cleanup."""
-        try:
-            self.shutdown()
-        except Exception:
-            pass  # Ignore errors during cleanup
 
 
 # Client access moved to _fetch_models_from_api to avoid circular imports

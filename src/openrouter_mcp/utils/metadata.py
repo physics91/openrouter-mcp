@@ -392,7 +392,7 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
     if created_timestamp:
         try:
             release_date = datetime.fromtimestamp(created_timestamp).strftime("%Y-%m-%d")
-        except:
+        except (ValueError, OSError, OverflowError):
             pass
     
     # Check if date is in ID
