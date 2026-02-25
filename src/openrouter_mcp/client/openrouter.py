@@ -119,7 +119,12 @@ class OpenRouterClient:
             )
         else:
             self._model_cache = None
-    
+
+    @property
+    def model_cache(self) -> "ModelCache":
+        """Public accessor for the model cache."""
+        return self._model_cache
+
     @classmethod
     def from_env(cls) -> "OpenRouterClient":
         """Create client from environment variables."""

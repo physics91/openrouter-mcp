@@ -2,15 +2,13 @@
 
 import logging
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..config.constants import FreeChatConfig
 from ..models.cache import ModelCache
 from ..utils.metadata import extract_provider_from_id
 
 logger = logging.getLogger(__name__)
-
-_MAX_CONTEXT_LENGTH = 262144
 
 
 class FreeModelRouter:
@@ -24,7 +22,7 @@ class FreeModelRouter:
     def _score_model(self, model: dict) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
         context_length = model.get("context_length", 0)
-        context_score = min(context_length / _MAX_CONTEXT_LENGTH, 1.0)
+        context_score = min(context_length / FreeChatConfig.MAX_CONTEXT_LENGTH, 1.0)
 
         provider = model.get("provider", "")
         if not provider or provider == "unknown":
@@ -40,11 +38,27 @@ class FreeModelRouter:
         if caps.get("supports_function_calling", False):
             feature_score += 0.5
 
-        return (
+        return min(1.0, (
             FreeChatConfig.CONTEXT_LENGTH_WEIGHT * context_score
             + FreeChatConfig.REPUTATION_WEIGHT * reputation
             + FreeChatConfig.FEATURES_WEIGHT * feature_score
-        )
+        ))
+
+    def list_models_with_status(self) -> List[Dict[str, Any]]:
+        """Return all free models with quality scores and availability."""
+        free_models = self._cache.filter_models(free_only=True)
+        result = []
+        for model in free_models:
+            result.append({
+                "id": model.get("id", ""),
+                "name": model.get("name", ""),
+                "context_length": model.get("context_length", 0),
+                "provider": model.get("provider", "unknown"),
+                "quality_score": round(self._score_model(model), 3),
+                "available": self._is_available(model.get("id", "")),
+            })
+        result.sort(key=lambda m: -m["quality_score"])
+        return result
 
     def _is_available(self, model_id: str) -> bool:
         """Check if a model is not in cooldown."""
@@ -84,7 +98,7 @@ class FreeModelRouter:
                     return pref_id
 
         # Filter available models and score with usage-based rotation penalty
-        usage_penalty = FreeChatConfig.REPUTATION_WEIGHT * 0.15
+        usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
         candidates = [
             (model, self._score_model(model) - self._usage_counts.get(model["id"], 0) * usage_penalty)
             for model in free_models

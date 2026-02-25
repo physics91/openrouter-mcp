@@ -20,8 +20,14 @@ async def _get_router() -> FreeModelRouter:
     global _router
     if _router is None:
         client = await get_openrouter_client()
-        _router = FreeModelRouter(client._model_cache)
+        _router = FreeModelRouter(client.model_cache)
     return _router
+
+
+def reset_router() -> None:
+    """Reset the router singleton. Called during shutdown or key rotation."""
+    global _router
+    _router = None
 
 
 class FreeChatRequest(BaseModel):
@@ -94,14 +100,14 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
                 "usage": response.get("usage", {}),
             }
 
-        except RateLimitError:
+        except RateLimitError as e:
             logger.warning(f"Rate limit hit for {model_id}, trying next model")
             router.report_rate_limit(model_id)
-            last_error = RateLimitError(f"Rate limited: {model_id}")
+            last_error = e
             continue
 
-        except (OpenRouterError, Exception) as e:
-            logger.error(f"Error with model {model_id}: {e}")
+        except OpenRouterError as e:
+            logger.error(f"OpenRouter error with model {model_id}: {e}")
             last_error = e
             router.report_rate_limit(model_id)
             continue
@@ -111,28 +117,9 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
 
 @mcp.tool()
 async def list_free_models() -> Dict[str, Any]:
-    """
-    List all available free models with quality scores and availability status.
-
-    Returns:
-        Dictionary with models list, each including id, name, score, and availability.
-    """
+    """List all available free models with quality scores and availability status."""
     router = await _get_router()
-    free_models = router._cache.filter_models(free_only=True)
-
-    models_info = []
-    for model in free_models:
-        models_info.append({
-            "id": model.get("id", ""),
-            "name": model.get("name", ""),
-            "context_length": model.get("context_length", 0),
-            "provider": model.get("provider", "unknown"),
-            "quality_score": round(router._score_model(model), 3),
-            "available": router._is_available(model.get("id", "")),
-        })
-
-    models_info.sort(key=lambda m: -m["quality_score"])
-
+    models_info = router.list_models_with_status()
     return {
         "models": models_info,
         "total_count": len(models_info),
