@@ -116,6 +116,12 @@ def setup_mock_client():
             else:
                 mock_client.chat_completion.return_value = chat_responses
 
+        # Set up get_model_pricing to return normalized pricing dicts
+        mock_client.get_model_pricing.return_value = {
+            "prompt": 0.00001,
+            "completion": 0.00003,
+        }
+
         # Setup async context manager
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = AsyncMock()
@@ -598,6 +604,7 @@ class TestCollectiveIntelligenceErrorHandling:
         mock_client.list_models.return_value = [
             {"id": "test/model", "name": "Test", "provider": "test", "context_length": 4096, "pricing": {"completion": "0.00001", "prompt": "0.00001"}}
         ]
+        mock_client.get_model_pricing.return_value = {"prompt": 0.00001, "completion": 0.00001}
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = AsyncMock()
 
@@ -629,6 +636,7 @@ class TestCollectiveIntelligenceErrorHandling:
         mock_client.list_models.return_value = [
             {"id": "test/model", "name": "Test", "provider": "test", "context_length": 4096, "pricing": {"completion": "0.00001", "prompt": "0.00001"}}
         ]
+        mock_client.get_model_pricing.return_value = {"prompt": 0.00001, "completion": 0.00001}
         mock_client.__aenter__.return_value = mock_client
         mock_client.__aexit__.return_value = AsyncMock()
 
