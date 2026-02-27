@@ -166,3 +166,129 @@ class TestFreeChatHandler:
         assert request.system_prompt == ""
         assert request.conversation_history == []
         assert request.preferred_models == []
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_response_includes_task_type(self, mock_chat_response):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.return_value = mock_chat_response
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            mock_collector = MagicMock()
+            mock_get_metrics.return_value = mock_collector
+
+            from src.openrouter_mcp.free.classifier import TaskClassifier
+            mock_get_classifier.return_value = TaskClassifier()
+
+            request = FreeChatRequest(message="파이썬 코드를 작성해줘")
+            result = await free_chat(request)
+
+            assert "task_type" in result
+            assert result["task_type"] == "coding"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_metrics_recorded_on_success(self, mock_chat_response):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.return_value = mock_chat_response
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            mock_collector = MagicMock()
+            mock_get_metrics.return_value = mock_collector
+
+            from src.openrouter_mcp.free.classifier import TaskClassifier
+            mock_get_classifier.return_value = TaskClassifier()
+
+            request = FreeChatRequest(message="Hello")
+            await free_chat(request)
+
+            mock_collector.record_success.assert_called_once()
+            call_args = mock_collector.record_success.call_args
+            assert call_args[0][0] == "google/gemma-3-27b:free"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_metrics_recorded_on_rate_limit(self, mock_chat_response):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = [
+                RateLimitError("rate limited"),
+                mock_chat_response,
+            ]
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.side_effect = [
+                "google/gemma-3-27b:free",
+                "meta-llama/llama-4-scout:free",
+            ]
+            mock_router.report_rate_limit = MagicMock()
+            mock_get_router.return_value = mock_router
+
+            mock_collector = MagicMock()
+            mock_get_metrics.return_value = mock_collector
+
+            from src.openrouter_mcp.free.classifier import TaskClassifier
+            mock_get_classifier.return_value = TaskClassifier()
+
+            request = FreeChatRequest(message="Hello")
+            await free_chat(request)
+
+            mock_collector.record_failure.assert_called_once_with(
+                "google/gemma-3-27b:free", "RateLimitError"
+            )
+            mock_collector.record_success.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_metrics_recorded_on_openrouter_error(self, mock_chat_response):
+        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
+             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = [
+                OpenRouterError("server error"),
+                mock_chat_response,
+            ]
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.side_effect = [
+                "google/gemma-3-27b:free",
+                "meta-llama/llama-4-scout:free",
+            ]
+            mock_router.report_rate_limit = MagicMock()
+            mock_get_router.return_value = mock_router
+
+            mock_collector = MagicMock()
+            mock_get_metrics.return_value = mock_collector
+
+            from src.openrouter_mcp.free.classifier import TaskClassifier
+            mock_get_classifier.return_value = TaskClassifier()
+
+            request = FreeChatRequest(message="Hello")
+            await free_chat(request)
+
+            mock_collector.record_failure.assert_called_once_with(
+                "google/gemma-3-27b:free", "OpenRouterError"
+            )
