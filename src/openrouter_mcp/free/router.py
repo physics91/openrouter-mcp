@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from ..config.constants import FreeChatConfig
 from ..models.cache import ModelCache
 from ..utils.metadata import extract_provider_from_id
+from .classifier import TASK_MODEL_AFFINITY, TaskType
+from .metrics import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +16,36 @@ logger = logging.getLogger(__name__)
 class FreeModelRouter:
     """Selects the best available free model using quality scoring and rotation."""
 
-    def __init__(self, model_cache: ModelCache) -> None:
+    def __init__(
+        self,
+        model_cache: ModelCache,
+        metrics: Optional[MetricsCollector] = None,
+    ) -> None:
         self._cache = model_cache
         self._cooldowns: Dict[str, float] = {}
         self._usage_counts: Dict[str, int] = {}
+        self._metrics = metrics
 
-    def _score_model(self, model: dict) -> float:
+    def _get_blended_reputation(self, provider: str, model_id: str) -> float:
+        """Blend static reputation with real performance data when available."""
+        static = FreeChatConfig.MODEL_REPUTATION.get(
+            provider.lower(), FreeChatConfig.DEFAULT_REPUTATION
+        )
+        if self._metrics is None:
+            return static
+        m = self._metrics.get_metrics(model_id)
+        if m is None or m.total_requests < FreeChatConfig.ADAPTIVE_MIN_REQUESTS:
+            return static
+        alpha = min(
+            m.total_requests / FreeChatConfig.ADAPTIVE_RAMP_REQUESTS,
+            FreeChatConfig.ADAPTIVE_MAX_ALPHA,
+        )
+        perf_score = self._metrics.get_performance_score(model_id)
+        return alpha * perf_score + (1 - alpha) * static
+
+    def _score_model(
+        self, model: dict, task_type: Optional[TaskType] = None
+    ) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
         context_length = model.get("context_length", 0)
         context_score = min(context_length / FreeChatConfig.MAX_CONTEXT_LENGTH, 1.0)
@@ -27,9 +53,7 @@ class FreeModelRouter:
         provider = model.get("provider", "")
         if not provider or provider == "unknown":
             provider = extract_provider_from_id(model.get("id", "")).value
-        reputation = FreeChatConfig.MODEL_REPUTATION.get(
-            provider.lower(), FreeChatConfig.DEFAULT_REPUTATION
-        )
+        reputation = self._get_blended_reputation(provider, model.get("id", ""))
 
         caps = model.get("capabilities", {})
         feature_score = 0.0
@@ -38,14 +62,27 @@ class FreeModelRouter:
         if caps.get("supports_function_calling", False):
             feature_score += 0.5
 
-        return min(1.0, (
+        base_score = (
             FreeChatConfig.CONTEXT_LENGTH_WEIGHT * context_score
             + FreeChatConfig.REPUTATION_WEIGHT * reputation
             + FreeChatConfig.FEATURES_WEIGHT * feature_score
-        ))
+        )
+
+        # Apply task-type affinity bonus
+        if task_type is not None:
+            affinity = TASK_MODEL_AFFINITY.get(task_type, {})
+            bonus = affinity.get(provider.lower(), 0.0)
+            base_score += bonus
+
+        return min(1.0, base_score)
 
     def list_models_with_status(self) -> List[Dict[str, Any]]:
-        """Return all free models with quality scores and availability."""
+        """Return all free models with quality scores and availability.
+
+        Note: Scores here exclude task-type affinity bonuses since no specific
+        task context is available. Actual selection scores in select_model()
+        may differ when a task_type is provided.
+        """
         free_models = self._cache.filter_models(free_only=True)
         result = []
         for model in free_models:
@@ -81,7 +118,11 @@ class FreeModelRouter:
             mid: until for mid, until in self._cooldowns.items() if until > now
         }
 
-    async def select_model(self, preferred_models: Optional[List[str]] = None) -> str:
+    async def select_model(
+        self,
+        preferred_models: Optional[List[str]] = None,
+        task_type: Optional[TaskType] = None,
+    ) -> str:
         """Select the best available free model."""
         self._cleanup_expired_cooldowns()
 
@@ -110,7 +151,7 @@ class FreeModelRouter:
         # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
         candidates = [
-            (model, max(0.0, self._score_model(model) - self._usage_counts.get(model["id"], 0) * usage_penalty))
+            (model, max(0.0, self._score_model(model, task_type) - self._usage_counts.get(model["id"], 0) * usage_penalty))
             for model in free_models
             if self._is_available(model["id"])
         ]
