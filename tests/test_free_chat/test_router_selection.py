@@ -2,25 +2,15 @@ import pytest
 from unittest.mock import MagicMock
 
 from src.openrouter_mcp.free.router import FreeModelRouter
-
-
-def _make_free_model(model_id, context_length=32768, provider="unknown"):
-    return {
-        "id": model_id,
-        "name": model_id,
-        "context_length": context_length,
-        "cost_tier": "free",
-        "provider": provider,
-        "capabilities": {},
-    }
+from tests.test_free_chat.conftest import make_free_model
 
 
 @pytest.fixture
 def free_models():
     return [
-        _make_free_model("google/gemma-3-27b:free", 131072, "google"),
-        _make_free_model("meta-llama/llama-4-scout:free", 131072, "meta"),
-        _make_free_model("qwen/qwen-2.5:free", 32768, "qwen"),
+        make_free_model("google/gemma-3-27b:free", 131072, "google"),
+        make_free_model("meta-llama/llama-4-scout:free", 131072, "meta"),
+        make_free_model("qwen/qwen-2.5:free", 32768, "qwen"),
     ]
 
 
