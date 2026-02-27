@@ -189,3 +189,27 @@ async def list_free_models() -> Dict[str, Any]:
         "total_count": len(models_info),
         "available_count": sum(1 for m in models_info if m["available"]),
     }
+
+
+@mcp.tool()
+async def get_free_model_metrics() -> Dict[str, Any]:
+    """View performance metrics for free models (response time, success rate, throughput)."""
+    metrics = _get_metrics()
+    all_metrics = metrics.get_all_metrics()
+
+    models: Dict[str, Any] = {}
+    for model_id, m in all_metrics.items():
+        models[model_id] = {
+            "total_requests": m.total_requests,
+            "success_count": m.success_count,
+            "failure_count": m.failure_count,
+            "success_rate": round(m.success_rate, 3),
+            "avg_latency_ms": round(m.avg_latency_ms, 1),
+            "tokens_per_second": round(m.tokens_per_second, 1),
+            "performance_score": round(metrics.get_performance_score(model_id), 3),
+        }
+
+    return {
+        "models": models,
+        "total_models_tracked": len(models),
+    }
