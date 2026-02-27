@@ -153,6 +153,16 @@ class FreeChatConfig:
         "deepseek": 0.7,
     }
 
+    # Adaptive scoring
+    ADAPTIVE_MIN_REQUESTS: int = 5
+    ADAPTIVE_MAX_ALPHA: float = 0.7
+    ADAPTIVE_RAMP_REQUESTS: int = 30
+    PERFORMANCE_SUCCESS_WEIGHT: float = 0.5
+    PERFORMANCE_LATENCY_WEIGHT: float = 0.3
+    PERFORMANCE_THROUGHPUT_WEIGHT: float = 0.2
+    MAX_LATENCY_MS: float = 10000.0
+    MAX_TOKENS_PER_SECOND: float = 50.0
+
 
 __all__ = [
     "APIConfig",
