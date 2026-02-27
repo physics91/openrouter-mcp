@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from ..config.constants import FreeChatConfig
 from ..models.cache import ModelCache
 from ..utils.metadata import extract_provider_from_id
-from .classifier import TASK_MODEL_AFFINITY, TaskType
+from .classifier import TASK_MODEL_AFFINITY, FreeTaskType
 from .metrics import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class FreeModelRouter:
         return alpha * perf_score + (1 - alpha) * static
 
     def _score_model(
-        self, model: dict, task_type: Optional[TaskType] = None
+        self, model: dict, task_type: Optional[FreeTaskType] = None
     ) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
         context_length = model.get("context_length", 0)
@@ -121,7 +121,7 @@ class FreeModelRouter:
     async def select_model(
         self,
         preferred_models: Optional[List[str]] = None,
-        task_type: Optional[TaskType] = None,
+        task_type: Optional[FreeTaskType] = None,
     ) -> str:
         """Select the best available free model."""
         self._cleanup_expired_cooldowns()

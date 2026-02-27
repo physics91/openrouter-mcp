@@ -13,6 +13,7 @@ Usage:
     temperature = ModelDefaults.TEMPERATURE
 """
 
+from types import MappingProxyType
 from typing import Optional
 
 
@@ -144,14 +145,14 @@ class FreeChatConfig:
     FEATURES_WEIGHT: float = 0.2
     USAGE_PENALTY_FACTOR: float = 0.06
     DEFAULT_REPUTATION: float = 0.5
-    MODEL_REPUTATION: dict = {
+    MODEL_REPUTATION: MappingProxyType = MappingProxyType({
         "google": 0.9,
         "meta": 0.85,
         "qwen": 0.8,
         "mistral": 0.75,
         "microsoft": 0.7,
         "deepseek": 0.7,
-    }
+    })
 
     # Adaptive scoring
     ADAPTIVE_MIN_REQUESTS: int = 5

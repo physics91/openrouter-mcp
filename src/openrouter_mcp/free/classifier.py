@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Dict, List
 
 
-class TaskType(Enum):
+class FreeTaskType(Enum):
     """Categories of user tasks for model affinity matching."""
 
     CODING = "coding"
@@ -14,8 +14,8 @@ class TaskType(Enum):
     GENERAL = "general"
 
 
-TASK_PATTERNS: Dict[TaskType, List[str]] = {
-    TaskType.CODING: [
+TASK_PATTERNS: Dict[FreeTaskType, List[str]] = {
+    FreeTaskType.CODING: [
         "코드",
         "code",
         "함수",
@@ -37,7 +37,7 @@ TASK_PATTERNS: Dict[TaskType, List[str]] = {
         "api",
         "알고리즘",
     ],
-    TaskType.TRANSLATION: [
+    FreeTaskType.TRANSLATION: [
         "번역",
         "translate",
         "영어로",
@@ -48,7 +48,7 @@ TASK_PATTERNS: Dict[TaskType, List[str]] = {
         "통역",
         "언어로",
     ],
-    TaskType.CREATIVE: [
+    FreeTaskType.CREATIVE: [
         "이야기",
         "story",
         "시",
@@ -64,7 +64,7 @@ TASK_PATTERNS: Dict[TaskType, List[str]] = {
         "대본",
         "script",
     ],
-    TaskType.ANALYSIS: [
+    FreeTaskType.ANALYSIS: [
         "분석",
         "analyze",
         "비교",
@@ -80,30 +80,30 @@ TASK_PATTERNS: Dict[TaskType, List[str]] = {
     ],
 }
 
-TASK_MODEL_AFFINITY: Dict[TaskType, Dict[str, float]] = {
-    TaskType.CODING: {"deepseek": 0.15, "qwen": 0.10},
-    TaskType.CREATIVE: {"google": 0.10, "meta": 0.10},
-    TaskType.TRANSLATION: {"google": 0.10, "qwen": 0.10},
-    TaskType.ANALYSIS: {"google": 0.10, "deepseek": 0.10},
-    TaskType.GENERAL: {},
+TASK_MODEL_AFFINITY: Dict[FreeTaskType, Dict[str, float]] = {
+    FreeTaskType.CODING: {"deepseek": 0.15, "qwen": 0.10},
+    FreeTaskType.CREATIVE: {"google": 0.10, "meta": 0.10},
+    FreeTaskType.TRANSLATION: {"google": 0.10, "qwen": 0.10},
+    FreeTaskType.ANALYSIS: {"google": 0.10, "deepseek": 0.10},
+    FreeTaskType.GENERAL: {},
 }
 
 
 class TaskClassifier:
     """Classifies user messages into task types using keyword matching."""
 
-    def classify(self, message: str, system_prompt: str = "") -> TaskType:
-        """Classify a message into a TaskType based on keyword matching.
+    def classify(self, message: str, system_prompt: str = "") -> FreeTaskType:
+        """Classify a message into a FreeTaskType based on keyword matching.
 
         Args:
             message: The user message to classify.
             system_prompt: Optional system prompt providing additional context.
 
         Returns:
-            The detected TaskType, defaulting to GENERAL if no patterns match.
+            The detected FreeTaskType, defaulting to GENERAL if no patterns match.
         """
         text = f"{system_prompt} {message}".lower()
-        best_type = TaskType.GENERAL
+        best_type = FreeTaskType.GENERAL
         best_count = 0
         for task_type, patterns in TASK_PATTERNS.items():
             count = sum(1 for p in patterns if p.lower() in text)

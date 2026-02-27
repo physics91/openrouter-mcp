@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -21,6 +22,7 @@ class ModelMetrics:
     failure_count: int = 0
     total_latency_ms: float = 0.0
     total_tokens: int = 0
+    error_counts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     @property
     def success_rate(self) -> float:
@@ -70,6 +72,7 @@ class MetricsCollector:
         m = self._metrics.setdefault(model_id, ModelMetrics())
         m.total_requests += 1
         m.failure_count += 1
+        m.error_counts[error_type] += 1
 
     def get_metrics(self, model_id: str) -> Optional[ModelMetrics]:
         """Return metrics for *model_id*, or ``None`` if unknown."""

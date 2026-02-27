@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from src.openrouter_mcp.free.router import FreeModelRouter
 from src.openrouter_mcp.free.metrics import MetricsCollector
-from src.openrouter_mcp.free.classifier import TaskType
+from src.openrouter_mcp.free.classifier import FreeTaskType
 from tests.test_free_chat.conftest import make_free_model
 
 
@@ -68,12 +68,12 @@ class TestAdaptiveScoring:
         assert score_adaptive < score_static
 
 
-class TestTaskTypeSelection:
+class TestFreeTaskTypeSelection:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_coding_task_accepts_task_type(self, mock_cache):
         router = FreeModelRouter(mock_cache)
-        model = await router.select_model(task_type=TaskType.CODING)
+        model = await router.select_model(task_type=FreeTaskType.CODING)
         assert model is not None
 
     @pytest.mark.unit
@@ -82,7 +82,7 @@ class TestTaskTypeSelection:
         router = FreeModelRouter(mock_cache)
         model_default = await router.select_model()
         router._usage_counts.clear()
-        model_general = await router.select_model(task_type=TaskType.GENERAL)
+        model_general = await router.select_model(task_type=FreeTaskType.GENERAL)
         assert model_default == model_general
 
     @pytest.mark.unit
@@ -101,6 +101,6 @@ class TestTaskTypeSelection:
         )
         score_coding = router._score_model(
             make_free_model("deepseek/chat:free", 131072, "deepseek"),
-            task_type=TaskType.CODING,
+            task_type=FreeTaskType.CODING,
         )
         assert score_coding > score_default
