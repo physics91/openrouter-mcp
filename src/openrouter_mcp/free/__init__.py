@@ -2,12 +2,12 @@
 
 from .router import FreeModelRouter
 from .metrics import MetricsCollector, ModelMetrics
-from .classifier import TaskClassifier, TaskType
+from .classifier import TaskClassifier, FreeTaskType
 
 __all__ = [
     "FreeModelRouter",
     "MetricsCollector",
     "ModelMetrics",
     "TaskClassifier",
-    "TaskType",
+    "FreeTaskType",
 ]

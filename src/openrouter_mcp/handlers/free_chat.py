@@ -207,6 +207,7 @@ async def get_free_model_metrics() -> Dict[str, Any]:
             "avg_latency_ms": round(m.avg_latency_ms, 1),
             "tokens_per_second": round(m.tokens_per_second, 1),
             "performance_score": round(metrics.get_performance_score(model_id), 3),
+            "error_counts": dict(m.error_counts),
         }
 
     return {
