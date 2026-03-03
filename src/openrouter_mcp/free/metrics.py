@@ -49,9 +49,9 @@ class ModelMetrics:
 class MetricsCollector:
     """Collects and aggregates performance metrics for free models.
 
-    Thread-safe accumulation of success/failure records with
-    a weighted performance score combining success rate, latency,
-    and throughput.
+    Safe under single-threaded asyncio usage (no cross-thread guarantees).
+    Aggregates success/failure records with a weighted performance score
+    combining success rate, latency, and throughput.
     """
 
     def __init__(self) -> None:

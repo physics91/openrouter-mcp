@@ -73,6 +73,20 @@ class TestMetricsCollector:
         assert m.total_requests == 1
         assert m.success_count == 0
         assert m.failure_count == 1
+        assert m.error_counts["timeout"] == 1
+
+    def test_record_failure_error_type_counts(
+        self, collector: MetricsCollector
+    ) -> None:
+        collector.record_failure("model-b", error_type="timeout")
+        collector.record_failure("model-b", error_type="timeout")
+        collector.record_failure("model-b", error_type="rate_limit")
+
+        m = collector.get_metrics("model-b")
+        assert m is not None
+        assert m.failure_count == 3
+        assert m.error_counts["timeout"] == 2
+        assert m.error_counts["rate_limit"] == 1
 
     def test_get_metrics_unknown_model(
         self, collector: MetricsCollector
