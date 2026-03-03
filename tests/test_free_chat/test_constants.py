@@ -32,3 +32,23 @@ class TestFreeChatConfig:
     @pytest.mark.unit
     def test_default_reputation_score(self):
         assert FreeChatConfig.DEFAULT_REPUTATION == 0.5
+
+    @pytest.mark.unit
+    def test_adaptive_config_exists(self):
+        assert FreeChatConfig.ADAPTIVE_MIN_REQUESTS == 5
+        assert FreeChatConfig.ADAPTIVE_MAX_ALPHA == 0.7
+        assert FreeChatConfig.ADAPTIVE_RAMP_REQUESTS == 30
+
+    @pytest.mark.unit
+    def test_performance_weights_sum_to_one(self):
+        total = (
+            FreeChatConfig.PERFORMANCE_SUCCESS_WEIGHT
+            + FreeChatConfig.PERFORMANCE_LATENCY_WEIGHT
+            + FreeChatConfig.PERFORMANCE_THROUGHPUT_WEIGHT
+        )
+        assert abs(total - 1.0) < 1e-9
+
+    @pytest.mark.unit
+    def test_performance_normalization_constants(self):
+        assert FreeChatConfig.MAX_LATENCY_MS == 10000
+        assert FreeChatConfig.MAX_TOKENS_PER_SECOND == 50
