@@ -1,9 +1,11 @@
 ---
-name: codex
-description: Use when the user asks to run Codex CLI (codex exec, codex resume) or references OpenAI Codex for code analysis, refactoring, or automated editing. Uses GPT-5.2 by default for state-of-the-art software engineering.
+name: codex-subagent
+description: Use when the user asks to run Codex CLI (codex exec, codex resume) or references OpenAI Codex for code analysis, refactoring, or automated editing on ~/dev/bugi-backend. Uses GPT-5.2 by default for state-of-the-art software engineering.
 ---
 
-# Codex Skill Guide
+# Codex Subagent Skill Guide
+
+**Default target directory**: `~/dev/bugi-backend`
 
 ## Running a Task
 1. Default to `gpt-5.2` model. Ask the user (via `AskUserQuestion`) which reasoning effort to use (`xhigh`,`high`, `medium`, or `low`). User can override model if needed (see Model Options below).
@@ -13,7 +15,7 @@ description: Use when the user asks to run Codex CLI (codex exec, codex resume) 
    - `--config model_reasoning_effort="<high|medium|low>"`
    - `--sandbox <read-only|workspace-write|danger-full-access>`
    - `--full-auto`
-   - `-C, --cd <DIR>`
+   - `-C ~/dev/bugi-backend` (always target bugi-backend unless user specifies otherwise)
    - `--skip-git-repo-check`
 3. Always use --skip-git-repo-check.
 4. When continuing a previous session, use `codex exec --skip-git-repo-check resume --last` via stdin. When resuming don't use any configuration flags unless explicitly requested by the user e.g. if he species the model or the reasoning effort when requesting to resume a session. Resume syntax: `echo "your prompt here" | codex exec --skip-git-repo-check resume --last 2>/dev/null`. All flags have to be inserted between exec and resume.
@@ -24,18 +26,17 @@ description: Use when the user asks to run Codex CLI (codex exec, codex resume) 
 ### Quick Reference
 | Use case | Sandbox mode | Key flags |
 | --- | --- | --- |
-| Read-only review or analysis | `read-only` | `--sandbox read-only 2>/dev/null` |
-| Apply local edits | `workspace-write` | `--sandbox workspace-write --full-auto 2>/dev/null` |
-| Permit network or broad access | `danger-full-access` | `--sandbox danger-full-access --full-auto 2>/dev/null` |
+| Read-only review or analysis | `read-only` | `-C ~/dev/bugi-backend --sandbox read-only 2>/dev/null` |
+| Apply local edits | `workspace-write` | `-C ~/dev/bugi-backend --sandbox workspace-write --full-auto 2>/dev/null` |
+| Permit network or broad access | `danger-full-access` | `-C ~/dev/bugi-backend --sandbox danger-full-access --full-auto 2>/dev/null` |
 | Resume recent session | Inherited from original | `echo "prompt" \| codex exec --skip-git-repo-check resume --last 2>/dev/null` (no flags allowed) |
-| Run from another directory | Match task needs | `-C <DIR>` plus other flags `2>/dev/null` |
 
 ## Model Options
 
 | Model | Best for | Context window | Key features |
 | --- | --- | --- | --- |
 | `gpt-5.2-max` | **Max model**: Ultra-complex reasoning, deep problem analysis | 400K input / 128K output | 76.3% SWE-bench, adaptive reasoning, $1.25/$10.00 |
-| `gpt-5.2` ⭐ | **Flagship model**: Software engineering, agentic coding workflows | 400K input / 128K output | 76.3% SWE-bench, adaptive reasoning, $1.25/$10.00 |
+| `gpt-5.2` | **Flagship model**: Software engineering, agentic coding workflows | 400K input / 128K output | 76.3% SWE-bench, adaptive reasoning, $1.25/$10.00 |
 | `gpt-5.2-mini` | Cost-efficient coding (4x more usage allowance) | 400K input / 128K output | Near SOTA performance, $0.25/$2.00 |
 | `gpt-5.1-thinking` | Ultra-complex reasoning, deep problem analysis | 400K input / 128K output | Adaptive thinking depth, runs 2x slower on hardest tasks |
 

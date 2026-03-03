@@ -1,0 +1,3 @@
+interface:
+  display_name: "Git Worktree Ops"
+  short_description: "Safe linked-worktree workflow and recovery"
