@@ -9,6 +9,8 @@ __pycache__/
 *.so
 .Python
 build/
+!.agents/skills/build/
+!.agents/skills/build/**
 develop-eggs/
 dist/
 downloads/
