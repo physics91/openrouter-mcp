@@ -7,12 +7,17 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from ..mcp_registry import mcp, get_openrouter_client
+from ..client.openrouter import (
+    AuthenticationError,
+    InvalidRequestError,
+    OpenRouterError,
+    RateLimitError,
+)
 from ..config.constants import FreeChatConfig, ModelDefaults
-from ..free.router import FreeModelRouter
-from ..free.metrics import MetricsCollector
 from ..free.classifier import TaskClassifier
-from ..client.openrouter import RateLimitError, OpenRouterError, AuthenticationError, InvalidRequestError
+from ..free.metrics import MetricsCollector
+from ..free.router import FreeModelRouter
+from ..mcp_registry import get_openrouter_client, mcp
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +89,12 @@ class FreeChatRequest(BaseModel):
     conversation_history: List[Dict[str, str]] = Field(
         default_factory=list, description="Previous conversation messages"
     )
-    max_tokens: int = Field(FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
+    max_tokens: int = Field(
+        FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate"
+    )
+    temperature: float = Field(
+        ModelDefaults.TEMPERATURE, description="Sampling temperature"
+    )
     preferred_models: List[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )

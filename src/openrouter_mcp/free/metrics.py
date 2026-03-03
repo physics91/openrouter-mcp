@@ -95,9 +95,7 @@ class MetricsCollector:
         if m is None:
             return 0.0
 
-        latency_score = 1.0 - min(
-            m.avg_latency_ms / FreeChatConfig.MAX_LATENCY_MS, 1.0
-        )
+        latency_score = 1.0 - min(m.avg_latency_ms / FreeChatConfig.MAX_LATENCY_MS, 1.0)
         throughput_score = min(
             m.tokens_per_second / FreeChatConfig.MAX_TOKENS_PER_SECOND, 1.0
         )

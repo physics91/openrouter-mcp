@@ -1,4 +1,5 @@
 import pytest
+
 from src.openrouter_mcp.config.constants import FreeChatConfig
 
 

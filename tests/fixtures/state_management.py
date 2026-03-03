@@ -6,7 +6,6 @@ proper test isolation, particularly for lifecycle manager and shared
 client instances.
 """
 
-import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -20,14 +19,14 @@ async def reset_singleton_state() -> None:
     """
     # Reset lifecycle manager singleton
     try:
+        import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
         from openrouter_mcp.collective_intelligence.lifecycle_manager import (
             shutdown_lifecycle_manager,
         )
-        import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
 
         # Shutdown existing manager if present
-        if hasattr(lm_module, '_lifecycle_manager'):
-            manager = getattr(lm_module, '_lifecycle_manager', None)
+        if hasattr(lm_module, "_lifecycle_manager"):
+            manager = getattr(lm_module, "_lifecycle_manager", None)
             if manager is not None:
                 try:
                     await shutdown_lifecycle_manager()
@@ -41,8 +40,9 @@ async def reset_singleton_state() -> None:
     # Reset shared client singleton
     try:
         from openrouter_mcp import mcp_registry
-        if hasattr(mcp_registry, '_client_instance'):
-            client = getattr(mcp_registry, '_client_instance', None)
+
+        if hasattr(mcp_registry, "_client_instance"):
+            client = getattr(mcp_registry, "_client_instance", None)
             if client is not None:
                 try:
                     await client.close()

@@ -11,13 +11,12 @@ This test suite improves coverage from 0% to 60%+ by testing:
 - Integration points with MCP registry and lifecycle manager
 """
 
-import os
-import sys
 import signal
-import asyncio
-import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
+import sys
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 # Add src directory to Python path
 src_path = Path(__file__).parent.parent / "src"
@@ -31,22 +30,23 @@ class TestServerInitialization:
     def test_server_module_imports(self):
         """Test that server module can be imported successfully."""
         from openrouter_mcp import server
+
         assert server is not None
-        assert hasattr(server, 'create_app')
-        assert hasattr(server, 'main')
-        assert hasattr(server, 'validate_environment')
-        assert hasattr(server, 'shutdown_handler')
+        assert hasattr(server, "create_app")
+        assert hasattr(server, "main")
+        assert hasattr(server, "validate_environment")
+        assert hasattr(server, "shutdown_handler")
 
     def test_mcp_registry_import(self):
         """Test that MCP registry is imported correctly."""
         from openrouter_mcp.server import mcp
+
         assert mcp is not None
-        assert hasattr(mcp, '_tool_manager')
+        assert hasattr(mcp, "_tool_manager")
 
     def test_handler_modules_imported(self, mock_env_vars):
         """Test that all handler modules are imported during server init."""
         # Import server which triggers handler imports
-        from openrouter_mcp import server
         from openrouter_mcp.mcp_registry import mcp
 
         # Verify handlers have registered tools
@@ -58,11 +58,10 @@ class TestServerInitialization:
 
     def test_logging_configuration(self):
         """Test that logging is configured correctly."""
-        from openrouter_mcp import server
         import logging
 
         # Verify logger exists
-        logger = logging.getLogger('openrouter_mcp.server')
+        logger = logging.getLogger("openrouter_mcp.server")
         assert logger is not None
 
 
@@ -74,48 +73,42 @@ class TestHandlerRegistration:
         from openrouter_mcp.mcp_registry import mcp
 
         # Import all handlers
-        from openrouter_mcp.handlers import chat
-        from openrouter_mcp.handlers import multimodal
-        from openrouter_mcp.handlers import mcp_benchmark
-        from openrouter_mcp.handlers import collective_intelligence
 
         tools = mcp._tool_manager._tools
 
         # Verify expected tools from each handler
         expected_tools = {
             # Chat handler
-            'chat_with_model',
-            'list_available_models',
-            'get_usage_stats',
-
+            "chat_with_model",
+            "list_available_models",
+            "get_usage_stats",
             # Multimodal handler
-            'chat_with_vision',
-            'list_vision_models',
-
+            "chat_with_vision",
+            "list_vision_models",
             # MCP Benchmark handler
-            'benchmark_models',
-            'compare_model_performance',
-            'compare_model_categories',
-            'get_benchmark_history',
-            'export_benchmark_report',
-
+            "benchmark_models",
+            "compare_model_performance",
+            "compare_model_categories",
+            "get_benchmark_history",
+            "export_benchmark_report",
             # Collective Intelligence handler
-            'collective_chat_completion',
-            'ensemble_reasoning',
-            'adaptive_model_selection',
-            'cross_model_validation',
-            'collaborative_problem_solving',
+            "collective_chat_completion",
+            "ensemble_reasoning",
+            "adaptive_model_selection",
+            "cross_model_validation",
+            "collaborative_problem_solving",
         }
 
         registered_tools = set(tools.keys())
-        assert expected_tools == registered_tools, f"Tool mismatch. Expected: {expected_tools}, Got: {registered_tools}"
+        assert (
+            expected_tools == registered_tools
+        ), f"Tool mismatch. Expected: {expected_tools}, Got: {registered_tools}"
 
     def test_tool_count(self, mock_env_vars):
         """Test that the correct number of tools are registered."""
         from openrouter_mcp.mcp_registry import mcp
 
         # Import handlers to trigger registration
-        from openrouter_mcp.handlers import chat, multimodal, mcp_benchmark, collective_intelligence
 
         tools = mcp._tool_manager._tools
         assert len(tools) >= 15, f"Expected at least 15 tools, got {len(tools)}"
@@ -125,15 +118,18 @@ class TestHandlerRegistration:
         from openrouter_mcp.mcp_registry import mcp
 
         # Import handlers
-        from openrouter_mcp.handlers import chat, multimodal, mcp_benchmark, collective_intelligence
 
         tools = mcp._tool_manager._tools
 
         # Check a few key tools for metadata
-        for tool_name in ['chat_with_model', 'list_available_models', 'collective_chat_completion']:
+        for tool_name in [
+            "chat_with_model",
+            "list_available_models",
+            "collective_chat_completion",
+        ]:
             assert tool_name in tools, f"Tool '{tool_name}' not found"
             tool = tools[tool_name]
-            assert hasattr(tool, 'fn'), f"Tool '{tool_name}' missing function"
+            assert hasattr(tool, "fn"), f"Tool '{tool_name}' missing function"
 
 
 class TestEnvironmentValidation:
@@ -197,7 +193,9 @@ class TestLifecycleManagement:
         from openrouter_mcp.server import shutdown_handler
 
         # Mock the lifecycle manager shutdown (patched on server module)
-        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        with patch(
+            "openrouter_mcp.server.shutdown_lifecycle_manager", new_callable=AsyncMock
+        ) as mock_shutdown:
             await shutdown_handler()
 
             # Verify shutdown was called
@@ -209,7 +207,9 @@ class TestLifecycleManagement:
         from openrouter_mcp.server import shutdown_handler
 
         # Mock shutdown to raise an error (patched on server module)
-        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        with patch(
+            "openrouter_mcp.server.shutdown_lifecycle_manager", new_callable=AsyncMock
+        ) as mock_shutdown:
             mock_shutdown.side_effect = Exception("Test error")
 
             # Should not raise exception (logs error instead)
@@ -222,14 +222,14 @@ class TestLifecycleManagement:
         """Test that signal handlers are registered correctly."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.signal.signal') as mock_signal:
-            with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.signal.signal") as mock_signal:
+            with patch("openrouter_mcp.server.create_app") as mock_create_app:
                 # Mock the app to avoid actually running
                 mock_app = Mock()
                 mock_app.run.side_effect = KeyboardInterrupt()
                 mock_create_app.return_value = mock_app
 
-                with patch('openrouter_mcp.server.asyncio.run'):
+                with patch("openrouter_mcp.server.asyncio.run"):
                     try:
                         main()
                     except (KeyboardInterrupt, SystemExit):
@@ -252,13 +252,15 @@ class TestLifecycleManagement:
             if sig == signal.SIGINT:
                 signal_handler_ref = handler
 
-        with patch('openrouter_mcp.server.signal.signal', side_effect=capture_signal_handler):
-            with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch(
+            "openrouter_mcp.server.signal.signal", side_effect=capture_signal_handler
+        ):
+            with patch("openrouter_mcp.server.create_app") as mock_create_app:
                 mock_app = Mock()
                 mock_app.run.side_effect = KeyboardInterrupt()
                 mock_create_app.return_value = mock_app
 
-                with patch('openrouter_mcp.server.asyncio.run') as mock_asyncio_run:
+                with patch("openrouter_mcp.server.asyncio.run") as mock_asyncio_run:
                     try:
                         main()
                     except (KeyboardInterrupt, SystemExit):
@@ -275,13 +277,13 @@ class TestServerMain:
         """Test that main() creates the application."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.create_app") as mock_create_app:
             mock_app = Mock()
             mock_app.run.side_effect = KeyboardInterrupt()
             mock_create_app.return_value = mock_app
 
-            with patch('openrouter_mcp.server.signal.signal'):
-                with patch('openrouter_mcp.server.asyncio.run'):
+            with patch("openrouter_mcp.server.signal.signal"):
+                with patch("openrouter_mcp.server.asyncio.run"):
                     try:
                         main()
                     except (KeyboardInterrupt, SystemExit):
@@ -294,13 +296,13 @@ class TestServerMain:
         """Test that main() starts the MCP server."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.create_app") as mock_create_app:
             mock_app = Mock()
             mock_app.run.side_effect = KeyboardInterrupt()
             mock_create_app.return_value = mock_app
 
-            with patch('openrouter_mcp.server.signal.signal'):
-                with patch('openrouter_mcp.server.asyncio.run'):
+            with patch("openrouter_mcp.server.signal.signal"):
+                with patch("openrouter_mcp.server.asyncio.run"):
                     try:
                         main()
                     except (KeyboardInterrupt, SystemExit):
@@ -313,13 +315,13 @@ class TestServerMain:
         """Test that main() handles KeyboardInterrupt gracefully."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.create_app") as mock_create_app:
             mock_app = Mock()
             mock_app.run.side_effect = KeyboardInterrupt()
             mock_create_app.return_value = mock_app
 
-            with patch('openrouter_mcp.server.signal.signal'):
-                with patch('openrouter_mcp.server.asyncio.run'):
+            with patch("openrouter_mcp.server.signal.signal"):
+                with patch("openrouter_mcp.server.asyncio.run"):
                     # Should not raise exception
                     main()
 
@@ -327,7 +329,7 @@ class TestServerMain:
         """Test that main() handles server errors."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.create_app") as mock_create_app:
             # Simulate server error
             mock_create_app.side_effect = Exception("Server error")
 
@@ -339,14 +341,14 @@ class TestServerMain:
         """Test that cleanup runs on normal exit."""
         from openrouter_mcp.server import main
 
-        with patch('openrouter_mcp.server.create_app') as mock_create_app:
+        with patch("openrouter_mcp.server.create_app") as mock_create_app:
             mock_app = Mock()
             # Simulate normal exit (no exception)
             mock_app.run.return_value = None
             mock_create_app.return_value = mock_app
 
-            with patch('openrouter_mcp.server.signal.signal'):
-                with patch('openrouter_mcp.server.asyncio.run') as mock_asyncio_run:
+            with patch("openrouter_mcp.server.signal.signal"):
+                with patch("openrouter_mcp.server.asyncio.run") as mock_asyncio_run:
                     try:
                         main()
                     except (KeyboardInterrupt, SystemExit):
@@ -361,15 +363,14 @@ class TestIntegrationPoints:
 
     def test_mcp_registry_integration(self, mock_env_vars):
         """Test integration with MCP registry."""
-        from openrouter_mcp.server import mcp
         from openrouter_mcp.mcp_registry import mcp as registry_mcp
+        from openrouter_mcp.server import mcp
 
         # Verify they are the same instance
         assert mcp is registry_mcp
 
     def test_lifecycle_manager_integration(self, mock_env_vars):
         """Test integration with lifecycle manager."""
-        from openrouter_mcp.server import shutdown_handler
         from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
 
         # Verify shutdown_handler uses lifecycle manager
@@ -383,9 +384,9 @@ class TestIntegrationPoints:
         # Get lifecycle manager (creates it if not exists)
         manager = await get_lifecycle_manager()
         assert manager is not None
-        assert hasattr(manager, 'shutdown')
-        assert hasattr(manager, 'configure')
-        assert hasattr(manager, 'get_consensus_engine')
+        assert hasattr(manager, "shutdown")
+        assert hasattr(manager, "configure")
+        assert hasattr(manager, "get_consensus_engine")
 
     def test_dotenv_loading(self, tmp_path, monkeypatch):
         """Test that .env file is loaded if present."""
@@ -401,7 +402,9 @@ class TestIntegrationPoints:
 
         # Re-import server to trigger dotenv loading
         import importlib
+
         from openrouter_mcp import server
+
         importlib.reload(server)
 
         # Verify API key was loaded (but validate_environment will still fail
@@ -418,20 +421,21 @@ class TestServerConfiguration:
 
         app = create_app()
         assert app is not None
-        assert hasattr(app, '_tool_manager')
+        assert hasattr(app, "_tool_manager")
 
     def test_server_name(self, mock_env_vars):
         """Test that server has correct name."""
         from openrouter_mcp.server import mcp
 
         # The MCP instance should have the name 'openrouter-mcp'
-        assert hasattr(mcp, 'name')
-        assert mcp.name == 'openrouter-mcp'
+        assert hasattr(mcp, "name")
+        assert mcp.name == "openrouter-mcp"
 
     def test_fastmcp_instance(self, mock_env_vars):
         """Test that server uses FastMCP."""
-        from openrouter_mcp.server import mcp
         from fastmcp import FastMCP
+
+        from openrouter_mcp.server import mcp
 
         assert isinstance(mcp, FastMCP)
 
@@ -444,7 +448,8 @@ class TestErrorHandling:
         # The server has try/except blocks for imports
         # This test verifies the import paths exist
         from openrouter_mcp import server
-        assert hasattr(server, 'mcp')
+
+        assert hasattr(server, "mcp")
 
     @pytest.mark.asyncio
     async def test_shutdown_handler_import_error(self, mock_env_vars):
@@ -452,7 +457,9 @@ class TestErrorHandling:
         from openrouter_mcp.server import shutdown_handler
 
         # Mock the shutdown to fail with ImportError
-        with patch('openrouter_mcp.server.shutdown_lifecycle_manager', new_callable=AsyncMock) as mock_shutdown:
+        with patch(
+            "openrouter_mcp.server.shutdown_lifecycle_manager", new_callable=AsyncMock
+        ) as mock_shutdown:
             mock_shutdown.side_effect = ImportError("Module not found")
 
             # Should handle error gracefully (logs it instead of raising)
@@ -475,7 +482,12 @@ class TestServerDocumentation:
 
     def test_function_docstrings(self):
         """Test that server functions have documentation."""
-        from openrouter_mcp.server import create_app, validate_environment, shutdown_handler, main
+        from openrouter_mcp.server import (
+            create_app,
+            main,
+            shutdown_handler,
+            validate_environment,
+        )
 
         assert create_app.__doc__ is not None
         assert validate_environment.__doc__ is not None
@@ -485,4 +497,6 @@ class TestServerDocumentation:
 
 # Run coverage check if executed directly
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"])
+    pytest.main(
+        [__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"]
+    )

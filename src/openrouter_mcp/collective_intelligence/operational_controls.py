@@ -14,11 +14,11 @@ Features:
 """
 
 import asyncio
+import logging
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
-from collections import deque
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConcurrencyConfig:
     """Configuration for concurrency control."""
+
     max_concurrent_tasks: int = 5
     max_concurrent_models: int = 3
     max_pending_tasks: int = 50
@@ -35,6 +36,7 @@ class ConcurrencyConfig:
 @dataclass
 class QuotaConfig:
     """Configuration for API call quotas."""
+
     max_api_calls_per_request: int = 20
     max_api_calls_per_minute: int = 100
     max_api_calls_per_hour: int = 1000
@@ -45,6 +47,7 @@ class QuotaConfig:
 @dataclass
 class StorageConfig:
     """Configuration for history and cache storage limits."""
+
     max_history_size: int = 1000
     history_ttl_hours: int = 24
     max_cache_size_mb: int = 100
@@ -55,6 +58,7 @@ class StorageConfig:
 @dataclass
 class FailureConfig:
     """Configuration for failure handling."""
+
     cancel_on_first_failure: bool = False
     cancel_on_critical_failure: bool = True
     max_failures_before_cancel: int = 3
@@ -68,6 +72,7 @@ class FailureConfig:
 @dataclass
 class OperationalConfig:
     """Master configuration for all operational controls."""
+
     concurrency: ConcurrencyConfig = field(default_factory=ConcurrencyConfig)
     quota: QuotaConfig = field(default_factory=QuotaConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
@@ -76,47 +81,41 @@ class OperationalConfig:
     enable_alerting: bool = True
 
     @classmethod
-    def conservative(cls) -> 'OperationalConfig':
+    def conservative(cls) -> "OperationalConfig":
         """Create a conservative configuration for production use."""
         return cls(
             concurrency=ConcurrencyConfig(
-                max_concurrent_tasks=3,
-                max_concurrent_models=2,
-                max_pending_tasks=20
+                max_concurrent_tasks=3, max_concurrent_models=2, max_pending_tasks=20
             ),
             quota=QuotaConfig(
                 max_api_calls_per_request=10,
                 max_api_calls_per_minute=50,
                 max_api_calls_per_hour=500,
                 max_tokens_per_request=50000,
-                max_cost_per_request=0.5
+                max_cost_per_request=0.5,
             ),
             failure=FailureConfig(
-                cancel_on_critical_failure=True,
-                max_failures_before_cancel=2
-            )
+                cancel_on_critical_failure=True, max_failures_before_cancel=2
+            ),
         )
 
     @classmethod
-    def aggressive(cls) -> 'OperationalConfig':
+    def aggressive(cls) -> "OperationalConfig":
         """Create an aggressive configuration for high-volume use."""
         return cls(
             concurrency=ConcurrencyConfig(
-                max_concurrent_tasks=10,
-                max_concurrent_models=5,
-                max_pending_tasks=100
+                max_concurrent_tasks=10, max_concurrent_models=5, max_pending_tasks=100
             ),
             quota=QuotaConfig(
                 max_api_calls_per_request=50,
                 max_api_calls_per_minute=200,
                 max_api_calls_per_hour=2000,
                 max_tokens_per_request=200000,
-                max_cost_per_request=5.0
+                max_cost_per_request=5.0,
             ),
             failure=FailureConfig(
-                cancel_on_first_failure=False,
-                max_failures_before_cancel=5
-            )
+                cancel_on_first_failure=False, max_failures_before_cancel=5
+            ),
         )
 
 
@@ -135,8 +134,7 @@ class ConcurrencyLimiter:
         """Acquire a slot for task execution."""
         try:
             await asyncio.wait_for(
-                self.task_semaphore.acquire(),
-                timeout=self.config.queue_timeout_seconds
+                self.task_semaphore.acquire(), timeout=self.config.queue_timeout_seconds
             )
             async with self._lock:
                 self.active_tasks.add(task_id)
@@ -185,10 +183,7 @@ class QuotaTracker:
         self._lock = asyncio.Lock()
 
     async def check_and_increment(
-        self,
-        request_id: str,
-        tokens: int = 0,
-        cost: float = 0.0
+        self, request_id: str, tokens: int = 0, cost: float = 0.0
     ) -> tuple[bool, str]:
         """
         Check if request can proceed and increment counters.
@@ -203,22 +198,37 @@ class QuotaTracker:
             # Check per-request limits
             current_calls = self.request_calls.get(request_id, 0)
             if current_calls >= self.config.max_api_calls_per_request:
-                return False, f"Request quota exceeded: {current_calls}/{self.config.max_api_calls_per_request} calls"
+                return (
+                    False,
+                    f"Request quota exceeded: {current_calls}/{self.config.max_api_calls_per_request} calls",
+                )
 
             current_tokens = self.request_tokens.get(request_id, 0)
             if current_tokens + tokens > self.config.max_tokens_per_request:
-                return False, f"Token quota exceeded: {current_tokens + tokens}/{self.config.max_tokens_per_request} tokens"
+                return (
+                    False,
+                    f"Token quota exceeded: {current_tokens + tokens}/{self.config.max_tokens_per_request} tokens",
+                )
 
             current_cost = self.request_costs.get(request_id, 0.0)
             if current_cost + cost > self.config.max_cost_per_request:
-                return False, f"Cost quota exceeded: ${current_cost + cost:.4f}/${self.config.max_cost_per_request:.2f}"
+                return (
+                    False,
+                    f"Cost quota exceeded: ${current_cost + cost:.4f}/${self.config.max_cost_per_request:.2f}",
+                )
 
             # Check time-based limits
             if len(self.minute_calls) >= self.config.max_api_calls_per_minute:
-                return False, f"Minute quota exceeded: {len(self.minute_calls)}/{self.config.max_api_calls_per_minute} calls"
+                return (
+                    False,
+                    f"Minute quota exceeded: {len(self.minute_calls)}/{self.config.max_api_calls_per_minute} calls",
+                )
 
             if len(self.hour_calls) >= self.config.max_api_calls_per_hour:
-                return False, f"Hour quota exceeded: {len(self.hour_calls)}/{self.config.max_api_calls_per_hour} calls"
+                return (
+                    False,
+                    f"Hour quota exceeded: {len(self.hour_calls)}/{self.config.max_api_calls_per_hour} calls",
+                )
 
             # Increment counters
             self.request_calls[request_id] = current_calls + 1
@@ -254,11 +264,11 @@ class QuotaTracker:
     def get_usage(self, request_id: str) -> Dict[str, Any]:
         """Get current usage for a request."""
         return {
-            'calls': self.request_calls.get(request_id, 0),
-            'tokens': self.request_tokens.get(request_id, 0),
-            'cost': self.request_costs.get(request_id, 0.0),
-            'minute_calls': len(self.minute_calls),
-            'hour_calls': len(self.hour_calls)
+            "calls": self.request_calls.get(request_id, 0),
+            "tokens": self.request_tokens.get(request_id, 0),
+            "cost": self.request_costs.get(request_id, 0.0),
+            "minute_calls": len(self.minute_calls),
+            "hour_calls": len(self.hour_calls),
         }
 
 
@@ -273,10 +283,7 @@ class FailureController:
         self._lock = asyncio.Lock()
 
     async def record_failure(
-        self,
-        request_id: str,
-        error_msg: str,
-        is_critical: bool = False
+        self, request_id: str, error_msg: str, is_critical: bool = False
     ) -> bool:
         """
         Record a failure and determine if execution should be cancelled.
@@ -293,15 +300,21 @@ class FailureController:
 
             # Check cancellation conditions
             if is_critical and self.config.cancel_on_critical_failure:
-                logger.error(f"Critical failure for {request_id}, cancelling: {error_msg}")
+                logger.error(
+                    f"Critical failure for {request_id}, cancelling: {error_msg}"
+                )
                 return True
 
             if self.config.cancel_on_first_failure:
-                logger.warning(f"First failure for {request_id}, cancelling: {error_msg}")
+                logger.warning(
+                    f"First failure for {request_id}, cancelling: {error_msg}"
+                )
                 return True
 
             if failure_count >= self.config.max_failures_before_cancel:
-                logger.error(f"Max failures ({failure_count}) reached for {request_id}, cancelling")
+                logger.error(
+                    f"Max failures ({failure_count}) reached for {request_id}, cancelling"
+                )
                 return True
 
             return False
@@ -318,7 +331,7 @@ class FailureController:
         if not self.config.exponential_backoff:
             return 1.0
 
-        return min(30.0, 2 ** attempt)  # Max 30 seconds
+        return min(30.0, 2**attempt)  # Max 30 seconds
 
     async def check_circuit_breaker(self, component: str) -> bool:
         """Check if circuit breaker is open for a component."""
@@ -341,23 +354,25 @@ class FailureController:
             if failures >= self.config.circuit_breaker_threshold:
                 # Open circuit breaker
                 self.circuit_breaker_opened[component] = datetime.now()
-                logger.error(f"Circuit breaker opened for {component} after {failures} failures")
+                logger.error(
+                    f"Circuit breaker opened for {component} after {failures} failures"
+                )
                 return False
 
             return True
 
     def record_circuit_breaker_failure(self, component: str) -> None:
         """Record a failure for circuit breaker tracking."""
-        self.circuit_breaker_failures[component] = \
+        self.circuit_breaker_failures[component] = (
             self.circuit_breaker_failures.get(component, 0) + 1
+        )
 
     def record_circuit_breaker_success(self, component: str) -> None:
         """Record a success for circuit breaker tracking."""
         if component in self.circuit_breaker_failures:
             # Gradually reduce failure count on success
             self.circuit_breaker_failures[component] = max(
-                0,
-                self.circuit_breaker_failures[component] - 1
+                0, self.circuit_breaker_failures[component] - 1
             )
 
 
@@ -391,6 +406,7 @@ class StorageManager:
 
     def _start_cleanup_task(self) -> None:
         """Start background cleanup task."""
+
         async def cleanup_loop():
             while True:
                 try:
@@ -419,9 +435,12 @@ class StorageManager:
     async def cleanup_expired(self) -> int:
         """Remove expired items based on TTL and enforce size limits."""
         async with self._lock:
-            cutoff_time = datetime.now() - timedelta(hours=self.config.history_ttl_hours)
+            cutoff_time = datetime.now() - timedelta(
+                hours=self.config.history_ttl_hours
+            )
             expired_ids = [
-                item_id for item_id, timestamp in self.item_timestamps.items()
+                item_id
+                for item_id, timestamp in self.item_timestamps.items()
                 if timestamp < cutoff_time
             ]
 
@@ -492,7 +511,9 @@ class TaskCancellationManager:
                 self.pending_tasks[request_id] = set()
             self.pending_tasks[request_id].add(task)
 
-    async def cancel_all_tasks(self, request_id: str, reason: str = "Request cancelled") -> int:
+    async def cancel_all_tasks(
+        self, request_id: str, reason: str = "Request cancelled"
+    ) -> int:
         """Cancel all pending tasks for a request."""
         async with self._lock:
             tasks = self.pending_tasks.get(request_id, set())
@@ -504,7 +525,9 @@ class TaskCancellationManager:
                     cancelled_count += 1
 
             if cancelled_count > 0:
-                logger.warning(f"Cancelled {cancelled_count} tasks for {request_id}: {reason}")
+                logger.warning(
+                    f"Cancelled {cancelled_count} tasks for {request_id}: {reason}"
+                )
 
             self.pending_tasks.pop(request_id, None)
             return cancelled_count
@@ -525,6 +548,7 @@ class TaskCancellationManager:
 @dataclass(frozen=True)
 class OperationalControls:
     """Container for initialized operational control components."""
+
     config: OperationalConfig
     concurrency_limiter: ConcurrencyLimiter
     quota_tracker: QuotaTracker
@@ -534,7 +558,7 @@ class OperationalControls:
 
 
 def init_operational_controls(
-    config: Optional[OperationalConfig] = None
+    config: Optional[OperationalConfig] = None,
 ) -> OperationalControls:
     """Initialize operational controls with a consistent config source."""
     op_config = config or OperationalConfig.conservative()
@@ -544,5 +568,5 @@ def init_operational_controls(
         quota_tracker=QuotaTracker(op_config.quota),
         failure_controller=FailureController(op_config.failure),
         storage_manager=StorageManager(op_config.storage),
-        cancellation_manager=TaskCancellationManager()
+        cancellation_manager=TaskCancellationManager(),
     )

@@ -13,13 +13,9 @@ These tests catch issues like the "0 registered tools" bug and ensure
 all modules properly register their tools with the shared FastMCP instance.
 """
 
-import asyncio
-import json
-import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -37,10 +33,12 @@ class TestMCPServerToolRegistration:
         # This test ensures all modules load without errors
         try:
             from openrouter_mcp import server
-            from openrouter_mcp.handlers import chat
-            from openrouter_mcp.handlers import multimodal
-            from openrouter_mcp.handlers import mcp_benchmark
-            from openrouter_mcp.handlers import collective_intelligence
+            from openrouter_mcp.handlers import (
+                chat,
+                collective_intelligence,
+                mcp_benchmark,
+                multimodal,
+            )
 
             assert server is not None
             assert chat is not None
@@ -56,18 +54,17 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.server import mcp
 
         assert mcp is not None
-        assert hasattr(mcp, 'name')
+        assert hasattr(mcp, "name")
         assert mcp.name == "openrouter-mcp"
 
     def test_shared_mcp_registry_pattern(self):
         """Verify that all handlers use a shared MCP instance."""
         # Import all handler modules
-        from openrouter_mcp.handlers import chat
-        from openrouter_mcp.handlers import mcp_benchmark
+        from openrouter_mcp.handlers import chat, mcp_benchmark
 
         # Verify they define mcp instances
-        assert hasattr(chat, 'mcp')
-        assert hasattr(mcp_benchmark, 'mcp')
+        assert hasattr(chat, "mcp")
+        assert hasattr(mcp_benchmark, "mcp")
 
         # These should be separate instances per module
         # (each handler creates its own FastMCP instance)
@@ -86,21 +83,19 @@ class TestMCPServerToolRegistration:
         tools_dict = await mcp.get_tools()
 
         # Expected chat tools
-        expected_tools = [
-            "chat_with_model",
-            "list_available_models",
-            "get_usage_stats"
-        ]
+        expected_tools = ["chat_with_model", "list_available_models", "get_usage_stats"]
 
         registered_tool_names = list(tools_dict.keys())
 
         for expected_tool in expected_tools:
-            assert expected_tool in registered_tool_names, \
-                f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
+            assert (
+                expected_tool in registered_tool_names
+            ), f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
 
         # Verify at least 3 tools registered
-        assert len(tools_dict) >= 3, \
-            f"Expected at least 3 chat tools, found {len(tools_dict)}: {registered_tool_names}"
+        assert (
+            len(tools_dict) >= 3
+        ), f"Expected at least 3 chat tools, found {len(tools_dict)}: {registered_tool_names}"
 
     @pytest.mark.asyncio
     async def test_benchmark_tools_registered(self):
@@ -116,18 +111,20 @@ class TestMCPServerToolRegistration:
             "get_benchmark_history",
             "compare_model_categories",
             "export_benchmark_report",
-            "compare_model_performance"
+            "compare_model_performance",
         ]
 
         registered_tool_names = list(tools_dict.keys())
 
         for expected_tool in expected_tools:
-            assert expected_tool in registered_tool_names, \
-                f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
+            assert (
+                expected_tool in registered_tool_names
+            ), f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
 
         # Verify all 5 benchmark tools registered
-        assert len(tools_dict) >= 5, \
-            f"Expected at least 5 benchmark tools, found {len(tools_dict)}: {registered_tool_names}"
+        assert (
+            len(tools_dict) >= 5
+        ), f"Expected at least 5 benchmark tools, found {len(tools_dict)}: {registered_tool_names}"
 
     @pytest.mark.asyncio
     async def test_collective_intelligence_tools_registered(self):
@@ -143,18 +140,20 @@ class TestMCPServerToolRegistration:
             "ensemble_reasoning",
             "adaptive_model_selection",
             "cross_model_validation",
-            "collaborative_problem_solving"
+            "collaborative_problem_solving",
         ]
 
         registered_tool_names = list(tools_dict.keys())
 
         for expected_tool in expected_tools:
-            assert expected_tool in registered_tool_names, \
-                f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
+            assert (
+                expected_tool in registered_tool_names
+            ), f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
 
         # Verify all 5 collective intelligence tools registered
-        assert len(tools_dict) >= 5, \
-            f"Expected at least 5 collective intelligence tools, found {len(tools_dict)}: {registered_tool_names}"
+        assert (
+            len(tools_dict) >= 5
+        ), f"Expected at least 5 collective intelligence tools, found {len(tools_dict)}: {registered_tool_names}"
 
     @pytest.mark.asyncio
     async def test_multimodal_tools_registered(self):
@@ -165,20 +164,19 @@ class TestMCPServerToolRegistration:
         tools_dict = await mcp.get_tools()
 
         # Expected multimodal tools (updated to match actual implementation)
-        expected_tools = [
-            "chat_with_vision",
-            "list_vision_models"
-        ]
+        expected_tools = ["chat_with_vision", "list_vision_models"]
 
         registered_tool_names = list(tools_dict.keys())
 
         for expected_tool in expected_tools:
-            assert expected_tool in registered_tool_names, \
-                f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
+            assert (
+                expected_tool in registered_tool_names
+            ), f"Tool '{expected_tool}' not registered. Found: {registered_tool_names}"
 
         # Verify at least 2 multimodal tools registered
-        assert len(tools_dict) >= 2, \
-            f"Expected at least 2 multimodal tools, found {len(tools_dict)}: {registered_tool_names}"
+        assert (
+            len(tools_dict) >= 2
+        ), f"Expected at least 2 multimodal tools, found {len(tools_dict)}: {registered_tool_names}"
 
     @pytest.mark.asyncio
     async def test_all_tools_have_proper_metadata(self):
@@ -202,8 +200,8 @@ class TestMCPServerToolRegistration:
     async def test_tool_count_regression(self):
         """Regression test: Ensure we never go back to 0 registered tools."""
         from openrouter_mcp.handlers.chat import mcp as chat_mcp
-        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
         from openrouter_mcp.handlers.collective_intelligence import mcp as ci_mcp
+        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
 
         chat_tools_dict = await chat_mcp.get_tools()
         benchmark_tools_dict = await benchmark_mcp.get_tools()
@@ -221,9 +219,10 @@ class TestMCPServerToolRegistration:
         total_tools = chat_tools + benchmark_tools + ci_tools
 
         # We expect at least 13 tools total (3 chat + 5 benchmark + 5 collective)
-        assert total_tools >= 13, \
-            f"Expected at least 13 total tools, found {total_tools} " \
+        assert total_tools >= 13, (
+            f"Expected at least 13 total tools, found {total_tools} "
             f"(chat: {chat_tools}, benchmark: {benchmark_tools}, ci: {ci_tools})"
+        )
 
 
 class TestMCPServerStartup:
@@ -282,10 +281,10 @@ class TestMCPStdioMode:
         """Verify the MCP instance has a run() method for stdio mode."""
         from openrouter_mcp.server import mcp
 
-        assert hasattr(mcp, 'run'), "MCP instance missing run() method"
+        assert hasattr(mcp, "run"), "MCP instance missing run() method"
         assert callable(mcp.run), "MCP run() is not callable"
 
-    @patch('openrouter_mcp.server.mcp')
+    @patch("openrouter_mcp.server.mcp")
     def test_main_calls_run(self, mock_mcp, mock_env):
         """Test that main() calls mcp.run()."""
         from openrouter_mcp.server import main
@@ -295,7 +294,7 @@ class TestMCPStdioMode:
 
         # Call main (it will try to run the server)
         # We can't actually test this without mocking more, but we can verify structure
-        assert hasattr(main, '__call__'), "main() should be callable"
+        assert hasattr(main, "__call__"), "main() should be callable"
 
 
 class TestToolInputValidation:
@@ -309,13 +308,13 @@ class TestToolInputValidation:
     @pytest.mark.asyncio
     async def test_chat_with_model_validates_input(self):
         """Test that chat_with_model validates its input schema."""
-        from openrouter_mcp.handlers.chat import chat_with_model, ChatCompletionRequest, ChatMessage
+        from openrouter_mcp.handlers.chat import ChatCompletionRequest, ChatMessage
 
         # Valid request should have proper structure
         request = ChatCompletionRequest(
             model="openai/gpt-4",
             messages=[ChatMessage(role="user", content="Hello")],
-            temperature=0.7
+            temperature=0.7,
         )
 
         # Verify Pydantic validation works
@@ -330,9 +329,7 @@ class TestToolInputValidation:
 
         # Missing model should raise validation error
         with pytest.raises(Exception):  # Pydantic ValidationError
-            ChatCompletionRequest(
-                messages=[ChatMessage(role="user", content="Hello")]
-            )
+            ChatCompletionRequest(messages=[ChatMessage(role="user", content="Hello")])
 
     def test_chat_request_requires_messages(self):
         """Test that ChatCompletionRequest requires messages."""
@@ -349,11 +346,11 @@ class TestToolInputValidation:
 
         # Get the benchmark_models tool from the registry
         tools_dict = await mcp.get_tools()
-        assert 'benchmark_models' in tools_dict, "benchmark_models tool not registered"
+        assert "benchmark_models" in tools_dict, "benchmark_models tool not registered"
 
         # Verify the tool has a callable function
-        benchmark_tool = tools_dict['benchmark_models']
-        assert benchmark_tool.name == 'benchmark_models'
+        benchmark_tool = tools_dict["benchmark_models"]
+        assert benchmark_tool.name == "benchmark_models"
         assert benchmark_tool.description, "Tool should have a description"
 
 
@@ -368,10 +365,10 @@ class TestMCPServerDocumentation:
         tools_dict = await mcp.get_tools()
 
         for tool_name, tool in tools_dict.items():
-            assert tool.description, \
-                f"Tool '{tool.name}' missing description"
-            assert len(tool.description) > 20, \
-                f"Tool '{tool.name}' description too short: {tool.description}"
+            assert tool.description, f"Tool '{tool.name}' missing description"
+            assert (
+                len(tool.description) > 20
+            ), f"Tool '{tool.name}' description too short: {tool.description}"
 
     @pytest.mark.asyncio
     async def test_benchmark_tools_have_descriptions(self):
@@ -381,10 +378,10 @@ class TestMCPServerDocumentation:
         tools_dict = await mcp.get_tools()
 
         for tool_name, tool in tools_dict.items():
-            assert tool.description, \
-                f"Tool '{tool.name}' missing description"
-            assert len(tool.description) > 20, \
-                f"Tool '{tool.name}' description too short: {tool.description}"
+            assert tool.description, f"Tool '{tool.name}' missing description"
+            assert (
+                len(tool.description) > 20
+            ), f"Tool '{tool.name}' description too short: {tool.description}"
 
 
 class TestMCPServerErrorHandling:

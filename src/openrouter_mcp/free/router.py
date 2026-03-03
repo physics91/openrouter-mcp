@@ -86,14 +86,16 @@ class FreeModelRouter:
         free_models = self._cache.filter_models(free_only=True)
         result = []
         for model in free_models:
-            result.append({
-                "id": model.get("id", ""),
-                "name": model.get("name", ""),
-                "context_length": model.get("context_length", 0),
-                "provider": model.get("provider", "unknown"),
-                "quality_score": round(self._score_model(model), 3),
-                "available": self._is_available(model.get("id", "")),
-            })
+            result.append(
+                {
+                    "id": model.get("id", ""),
+                    "name": model.get("name", ""),
+                    "context_length": model.get("context_length", 0),
+                    "provider": model.get("provider", "unknown"),
+                    "quality_score": round(self._score_model(model), 3),
+                    "available": self._is_available(model.get("id", "")),
+                }
+            )
         result.sort(key=lambda m: -m["quality_score"])
         return result
 
@@ -105,7 +107,9 @@ class FreeModelRouter:
         return time.time() >= cooldown_until
 
     def report_rate_limit(
-        self, model_id: str, cooldown_seconds: float = FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+        self,
+        model_id: str,
+        cooldown_seconds: float = FreeChatConfig.DEFAULT_COOLDOWN_SECONDS,
     ) -> None:
         """Register a model for cooldown after rate limit."""
         self._cooldowns[model_id] = time.time() + cooldown_seconds
@@ -129,7 +133,9 @@ class FreeModelRouter:
         free_models = self._cache.filter_models(free_only=True)
 
         if not free_models:
-            raise RuntimeError("사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요.")
+            raise RuntimeError(
+                "사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요."
+            )
 
         # Try preferred models first (only if they are actually free)
         if preferred_models:
@@ -141,9 +147,7 @@ class FreeModelRouter:
 
         # Decay usage counts when all free models have been used at least once
         if self._usage_counts and len(self._usage_counts) >= len(free_models):
-            min_count = min(
-                self._usage_counts.get(m["id"], 0) for m in free_models
-            )
+            min_count = min(self._usage_counts.get(m["id"], 0) for m in free_models)
             if min_count > 0:
                 for mid in list(self._usage_counts):
                     self._usage_counts[mid] -= min_count
@@ -151,13 +155,22 @@ class FreeModelRouter:
         # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
         candidates = [
-            (model, max(0.0, self._score_model(model, task_type) - self._usage_counts.get(model["id"], 0) * usage_penalty))
+            (
+                model,
+                max(
+                    0.0,
+                    self._score_model(model, task_type)
+                    - self._usage_counts.get(model["id"], 0) * usage_penalty,
+                ),
+            )
             for model in free_models
             if self._is_available(model["id"])
         ]
 
         if not candidates:
-            soonest = min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
+            soonest = (
+                min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
+            )
             raise RuntimeError(
                 f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요."
             )

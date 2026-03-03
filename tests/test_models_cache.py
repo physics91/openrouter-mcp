@@ -6,13 +6,12 @@ This test suite follows TDD principles to implement model caching system
 that keeps the latest AI models from OpenRouter API.
 """
 
-import pytest
-import time
 import json
 import tempfile
-from unittest.mock import MagicMock, patch, mock_open
 from datetime import datetime, timedelta
-from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 pytestmark = pytest.mark.unit
 
@@ -33,15 +32,10 @@ class TestModelCache:
                     "architecture": {
                         "modality": "text",
                         "tokenizer": "cl100k_base",
-                        "instruct_type": "chatml"
+                        "instruct_type": "chatml",
                     },
-                    "pricing": {
-                        "prompt": "0.000005",
-                        "completion": "0.000015"
-                    },
-                    "top_provider": {
-                        "provider": "OpenAI"
-                    }
+                    "pricing": {"prompt": "0.000005", "completion": "0.000015"},
+                    "top_provider": {"provider": "OpenAI"},
                 },
                 {
                     "id": "anthropic/claude-4",
@@ -51,15 +45,10 @@ class TestModelCache:
                     "architecture": {
                         "modality": "text",
                         "tokenizer": "claude",
-                        "instruct_type": "claude"
+                        "instruct_type": "claude",
                     },
-                    "pricing": {
-                        "prompt": "0.000015",
-                        "completion": "0.000075"
-                    },
-                    "top_provider": {
-                        "provider": "Anthropic"
-                    }
+                    "pricing": {"prompt": "0.000015", "completion": "0.000075"},
+                    "top_provider": {"provider": "Anthropic"},
                 },
                 {
                     "id": "google/gemini-2-5-pro",
@@ -69,15 +58,10 @@ class TestModelCache:
                     "architecture": {
                         "modality": "text+image",
                         "tokenizer": "gemini",
-                        "instruct_type": "gemini"
+                        "instruct_type": "gemini",
                     },
-                    "pricing": {
-                        "prompt": "0.0000025",
-                        "completion": "0.00001"
-                    },
-                    "top_provider": {
-                        "provider": "Google"
-                    }
+                    "pricing": {"prompt": "0.0000025", "completion": "0.00001"},
+                    "top_provider": {"provider": "Google"},
                 },
                 {
                     "id": "deepseek/deepseek-v3",
@@ -87,15 +71,10 @@ class TestModelCache:
                     "architecture": {
                         "modality": "text",
                         "tokenizer": "deepseek",
-                        "instruct_type": "chatml"
+                        "instruct_type": "chatml",
                     },
-                    "pricing": {
-                        "prompt": "0.000001",
-                        "completion": "0.000002"
-                    },
-                    "top_provider": {
-                        "provider": "DeepSeek"
-                    }
+                    "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+                    "top_provider": {"provider": "DeepSeek"},
                 },
                 {
                     "id": "openai/o1",
@@ -105,16 +84,11 @@ class TestModelCache:
                     "architecture": {
                         "modality": "text",
                         "tokenizer": "o200k_base",
-                        "instruct_type": "chatml"
+                        "instruct_type": "chatml",
                     },
-                    "pricing": {
-                        "prompt": "0.000015",
-                        "completion": "0.00006"
-                    },
-                    "top_provider": {
-                        "provider": "OpenAI"
-                    }
-                }
+                    "pricing": {"prompt": "0.000015", "completion": "0.00006"},
+                    "top_provider": {"provider": "OpenAI"},
+                },
             ]
         }
 
@@ -124,15 +98,15 @@ class TestModelCache:
         return {
             "ttl_hours": 1,
             "max_memory_items": 1000,
-            "cache_file": "test_model_cache.json"
+            "cache_file": "test_model_cache.json",
         }
 
     def test_model_cache_initialization(self, cache_config):
         """Test that model cache initializes properly."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
+
         assert cache.ttl_seconds == 3600  # 1 hour
         assert cache.max_memory_items == 1000
         assert cache.cache_file == "test_model_cache.json"
@@ -142,24 +116,24 @@ class TestModelCache:
     def test_cache_is_expired_initially(self, cache_config):
         """Test that cache is considered expired initially."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
-        assert cache.is_expired() == True
+
+        assert cache.is_expired()
 
     def test_cache_expiry_logic(self, cache_config):
         """Test cache expiry based on TTL."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
+
         # Simulate cache update
         cache._last_update = datetime.now()
-        assert cache.is_expired() == False
-        
+        assert not cache.is_expired()
+
         # Simulate expired cache
         cache._last_update = datetime.now() - timedelta(hours=2)
-        assert cache.is_expired() == True
+        assert cache.is_expired()
 
     @pytest.mark.asyncio
     async def test_fetch_models_from_api(self, mock_openrouter_models, cache_config):
@@ -169,12 +143,15 @@ class TestModelCache:
         cache = ModelCache(**cache_config)
 
         # Mock environment variables
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'test-api-key',
-            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "test-api-key",
+                "OPENROUTER_BASE_URL": "https://test.openrouter.ai/api/v1",
+            },
+        ):
             # Mock httpx.AsyncClient since _fetch_models_from_api now uses raw HTTP
-            with patch('httpx.AsyncClient') as mock_httpx_client:
+            with patch("httpx.AsyncClient") as mock_httpx_client:
                 mock_client_instance = MagicMock()
                 mock_httpx_client.return_value = mock_client_instance
 
@@ -209,15 +186,15 @@ class TestModelCache:
 
     def test_save_to_file_cache(self, mock_openrouter_models, cache_config):
         """Test saving models to file cache with file locking."""
-        from src.openrouter_mcp.models.cache import ModelCache
-        import tempfile
         import os
+
+        from src.openrouter_mcp.models.cache import ModelCache
 
         cache = ModelCache(**cache_config)
         models = mock_openrouter_models["data"]
 
         # Use a real temporary file to test file locking functionality
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_cache_file = f.name
 
         try:
@@ -230,7 +207,7 @@ class TestModelCache:
             # Verify file was created and contains correct data
             assert os.path.exists(temp_cache_file)
 
-            with open(temp_cache_file, 'r') as f:
+            with open(temp_cache_file, "r") as f:
                 saved_data = json.load(f)
 
             assert "models" in saved_data
@@ -245,19 +222,19 @@ class TestModelCache:
 
     def test_load_from_file_cache_success(self, mock_openrouter_models, cache_config):
         """Test loading models from file cache when file exists with file locking."""
-        from src.openrouter_mcp.models.cache import ModelCache
-        import tempfile
         import os
+
+        from src.openrouter_mcp.models.cache import ModelCache
 
         cache = ModelCache(**cache_config)
 
         # Create a real temp file with test data
         cache_data = {
             "models": mock_openrouter_models["data"],
-            "updated_at": datetime.now().isoformat()
+            "updated_at": datetime.now().isoformat(),
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_cache_file = f.name
             json.dump(cache_data, f)
 
@@ -280,10 +257,10 @@ class TestModelCache:
     def test_load_from_file_cache_file_not_exists(self, cache_config):
         """Test loading from file cache when file doesn't exist."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
 
-        with patch('pathlib.Path.exists', return_value=False):
+        with patch("pathlib.Path.exists", return_value=False):
             models, last_update = cache._load_from_file_cache_sync()
 
             assert models == []
@@ -293,15 +270,15 @@ class TestModelCache:
     async def test_get_models_cache_hit(self, mock_openrouter_models, cache_config):
         """Test getting models when cache is valid (cache hit)."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
-        
+
         # Simulate valid cache
         cache._memory_cache = mock_openrouter_models["data"]
         cache._last_update = datetime.now()
-        
+
         models = await cache.get_models()
-        
+
         assert len(models) == 5
         assert models[0]["id"] == "openai/gpt-5"
 
@@ -313,11 +290,14 @@ class TestModelCache:
         cache = ModelCache(**cache_config)
 
         # Mock environment variables and httpx
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'test-api-key',
-            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
-        }):
-            with patch('httpx.AsyncClient') as mock_httpx_client:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "test-api-key",
+                "OPENROUTER_BASE_URL": "https://test.openrouter.ai/api/v1",
+            },
+        ):
+            with patch("httpx.AsyncClient") as mock_httpx_client:
                 mock_client_instance = MagicMock()
                 mock_httpx_client.return_value = mock_client_instance
 
@@ -339,7 +319,7 @@ class TestModelCache:
 
                 mock_client_instance.get = mock_get
 
-                with patch.object(cache, '_save_to_file_cache') as mock_save:
+                with patch.object(cache, "_save_to_file_cache") as mock_save:
                     models = await cache.get_models()
 
                     assert len(models) == 5
@@ -355,38 +335,38 @@ class TestModelCache:
         """Test extracting enhanced model metadata."""
         from src.openrouter_mcp.models.cache import ModelCache
         from src.openrouter_mcp.utils.metadata import batch_enhance_models
-        
+
         cache = ModelCache(**cache_config)
         # Enhance models before adding to cache (mimics what happens in _fetch_models_from_api)
         cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
-        
+
         # Test GPT-5 metadata
         gpt5_meta = cache.get_model_metadata("openai/gpt-5")
         assert gpt5_meta["provider"] == "openai"  # lowercase after enhancement
-        assert gpt5_meta["capabilities"]["supports_vision"] == False
+        assert not gpt5_meta["capabilities"]["supports_vision"]
         assert gpt5_meta["context_length"] == 200000
-        
+
         # Test Gemini multimodal metadata
         gemini_meta = cache.get_model_metadata("google/gemini-2-5-pro")
         assert gemini_meta["provider"] == "google"  # lowercase after enhancement
         # Gemini has text+image modality, so should support vision
-        assert gemini_meta["capabilities"]["supports_vision"] == True
+        assert gemini_meta["capabilities"]["supports_vision"]
         assert gemini_meta["context_length"] == 1000000
 
     def test_filter_models_by_capability(self, mock_openrouter_models, cache_config):
         """Test filtering models by specific capabilities."""
         from src.openrouter_mcp.models.cache import ModelCache
         from src.openrouter_mcp.utils.metadata import batch_enhance_models
-        
+
         cache = ModelCache(**cache_config)
         # Enhance models before adding to cache
         cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
-        
+
         # Filter vision-capable models
         vision_models = cache.filter_models(vision_capable=True)
         assert len(vision_models) == 1
         assert vision_models[0]["id"] == "google/gemini-2-5-pro"
-        
+
         # Filter by provider
         openai_models = cache.filter_models(provider="OpenAI")
         assert len(openai_models) == 2
@@ -395,12 +375,12 @@ class TestModelCache:
     def test_get_latest_models(self, mock_openrouter_models, cache_config):
         """Test identifying latest/newest models."""
         from src.openrouter_mcp.models.cache import ModelCache
-        
+
         cache = ModelCache(**cache_config)
         cache._memory_cache = mock_openrouter_models["data"]
-        
+
         latest_models = cache.get_latest_models()
-        
+
         # Should include models with version indicators
         latest_ids = [model["id"] for model in latest_models]
         assert "openai/gpt-5" in latest_ids
@@ -419,11 +399,14 @@ class TestModelCache:
         cache._last_update = datetime.now()
 
         # Mock environment variables and httpx
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'test-api-key',
-            'OPENROUTER_BASE_URL': 'https://test.openrouter.ai/api/v1'
-        }):
-            with patch('httpx.AsyncClient') as mock_httpx_client:
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "test-api-key",
+                "OPENROUTER_BASE_URL": "https://test.openrouter.ai/api/v1",
+            },
+        ):
+            with patch("httpx.AsyncClient") as mock_httpx_client:
                 mock_client_instance = MagicMock()
                 mock_httpx_client.return_value = mock_client_instance
 
@@ -445,7 +428,7 @@ class TestModelCache:
 
                 mock_client_instance.get = mock_get
 
-                with patch.object(cache, '_save_to_file_cache') as mock_save:
+                with patch.object(cache, "_save_to_file_cache") as mock_save:
                     await cache.refresh_cache(force=True)
 
                     assert len(cache._memory_cache) == 5
@@ -456,14 +439,14 @@ class TestModelCache:
         """Test getting cache statistics."""
         from src.openrouter_mcp.models.cache import ModelCache
         from src.openrouter_mcp.utils.metadata import batch_enhance_models
-        
+
         cache = ModelCache(**cache_config)
         # Enhance models before adding to cache
         cache._memory_cache = batch_enhance_models(mock_openrouter_models["data"])
         cache._last_update = datetime.now()
-        
+
         stats = cache.get_cache_stats()
-        
+
         assert stats["total_models"] == 5
         # Providers are lowercase after enhancement
         assert set(stats["providers"]) == {"openai", "anthropic", "google", "deepseek"}

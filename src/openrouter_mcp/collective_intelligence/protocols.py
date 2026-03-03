@@ -23,8 +23,8 @@ Usage:
             self._quota = quota
 """
 
-from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, runtime_checkable
 import asyncio
+from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
 
 @runtime_checkable
@@ -89,10 +89,7 @@ class QuotaAware(Protocol):
     """
 
     async def check_and_increment(
-        self,
-        request_id: str,
-        tokens: int = 0,
-        cost: float = 0.0
+        self, request_id: str, tokens: int = 0, cost: float = 0.0
     ) -> Tuple[bool, str]:
         """
         Check if request can proceed and increment counters.
@@ -139,10 +136,7 @@ class FailureAware(Protocol):
     """
 
     async def record_failure(
-        self,
-        request_id: str,
-        error_msg: str,
-        is_critical: bool = False
+        self, request_id: str, error_msg: str, is_critical: bool = False
     ) -> bool:
         """
         Record a failure and determine if execution should be cancelled.
@@ -282,9 +276,7 @@ class CancellationAware(Protocol):
         ...
 
     async def cancel_all_tasks(
-        self,
-        request_id: str,
-        reason: str = "Request cancelled"
+        self, request_id: str, reason: str = "Request cancelled"
     ) -> int:
         """
         Cancel all pending tasks for a request.

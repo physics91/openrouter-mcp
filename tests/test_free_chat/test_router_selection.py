@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from src.openrouter_mcp.free.router import FreeModelRouter
 from tests.test_free_chat.conftest import make_free_model

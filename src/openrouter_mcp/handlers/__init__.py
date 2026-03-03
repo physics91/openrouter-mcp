@@ -9,11 +9,7 @@ register the tools with the shared FastMCP instance.
 """
 
 # Import all handlers to trigger tool registration
-from . import chat
-from . import multimodal
-from . import mcp_benchmark
-from . import collective_intelligence
-from . import free_chat
+from . import chat, collective_intelligence, free_chat, mcp_benchmark, multimodal
 
 __all__ = [
     "chat",

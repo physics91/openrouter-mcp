@@ -1,11 +1,12 @@
 """Tests for adaptive scoring and task-type affinity in FreeModelRouter."""
 
-import pytest
 from unittest.mock import MagicMock
 
-from src.openrouter_mcp.free.router import FreeModelRouter
-from src.openrouter_mcp.free.metrics import MetricsCollector
+import pytest
+
 from src.openrouter_mcp.free.classifier import FreeTaskType
+from src.openrouter_mcp.free.metrics import MetricsCollector
+from src.openrouter_mcp.free.router import FreeModelRouter
 from tests.test_free_chat.conftest import make_free_model
 
 

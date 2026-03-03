@@ -76,6 +76,7 @@ class MockClientFactory:
         provider.get_available_models.return_value = models or []
 
         if process_results:
+
             async def mock_process_task(task, model_id, **kwargs):
                 if model_id in process_results:
                     result = process_results[model_id]
@@ -100,6 +101,7 @@ class MockClientFactory:
             Mock ModelProvider that raises errors
         """
         import asyncio
+
         from openrouter_mcp.collective_intelligence.base import ModelProvider
 
         provider = AsyncMock(spec=ModelProvider)

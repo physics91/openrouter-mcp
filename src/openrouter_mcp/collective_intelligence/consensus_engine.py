@@ -6,33 +6,31 @@ AI models to produce more reliable and accurate results through collective decis
 """
 
 import asyncio
+import logging
+import statistics
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
-from datetime import datetime
-import statistics
-import logging
 
+from ..config.constants import ConsensusDefaults, PricingDefaults
+from ..utils.token_counter import count_tokens
 from .base import (
     CollectiveIntelligenceComponent,
-    TaskContext,
-    ProcessingResult,
     ModelProvider,
-    QualityMetrics
+    ProcessingResult,
+    QualityMetrics,
+    TaskContext,
 )
-from .operational_controls import (
-    OperationalConfig,
-    init_operational_controls,
-)
+from .operational_controls import OperationalConfig, init_operational_controls
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
-from ..utils.token_counter import count_tokens
-from ..config.constants import PricingDefaults, ConsensusDefaults
 
 logger = logging.getLogger(__name__)
 
 
 class ConsensusStrategy(Enum):
     """Strategies for building consensus among models."""
+
     MAJORITY_VOTE = "majority_vote"
     WEIGHTED_AVERAGE = "weighted_average"
     CONFIDENCE_THRESHOLD = "confidence_threshold"
@@ -42,6 +40,7 @@ class ConsensusStrategy(Enum):
 
 class AgreementLevel(Enum):
     """Levels of agreement among models."""
+
     UNANIMOUS = "unanimous"  # 100% agreement
     HIGH_CONSENSUS = "high_consensus"  # 80%+ agreement
     MODERATE_CONSENSUS = "moderate_consensus"  # 60%+ agreement
@@ -52,6 +51,7 @@ class AgreementLevel(Enum):
 @dataclass
 class ConsensusConfig:
     """Configuration for consensus building."""
+
     strategy: ConsensusStrategy = ConsensusStrategy.MAJORITY_VOTE
     min_models: int = ConsensusDefaults.MIN_MODELS
     max_models: int = ConsensusDefaults.MAX_MODELS
@@ -68,6 +68,7 @@ class ConsensusConfig:
 @dataclass
 class ModelResponse:
     """Response from a single model in consensus building."""
+
     model_id: str
     result: ProcessingResult
     weight: float = 1.0
@@ -77,6 +78,7 @@ class ModelResponse:
 @dataclass
 class ConsensusResult:
     """Result of consensus building process."""
+
     task_id: str
     consensus_content: str
     agreement_level: AgreementLevel
@@ -95,8 +97,10 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     Multi-model consensus engine that aggregates responses from multiple AI models
     to produce more reliable and accurate results.
     """
-    
-    def __init__(self, model_provider: ModelProvider, config: Optional[ConsensusConfig] = None):
+
+    def __init__(
+        self, model_provider: ModelProvider, config: Optional[ConsensusConfig] = None
+    ):
         super().__init__(model_provider)
         self.config = config or ConsensusConfig()
 
@@ -115,7 +119,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         self.similarity_calculator = SemanticSimilarityCalculator()
         self.response_grouper = ResponseGrouper(
             similarity_threshold=self.config.similarity_threshold,
-            calculator=self.similarity_calculator
+            calculator=self.similarity_calculator,
         )
 
     @property
@@ -128,8 +132,11 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         """Set consensus history for backward compatibility."""
         from collections import deque
         from datetime import datetime
+
         # Clear existing items
-        self.storage_manager.items = deque(maxlen=self.storage_manager.config.max_history_size)
+        self.storage_manager.items = deque(
+            maxlen=self.storage_manager.config.max_history_size
+        )
         self.storage_manager.item_timestamps = {}
         # Add new items with generated IDs
         for i, item in enumerate(value):
@@ -158,12 +165,18 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
         # Acquire task execution slot
         if not await self.concurrency_limiter.acquire_task_slot(request_id):
-            raise RuntimeError(f"Failed to acquire execution slot for {request_id} - system at capacity")
+            raise RuntimeError(
+                f"Failed to acquire execution slot for {request_id} - system at capacity"
+            )
 
         try:
             # Check circuit breaker
-            if not await self.failure_controller.check_circuit_breaker("consensus_engine"):
-                raise RuntimeError("Circuit breaker open for ConsensusEngine - too many recent failures")
+            if not await self.failure_controller.check_circuit_breaker(
+                "consensus_engine"
+            ):
+                raise RuntimeError(
+                    "Circuit breaker open for ConsensusEngine - too many recent failures"
+                )
 
             # Select models for consensus
             models = await self._select_models(task)
@@ -171,7 +184,9 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
             # Estimate tokens for quota check using tiktoken
             # Use the first model for token counting (they're all similar enough)
-            estimated_tokens = count_tokens(task.content, model_id=models[0] if models else "default")
+            estimated_tokens = count_tokens(
+                task.content, model_id=models[0] if models else "default"
+            )
             # Multiply by number of models for total request estimate
             total_estimated_tokens = estimated_tokens * len(models)
 
@@ -183,9 +198,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
             # Check quota before proceeding
             can_proceed, reason = await self.quota_tracker.check_and_increment(
-                request_id,
-                tokens=total_estimated_tokens,
-                cost=estimated_cost
+                request_id, tokens=total_estimated_tokens, cost=estimated_cost
             )
             if not can_proceed:
                 raise RuntimeError(f"Quota check failed: {reason}")
@@ -206,8 +219,10 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             # Record success for circuit breaker
             self.failure_controller.record_circuit_breaker_success("consensus_engine")
 
-            logger.info(f"Consensus completed: {consensus_result.agreement_level.value}, "
-                       f"confidence: {consensus_result.confidence_score:.3f}")
+            logger.info(
+                f"Consensus completed: {consensus_result.agreement_level.value}, "
+                f"confidence: {consensus_result.confidence_score:.3f}"
+            )
 
             return consensus_result
 
@@ -217,19 +232,20 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             raise
 
         except Exception as e:
-            logger.error(f"Consensus building failed for {request_id}: {str(e)}", exc_info=True)
+            logger.error(
+                f"Consensus building failed for {request_id}: {str(e)}", exc_info=True
+            )
 
             # Record failure and check if we should cancel pending tasks
             should_cancel = await self.failure_controller.record_failure(
                 request_id,
                 str(e),
-                is_critical=isinstance(e, (RuntimeError, ValueError))
+                is_critical=isinstance(e, (RuntimeError, ValueError)),
             )
 
             if should_cancel:
                 cancelled = await self.cancellation_manager.cancel_all_tasks(
-                    request_id,
-                    f"Cancelling due to failure: {str(e)}"
+                    request_id, f"Cancelling due to failure: {str(e)}"
                 )
                 logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
 
@@ -241,17 +257,18 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             self.concurrency_limiter.release_task_slot(request_id)
             # Reset quota tracking for this request
             self.quota_tracker.reset_request(request_id)
-    
+
     async def _select_models(self, task: TaskContext) -> List[str]:
         """Select appropriate models for consensus building."""
         available_models = await self.model_provider.get_available_models()
-        
+
         # Filter excluded models
         eligible_models = [
-            model for model in available_models 
+            model
+            for model in available_models
             if model.model_id not in self.config.exclude_models
         ]
-        
+
         # Sort by relevance to task type and reliability
         scored_models = []
         for model in eligible_models:
@@ -259,42 +276,38 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             reliability_score = self.model_reliability.get(model.model_id, 1.0)
             total_score = relevance_score * reliability_score
             scored_models.append((model.model_id, total_score))
-        
+
         # Select top models within configured limits
         scored_models.sort(key=lambda x: x[1], reverse=True)
         selected_count = min(
-            max(self.config.min_models, len(scored_models)),
-            self.config.max_models
+            max(self.config.min_models, len(scored_models)), self.config.max_models
         )
-        
+
         return [model_id for model_id, _ in scored_models[:selected_count]]
-    
+
     def _calculate_model_relevance(self, model, task: TaskContext) -> float:
         """Calculate how relevant a model is for the given task."""
         # This is a simplified relevance calculation
         # In practice, this would use more sophisticated matching
         base_score = 0.5
-        
+
         # Boost score based on task type and model capabilities
-        if hasattr(model, 'capabilities'):
+        if hasattr(model, "capabilities"):
             task_type_mapping = {
-                'reasoning': 'reasoning',
-                'creative': 'creativity', 
-                'factual': 'accuracy',
-                'code_generation': 'code'
+                "reasoning": "reasoning",
+                "creative": "creativity",
+                "factual": "accuracy",
+                "code_generation": "code",
             }
-            
+
             relevant_capability = task_type_mapping.get(task.task_type.value)
             if relevant_capability and relevant_capability in model.capabilities:
                 base_score += model.capabilities[relevant_capability] * 0.5
-        
+
         return min(1.0, base_score)
-    
+
     async def _get_model_responses(
-        self,
-        task: TaskContext,
-        model_ids: List[str],
-        request_id: str
+        self, task: TaskContext, model_ids: List[str], request_id: str
     ) -> List[ModelResponse]:
         """Get responses from all selected models with concurrency control."""
 
@@ -315,9 +328,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
                 # Check quota for this specific API call
                 can_proceed, reason = await self.quota_tracker.check_and_increment(
-                    request_id,
-                    tokens=estimated_tokens,
-                    cost=estimated_cost
+                    request_id, tokens=estimated_tokens, cost=estimated_cost
                 )
                 if not can_proceed:
                     logger.warning(f"Quota exceeded for {model_id}: {reason}")
@@ -333,8 +344,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
                 # Wait with timeout
                 result = await asyncio.wait_for(
-                    api_task,
-                    timeout=self.config.timeout_seconds
+                    api_task, timeout=self.config.timeout_seconds
                 )
 
                 # Update quota tracker with actual costs from response
@@ -347,9 +357,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                     # Update quota with actual values
                     if actual_token_diff != 0 or actual_cost_diff != 0:
                         await self.quota_tracker.check_and_increment(
-                            request_id,
-                            tokens=actual_token_diff,
-                            cost=actual_cost_diff
+                            request_id, tokens=actual_token_diff, cost=actual_cost_diff
                         )
                         logger.debug(
                             f"Updated quota for {model_id}: "
@@ -363,7 +371,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                     model_id=model_id,
                     result=result,
                     weight=weight,
-                    reliability_score=reliability
+                    reliability_score=reliability,
                 )
 
             except asyncio.CancelledError:
@@ -371,7 +379,9 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                 return None
 
             except asyncio.TimeoutError:
-                logger.warning(f"Model {model_id} timed out after {self.config.timeout_seconds}s")
+                logger.warning(
+                    f"Model {model_id} timed out after {self.config.timeout_seconds}s"
+                )
                 if api_task and not api_task.done():
                     api_task.cancel()
                 return None
@@ -384,7 +394,9 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                 # Always release model slot and unregister task
                 self.concurrency_limiter.release_model_slot()
                 if api_task:
-                    await self.cancellation_manager.unregister_task(request_id, api_task)
+                    await self.cancellation_manager.unregister_task(
+                        request_id, api_task
+                    )
 
         # Execute all model calls with controlled concurrency
         tasks = [get_single_response(model_id) for model_id in model_ids]
@@ -392,7 +404,8 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
         # Filter out failed responses
         valid_responses = [
-            response for response in responses
+            response
+            for response in responses
             if isinstance(response, ModelResponse) and response is not None
         ]
 
@@ -405,11 +418,9 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             )
 
         return valid_responses
-    
+
     async def _build_consensus(
-        self, 
-        task: TaskContext, 
-        responses: List[ModelResponse]
+        self, task: TaskContext, responses: List[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus from model responses using the configured strategy."""
         strategy_dispatch = {
@@ -421,36 +432,38 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             self.config.strategy, self._majority_vote_consensus
         )
         return handler(task, responses)
-    
+
     def _majority_vote_consensus(
-        self, 
-        task: TaskContext, 
-        responses: List[ModelResponse]
+        self, task: TaskContext, responses: List[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using majority vote strategy."""
-        
+
         # Group similar responses (simplified approach)
         response_groups = self._group_similar_responses(responses)
-        
+
         # Find the group with highest total weight
         best_group = max(response_groups, key=lambda g: sum(r.weight for r in g))
-        
+
         # Calculate agreement level
         total_weight = sum(r.weight for r in responses)
         consensus_weight = sum(r.weight for r in best_group)
         agreement_ratio = consensus_weight / total_weight
-        
+
         agreement_level = self._calculate_agreement_level(agreement_ratio)
-        
+
         # Select best response from winning group
-        best_response = max(best_group, key=lambda r: r.result.confidence * r.reliability_score)
-        
+        best_response = max(
+            best_group, key=lambda r: r.result.confidence * r.reliability_score
+        )
+
         # Calculate consensus confidence
-        consensus_confidence = self._calculate_consensus_confidence(best_group, responses)
-        
+        consensus_confidence = self._calculate_consensus_confidence(
+            best_group, responses
+        )
+
         # Calculate quality metrics
         quality_metrics = self._calculate_quality_metrics(best_group, responses)
-        
+
         return ConsensusResult(
             task_id=task.task_id,
             consensus_content=best_response.result.content,
@@ -460,37 +473,35 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             model_responses=responses,
             strategy_used=self.config.strategy,
             processing_time=0.0,  # Will be set by caller
-            quality_metrics=quality_metrics
+            quality_metrics=quality_metrics,
         )
-    
+
     def _weighted_average_consensus(
-        self, 
-        task: TaskContext, 
-        responses: List[ModelResponse]
+        self, task: TaskContext, responses: List[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using weighted average strategy."""
         # This is a simplified implementation
         # In practice, this would need semantic averaging
-        
+
         total_weight = sum(r.weight * r.reliability_score for r in responses)
-        
+
         if total_weight == 0:
             raise ValueError("Total weight is zero, cannot compute weighted average")
-        
+
         # For now, select the response with highest weighted confidence
         best_response = max(
-            responses, 
-            key=lambda r: r.result.confidence * r.weight * r.reliability_score
+            responses,
+            key=lambda r: r.result.confidence * r.weight * r.reliability_score,
         )
-        
+
         # Calculate average confidence
-        avg_confidence = sum(
-            r.result.confidence * r.weight * r.reliability_score 
-            for r in responses
-        ) / total_weight
-        
+        avg_confidence = (
+            sum(r.result.confidence * r.weight * r.reliability_score for r in responses)
+            / total_weight
+        )
+
         quality_metrics = self._calculate_quality_metrics(responses, responses)
-        
+
         return ConsensusResult(
             task_id=task.task_id,
             consensus_content=best_response.result.content,
@@ -500,30 +511,33 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             model_responses=responses,
             strategy_used=self.config.strategy,
             processing_time=0.0,
-            quality_metrics=quality_metrics
+            quality_metrics=quality_metrics,
         )
-    
+
     def _confidence_threshold_consensus(
-        self, 
-        task: TaskContext, 
-        responses: List[ModelResponse]
+        self, task: TaskContext, responses: List[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using confidence threshold strategy."""
-        
+
         # Filter responses by confidence threshold
         high_confidence_responses = [
-            r for r in responses 
+            r
+            for r in responses
             if r.result.confidence >= self.config.confidence_threshold
         ]
-        
+
         if not high_confidence_responses:
             # Fall back to best available response
-            high_confidence_responses = [max(responses, key=lambda r: r.result.confidence)]
-        
+            high_confidence_responses = [
+                max(responses, key=lambda r: r.result.confidence)
+            ]
+
         # Use majority vote among high-confidence responses
         return self._majority_vote_consensus(task, high_confidence_responses)
-    
-    def _group_similar_responses(self, responses: List[ModelResponse]) -> List[List[ModelResponse]]:
+
+    def _group_similar_responses(
+        self, responses: List[ModelResponse]
+    ) -> List[List[ModelResponse]]:
         """
         Group similar responses together using semantic similarity.
 
@@ -567,7 +581,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             )
 
         return groups
-    
+
     def _calculate_agreement_level(self, agreement_ratio: float) -> AgreementLevel:
         """Calculate agreement level based on consensus ratio."""
         if agreement_ratio >= 1.0:
@@ -580,67 +594,65 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             return AgreementLevel.LOW_CONSENSUS
         else:
             return AgreementLevel.NO_CONSENSUS
-    
+
     def _calculate_consensus_confidence(
-        self, 
-        consensus_group: List[ModelResponse], 
-        all_responses: List[ModelResponse]
+        self, consensus_group: List[ModelResponse], all_responses: List[ModelResponse]
     ) -> float:
         """Calculate confidence score for the consensus."""
-        
+
         if not consensus_group:
             return 0.0
-        
+
         # Average confidence of consensus group
         group_confidence = statistics.mean(r.result.confidence for r in consensus_group)
-        
+
         # Weight by group size relative to total
         size_weight = len(consensus_group) / len(all_responses)
-        
+
         # Weight by reliability scores
-        reliability_weight = statistics.mean(r.reliability_score for r in consensus_group)
-        
+        reliability_weight = statistics.mean(
+            r.reliability_score for r in consensus_group
+        )
+
         return group_confidence * size_weight * reliability_weight
-    
+
     def _calculate_quality_metrics(
-        self, 
-        consensus_group: List[ModelResponse], 
-        all_responses: List[ModelResponse]
+        self, consensus_group: List[ModelResponse], all_responses: List[ModelResponse]
     ) -> QualityMetrics:
         """Calculate quality metrics for the consensus."""
-        
+
         if not consensus_group:
             return QualityMetrics()
-        
+
         # Calculate metrics based on response characteristics
         confidences = [r.result.confidence for r in consensus_group]
-        
+
         accuracy = statistics.mean(confidences)
-        consistency = 1.0 - (statistics.stdev(confidences) if len(confidences) > 1 else 0.0)
+        consistency = 1.0 - (
+            statistics.stdev(confidences) if len(confidences) > 1 else 0.0
+        )
         completeness = min(1.0, len(consensus_group) / len(all_responses))
         relevance = accuracy  # Simplified
         confidence = statistics.mean(confidences)
         coherence = consistency  # Simplified
-        
+
         return QualityMetrics(
             accuracy=accuracy,
             consistency=consistency,
             completeness=completeness,
             relevance=relevance,
             confidence=confidence,
-            coherence=coherence
+            coherence=coherence,
         )
-    
+
     def _update_model_reliability(
-        self, 
-        responses: List[ModelResponse], 
-        consensus: ConsensusResult
+        self, responses: List[ModelResponse], consensus: ConsensusResult
     ) -> None:
         """Update model reliability scores based on consensus participation."""
-        
+
         for response in responses:
             current_reliability = self.model_reliability.get(response.model_id, 1.0)
-            
+
             # Models that contributed to consensus get reliability boost
             if response.model_id in consensus.participating_models:
                 # Small positive adjustment
@@ -648,10 +660,12 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             else:
                 # Small negative adjustment for non-contributing models
                 new_reliability = max(0.1, current_reliability - 0.005)
-            
+
             self.model_reliability[response.model_id] = new_reliability
-    
-    def get_consensus_history(self, limit: Optional[int] = None) -> List[ConsensusResult]:
+
+    def get_consensus_history(
+        self, limit: Optional[int] = None
+    ) -> List[ConsensusResult]:
         """Get historical consensus results with TTL enforcement."""
         return self.storage_manager.get_items(limit)
 
@@ -662,19 +676,19 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     def get_operational_metrics(self) -> Dict[str, Any]:
         """Get operational metrics and limits status."""
         return {
-            'active_tasks': self.concurrency_limiter.get_active_count(),
-            'at_capacity': self.concurrency_limiter.is_at_capacity(),
-            'history_size': self.storage_manager.get_count(),
-            'max_history_size': self.operational_config.storage.max_history_size,
-            'concurrency_config': {
-                'max_concurrent_tasks': self.operational_config.concurrency.max_concurrent_tasks,
-                'max_concurrent_models': self.operational_config.concurrency.max_concurrent_models,
+            "active_tasks": self.concurrency_limiter.get_active_count(),
+            "at_capacity": self.concurrency_limiter.is_at_capacity(),
+            "history_size": self.storage_manager.get_count(),
+            "max_history_size": self.operational_config.storage.max_history_size,
+            "concurrency_config": {
+                "max_concurrent_tasks": self.operational_config.concurrency.max_concurrent_tasks,
+                "max_concurrent_models": self.operational_config.concurrency.max_concurrent_models,
             },
-            'quota_config': {
-                'max_api_calls_per_request': self.operational_config.quota.max_api_calls_per_request,
-                'max_tokens_per_request': self.operational_config.quota.max_tokens_per_request,
-                'max_cost_per_request': self.operational_config.quota.max_cost_per_request,
-            }
+            "quota_config": {
+                "max_api_calls_per_request": self.operational_config.quota.max_api_calls_per_request,
+                "max_tokens_per_request": self.operational_config.quota.max_tokens_per_request,
+                "max_cost_per_request": self.operational_config.quota.max_cost_per_request,
+            },
         }
 
     async def shutdown(self) -> None:
@@ -683,5 +697,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         await self.storage_manager.shutdown()
         # Cancel any remaining tasks
         for request_id in list(self.cancellation_manager.pending_tasks.keys()):
-            await self.cancellation_manager.cancel_all_tasks(request_id, "Shutdown requested")
+            await self.cancellation_manager.cancel_all_tasks(
+                request_id, "Shutdown requested"
+            )
         logger.info("ConsensusEngine shutdown complete")

@@ -1,7 +1,5 @@
 import pytest
 
-from src.openrouter_mcp.free.router import FreeModelRouter
-
 
 @pytest.fixture
 def free_model_google():
@@ -47,13 +45,17 @@ def free_model_unknown():
 
 class TestFreeModelRouterScoring:
     @pytest.mark.unit
-    def test_score_google_model_higher_than_meta(self, router, free_model_google, free_model_meta):
+    def test_score_google_model_higher_than_meta(
+        self, router, free_model_google, free_model_meta
+    ):
         score_google = router._score_model(free_model_google)
         score_meta = router._score_model(free_model_meta)
         assert score_google > score_meta
 
     @pytest.mark.unit
-    def test_score_meta_higher_than_unknown(self, router, free_model_meta, free_model_unknown):
+    def test_score_meta_higher_than_unknown(
+        self, router, free_model_meta, free_model_unknown
+    ):
         score_meta = router._score_model(free_model_meta)
         score_unknown = router._score_model(free_model_unknown)
         assert score_meta > score_unknown
@@ -66,7 +68,13 @@ class TestFreeModelRouterScoring:
     @pytest.mark.unit
     def test_score_vision_bonus(self, router, free_model_google):
         score_google = router._score_model(free_model_google)
-        no_vision = {**free_model_google, "capabilities": {"supports_vision": False, "supports_function_calling": False}}
+        no_vision = {
+            **free_model_google,
+            "capabilities": {
+                "supports_vision": False,
+                "supports_function_calling": False,
+            },
+        }
         score_no_vision = router._score_model(no_vision)
         assert score_google > score_no_vision
 

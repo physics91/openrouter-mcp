@@ -175,25 +175,8 @@ class ResponseFactory:
         chunks = []
 
         # First chunk with role
-        chunks.append({
-            "id": "gen-1234567890",
-            "provider": "OpenAI",
-            "model": model,
-            "object": "chat.completion.chunk",
-            "created": 1692901234,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"role": "assistant", "content": content_parts[0]},
-                    "logprobs": None,
-                    "finish_reason": None,
-                }
-            ],
-        })
-
-        # Middle chunks with content only
-        for content_part in content_parts[1:]:
-            chunks.append({
+        chunks.append(
+            {
                 "id": "gen-1234567890",
                 "provider": "OpenAI",
                 "model": model,
@@ -202,34 +185,57 @@ class ResponseFactory:
                 "choices": [
                     {
                         "index": 0,
-                        "delta": {"content": content_part},
+                        "delta": {"role": "assistant", "content": content_parts[0]},
                         "logprobs": None,
                         "finish_reason": None,
                     }
                 ],
-            })
+            }
+        )
+
+        # Middle chunks with content only
+        for content_part in content_parts[1:]:
+            chunks.append(
+                {
+                    "id": "gen-1234567890",
+                    "provider": "OpenAI",
+                    "model": model,
+                    "object": "chat.completion.chunk",
+                    "created": 1692901234,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content_part},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+            )
 
         # Final chunk with finish_reason and usage
-        chunks.append({
-            "id": "gen-1234567890",
-            "provider": "OpenAI",
-            "model": model,
-            "object": "chat.completion.chunk",
-            "created": 1692901234,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {},
-                    "logprobs": None,
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-            },
-        })
+        chunks.append(
+            {
+                "id": "gen-1234567890",
+                "provider": "OpenAI",
+                "model": model,
+                "object": "chat.completion.chunk",
+                "created": 1692901234,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "logprobs": None,
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+            }
+        )
 
         return chunks
 

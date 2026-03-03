@@ -7,9 +7,8 @@ that the old length-based approach would incorrectly split.
 """
 
 import pytest
-from openrouter_mcp.collective_intelligence.semantic_similarity import (
-    ResponseGrouper,
-)
+
+from openrouter_mcp.collective_intelligence.semantic_similarity import ResponseGrouper
 
 
 class TestSemanticSimilarityImprovement:
@@ -61,9 +60,9 @@ class TestSemanticSimilarityImprovement:
 
         responses = [
             "Renewable energy reduces emissions.",  # 37 chars
-            "Renewable energy reduces emissions",   # 36 chars (no period)
+            "Renewable energy reduces emissions",  # 36 chars (no period)
             "Renewable energy reduces emissions!",  # 37 chars (exclamation)
-            "Renewable energy reduces emissions...", # 40 chars (ellipsis)
+            "Renewable energy reduces emissions...",  # 40 chars (ellipsis)
         ]
 
         groups = grouper.group_responses(responses)
@@ -91,8 +90,9 @@ class TestSemanticSimilarityImprovement:
 
         # OLD BEHAVIOR: All in one group (similar length)
         # NEW BEHAVIOR: Three separate groups (different topics)
-        assert len(groups) == 3, \
-            f"Expected 3 groups (different topics), got {len(groups)}"
+        assert (
+            len(groups) == 3
+        ), f"Expected 3 groups (different topics), got {len(groups)}"
 
     def test_real_world_consensus_scenario(self):
         """
@@ -136,8 +136,9 @@ class TestSemanticSimilarityImprovement:
 
         # London should NOT be grouped with multiple Paris responses
         # (it should be alone or in a small group)
-        assert len(london_group) <= 2, \
-            f"London incorrectly grouped with {len(london_group)-1} other responses"
+        assert (
+            len(london_group) <= 2
+        ), f"London incorrectly grouped with {len(london_group)-1} other responses"
 
     def test_whitespace_and_case_variations(self):
         """Test that whitespace and case variations don't split groups."""

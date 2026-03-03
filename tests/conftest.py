@@ -1,12 +1,11 @@
 import asyncio
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
-import pytest
 import httpx
+import pytest
 from httpx import Response
 
 # Add src directory to Python path for imports
@@ -53,44 +52,38 @@ def mock_models_response() -> Dict[str, Any]:
                 "id": "openai/gpt-4",
                 "name": "GPT-4",
                 "description": "OpenAI's GPT-4 model",
-                "pricing": {
-                    "prompt": "0.00003",
-                    "completion": "0.00006"
-                },
+                "pricing": {"prompt": "0.00003", "completion": "0.00006"},
                 "context_length": 8192,
                 "architecture": {
                     "modality": "text",
                     "tokenizer": "cl100k_base",
-                    "instruct_type": None
+                    "instruct_type": None,
                 },
                 "top_provider": {
                     "context_length": 8192,
                     "max_completion_tokens": 4096,
-                    "is_moderated": True
+                    "is_moderated": True,
                 },
-                "per_request_limits": None
+                "per_request_limits": None,
             },
             {
                 "id": "anthropic/claude-3-haiku",
                 "name": "Claude 3 Haiku",
                 "description": "Anthropic's fastest model",
-                "pricing": {
-                    "prompt": "0.00025",
-                    "completion": "0.00125"
-                },
+                "pricing": {"prompt": "0.00025", "completion": "0.00125"},
                 "context_length": 200000,
                 "architecture": {
                     "modality": "text",
                     "tokenizer": "claude",
-                    "instruct_type": None
+                    "instruct_type": None,
                 },
                 "top_provider": {
                     "context_length": 200000,
                     "max_completion_tokens": 4096,
-                    "is_moderated": False
+                    "is_moderated": False,
                 },
-                "per_request_limits": None
-            }
+                "per_request_limits": None,
+            },
         ]
     }
 
@@ -109,17 +102,13 @@ def mock_chat_response() -> Dict[str, Any]:
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": "Hello! How can I help you today?"
+                    "content": "Hello! How can I help you today?",
                 },
                 "logprobs": None,
-                "finish_reason": "stop"
+                "finish_reason": "stop",
             }
         ],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 8,
-            "total_tokens": 18
-        }
+        "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
     }
 
 
@@ -136,52 +125,38 @@ def mock_stream_response() -> List[Dict[str, Any]]:
             "choices": [
                 {
                     "index": 0,
-                    "delta": {
-                        "role": "assistant",
-                        "content": "Hello"
-                    },
+                    "delta": {"role": "assistant", "content": "Hello"},
                     "logprobs": None,
-                    "finish_reason": None
-                }
-            ]
-        },
-        {
-            "id": "gen-1234567890",
-            "provider": "OpenAI",
-            "model": "openai/gpt-4",
-            "object": "chat.completion.chunk",
-            "created": 1692901234,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {
-                        "content": "! How can I help you today?"
-                    },
-                    "logprobs": None,
-                    "finish_reason": None
-                }
-            ]
-        },
-        {
-            "id": "gen-1234567890",
-            "provider": "OpenAI",
-            "model": "openai/gpt-4",
-            "object": "chat.completion.chunk",
-            "created": 1692901234,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {},
-                    "logprobs": None,
-                    "finish_reason": "stop"
+                    "finish_reason": None,
                 }
             ],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 8,
-                "total_tokens": 18
-            }
-        }
+        },
+        {
+            "id": "gen-1234567890",
+            "provider": "OpenAI",
+            "model": "openai/gpt-4",
+            "object": "chat.completion.chunk",
+            "created": 1692901234,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": "! How can I help you today?"},
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "gen-1234567890",
+            "provider": "OpenAI",
+            "model": "openai/gpt-4",
+            "object": "chat.completion.chunk",
+            "created": 1692901234,
+            "choices": [
+                {"index": 0, "delta": {}, "logprobs": None, "finish_reason": "stop"}
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
+        },
     ]
 
 
@@ -192,7 +167,7 @@ def mock_error_response() -> Dict[str, Any]:
         "error": {
             "type": "invalid_request_error",
             "code": "invalid_api_key",
-            "message": "Invalid API key provided"
+            "message": "Invalid API key provided",
         }
     }
 
@@ -208,25 +183,25 @@ def create_mock_response(
     status_code: int = 200,
     json_data: Dict[str, Any] = None,
     text_data: str = None,
-    headers: Dict[str, str] = None
+    headers: Dict[str, str] = None,
 ) -> Mock:
     """Create a mock HTTP response."""
     response = Mock(spec=Response)
     response.status_code = status_code
     response.headers = headers or {"content-type": "application/json"}
-    
+
     if json_data is not None:
         response.json.return_value = json_data
-    
+
     if text_data is not None:
         response.text = text_data
-    
+
     response.raise_for_status = Mock()
     if status_code >= 400:
         response.raise_for_status.side_effect = httpx.HTTPStatusError(
             "HTTP Error", request=Mock(), response=response
         )
-    
+
     return response
 
 
