@@ -1,0 +1,16 @@
+{
+  "request": {
+    "prompt": "Replay fixture prompt",
+    "strategy": "majority_vote",
+    "min_models": 2,
+    "max_models": 2,
+    "models": ["openai/gpt-4", "anthropic/claude-3-opus"],
+    "temperature": 0.2
+  },
+  "expected_consensus_response": "Replay fixture response",
+  "stable_fields": [
+    "consensus_response",
+    "agreement_level",
+    "strategy_used"
+  ]
+}

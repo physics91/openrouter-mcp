@@ -16,6 +16,9 @@ pytest --ignore=tests/test_real_world_integration.py -v
 
 # Run with coverage
 pytest --cov=src/openrouter_mcp --cov-report=html --ignore=tests/test_real_world_integration.py
+
+# Run assurance gate (unit + contract + property + replay + Node security)
+npm run test:assurance
 ```
 
 ## Test Files
@@ -114,6 +117,15 @@ pytest -m unit
 # Integration tests only
 pytest -m integration
 
+# Contract tests only
+pytest -m contract
+
+# Property tests only
+pytest -m property
+
+# Replay tests only
+pytest -m replay
+
 # Real API tests only (needs API key)
 pytest -m real_api
 ```
@@ -143,6 +155,9 @@ python run_tests.py all
 
 # With coverage
 python run_tests.py coverage
+
+# Assurance gate
+npm run test:assurance
 
 # Real API tests (with confirmation)
 python run_tests.py real

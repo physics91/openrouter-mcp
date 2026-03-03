@@ -1,0 +1,129 @@
+name: Assurance Extended
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 18 * * *"
+    - cron: "0 19 * * 0"
+  workflow_dispatch:
+
+jobs:
+  advisory-static-analysis:
+    name: Advisory Static Analysis
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run mypy (advisory)
+        run: mypy src/
+
+  advisory-performance:
+    name: Advisory Performance and Replay
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run advisory test slices
+        run: |
+          python3 -m pytest tests/ \
+            --ignore=tests/test_real_world_integration.py \
+            -m "property or replay or performance" \
+            -v --maxfail=5
+
+  nightly-live-canary:
+    name: Nightly Live API Canary
+    if: github.event_name == 'schedule' && github.event.schedule == '0 18 * * *'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run live canary tests
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -z "${OPENROUTER_API_KEY}" ]; then
+            echo "OPENROUTER_API_KEY is not configured; skipping live canary."
+            exit 0
+          fi
+          python3 -m pytest tests/test_real_world_integration.py \
+            -m "real_api and not stress and not quality and not performance" \
+            -v --maxfail=2
+
+  weekly-mutation-sample:
+    name: Weekly Mutation Sample
+    if: github.event_name == 'schedule' && github.event.schedule == '0 19 * * 0'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install mutmut
+
+      - name: Run mutation sample on pricing module
+        run: |
+          mutmut run \
+            --paths-to-mutate src/openrouter_mcp/utils/pricing.py \
+            --runner "python3 -m pytest tests/test_property/test_pricing_properties.py -q"
