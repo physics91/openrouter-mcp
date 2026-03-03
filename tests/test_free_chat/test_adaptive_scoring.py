@@ -1,29 +1,11 @@
 """Tests for adaptive scoring and task-type affinity in FreeModelRouter."""
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from src.openrouter_mcp.free.classifier import FreeTaskType
 from src.openrouter_mcp.free.metrics import MetricsCollector
 from src.openrouter_mcp.free.router import FreeModelRouter
 from tests.test_free_chat.conftest import make_free_model
-
-
-@pytest.fixture
-def free_models():
-    return [
-        make_free_model("google/gemma:free", 131072, "google"),
-        make_free_model("deepseek/chat:free", 131072, "deepseek"),
-        make_free_model("qwen/model:free", 32768, "qwen"),
-    ]
-
-
-@pytest.fixture
-def mock_cache(free_models):
-    cache = MagicMock()
-    cache.filter_models.return_value = free_models
-    return cache
 
 
 class TestAdaptiveScoring:

@@ -27,6 +27,7 @@ from src.openrouter_mcp.handlers.collective_intelligence import (
     cross_model_validation,
     ensemble_reasoning,
 )
+from tests.fixtures.collective_payloads import assert_collective_chat_response_shape
 
 _REFRESHED_MODEL_CACHE = False
 
@@ -80,20 +81,7 @@ class TestRealWorldIntegration:
         end_time = time.time()
         processing_time = end_time - start_time
 
-        # Validate response structure
-        assert isinstance(result, dict)
-        assert "consensus_response" in result
-        assert "agreement_level" in result
-        assert "confidence_score" in result
-        assert "participating_models" in result
-        assert "individual_responses" in result
-
-        # Validate content quality
-        assert isinstance(result["consensus_response"], str)
-        assert len(result["consensus_response"]) > 50  # Should be substantial
-        assert 0.0 <= result["confidence_score"] <= 1.0
-        assert len(result["participating_models"]) >= 2
-        assert len(result["individual_responses"]) >= 2
+        assert_collective_chat_response_shape(result, min_response_length=50)
 
         print(f"[SUCCESS] Collective Chat completed in {processing_time:.2f}s")
         print(f"[INFO] Consensus: {result['consensus_response'][:100]}...")
