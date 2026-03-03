@@ -692,7 +692,7 @@ For security incidents involving this project:
 
 This document is version controlled. Check for updates regularly:
 - **Last Updated**: 2025-11-17
-- **Version**: 1.0.0
+- **Version**: 1.4.0
 - **Next Review**: 2025-02-17
 
 ---

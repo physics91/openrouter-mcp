@@ -283,6 +283,6 @@ Yes, you can wrap it in a web framework like FastAPI or Flask. See the [Architec
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0
 
 **Still have questions?** Open an issue on GitHub or check our other documentation!
