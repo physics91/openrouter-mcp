@@ -1,28 +1,14 @@
-Leave a star ⭐ if you like it 😘
+Leave a star if you like it
 
-# Codex Integration for Claude Code
-
-<img width="2288" height="808" alt="skillcodex" src="https://github.com/user-attachments/assets/85336a9f-4680-479e-b3fe-d6a68cadc051" />
-
+# Codex Subagent for Claude Code (bugi-backend)
 
 ## Purpose
-Enable Claude Code to invoke the Codex CLI (`codex exec` and session resumes) for automated code analysis, refactoring, and editing workflows.
+Enable Claude Code to invoke the Codex CLI (`codex exec` and session resumes) for automated code analysis, refactoring, and editing workflows on the `~/dev/bugi-backend` project.
 
 ## Prerequisites
 - `codex` CLI installed and available on `PATH`.
 - Codex configured with valid credentials and settings.
 - Confirm the installation by running `codex --version`; resolve any errors before using the skill.
-
-## Installation
-
-Download this repo and store the skill in ~/.claude/skills/codex
-
-```
-git clone --depth 1 git@github.com:skills-directory/skill-codex.git /tmp/skills-temp && \
-mkdir -p ~/.claude/skills && \
-cp -r /tmp/skills-temp/ ~/.claude/skills/codex && \
-rm -rf /tmp/skills-temp
-```
 
 ## Usage
 
@@ -33,22 +19,23 @@ By default, this skill suppresses thinking tokens (stderr output) using `2>/dev/
 
 **User prompt:**
 ```
-Use codex to analyze this repository and suggest improvements for my claude code skill.
+Use codex to analyze bugi-backend and suggest improvements.
 ```
 
 **Claude Code response:**
-Claude will activate the Codex skill and:
-1. Ask which model to use (`gpt-5` or `gpt-5-codex`) unless already specified in your prompt.
+Claude will activate the Codex Subagent skill and:
+1. Ask which model to use unless already specified in your prompt.
 2. Ask which reasoning effort level (`low`, `medium`, or `high`) unless already specified in your prompt.
 3. Select appropriate sandbox mode (defaults to `read-only` for analysis)
 4. Run a command like:
 ```bash
-codex exec -m gpt-5-codex \
+codex exec -m gpt-5.2 \
   --config model_reasoning_effort="high" \
   --sandbox read-only \
   --full-auto \
   --skip-git-repo-check \
-  "Analyze this Claude Code skill repository comprehensively..." 2>/dev/null
+  -C ~/dev/bugi-backend \
+  "Analyze this repository comprehensively..." 2>/dev/null
 ```
 
 **Result:**
