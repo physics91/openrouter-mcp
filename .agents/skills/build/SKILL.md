@@ -11,6 +11,7 @@ No compilation step exists. "Build" means passing all static quality gates.
 
 - Prefer `python3` when invoking Python modules or pip.
 - If `python3` is unavailable but `python` exists, use `python` as fallback.
+- If pip installation is blocked by externally-managed environment (PEP 668), create and use local `.venv`.
 
 ## Check Mode (CI-equivalent, read-only)
 
@@ -52,6 +53,11 @@ Not CI-required but recommended for new code.
 If tools are missing:
 ```
 python3 -m pip install -r requirements-dev.txt
+```
+If this fails with an externally-managed-environment error:
+```
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
 ```
 
 ## Notes
