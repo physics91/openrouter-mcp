@@ -23,6 +23,8 @@ from src.openrouter_mcp.utils.metadata import (
     ModelCapabilities
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestModelMetadataExtraction:
     """Test suite for metadata extraction utilities."""

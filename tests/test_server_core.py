@@ -11,16 +11,18 @@ import signal
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
+pytestmark = pytest.mark.unit
+
 
 class TestValidateEnvironment:
     """Tests for validate_environment function."""
 
     def test_validate_environment_missing_api_key(self, monkeypatch):
         """Should raise ValueError when OPENROUTER_API_KEY is missing."""
-        # Remove API key from environment
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-
         from openrouter_mcp.server import validate_environment
+
+        # Import may load .env; remove key after import for deterministic behavior.
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         with pytest.raises(ValueError) as exc_info:
             validate_environment()

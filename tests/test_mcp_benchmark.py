@@ -20,6 +20,8 @@ from src.openrouter_mcp.handlers.mcp_benchmark import (
     compare_model_categories, export_benchmark_report, compare_model_performance
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestMCPBenchmarkTools:
     """MCP 벤치마크 도구 테스트 클래스"""

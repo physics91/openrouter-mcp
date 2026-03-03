@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch, mock_open
 from datetime import datetime, timedelta
 from pathlib import Path
 
+pytestmark = pytest.mark.unit
+
 
 class TestModelCache:
     """Test dynamic model caching system - TDD RED phase."""

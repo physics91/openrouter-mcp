@@ -36,6 +36,8 @@ from src.openrouter_mcp.handlers.benchmark import (
     EnhancedBenchmarkMetrics,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestResponseQualityAnalyzer:
     """Test ResponseQualityAnalyzer class."""

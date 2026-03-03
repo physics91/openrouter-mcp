@@ -26,6 +26,8 @@ from openrouter_mcp.handlers.multimodal import (
     get_vision_model_names,
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestImageInput:
     """Test ImageInput model validation."""

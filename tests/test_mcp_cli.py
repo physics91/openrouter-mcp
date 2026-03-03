@@ -25,6 +25,8 @@ from src.openrouter_mcp.cli.mcp_manager import (
     MCPConfigError
 )
 
+pytestmark = pytest.mark.unit
+
 
 class TestMCPServerConfig:
     """Test MCPServerConfig data class."""
