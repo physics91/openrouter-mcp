@@ -9,9 +9,11 @@ that keeps the latest AI models from OpenRouter API.
 import json
 import tempfile
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+
+from tests.fixtures.httpx_mocks import setup_async_client_mock
 
 pytestmark = pytest.mark.unit
 
@@ -152,28 +154,10 @@ class TestModelCache:
         ):
             # Mock httpx.AsyncClient since _fetch_models_from_api now uses raw HTTP
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                # Mock the context manager
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                # Mock the GET request
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_openrouter_models
-                mock_response.raise_for_status = MagicMock()
-
-                async def mock_get(*args, **kwargs):
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                _, mock_response, _ = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_openrouter_models,
+                )
 
                 models = await cache._fetch_models_from_api()
 
@@ -298,26 +282,7 @@ class TestModelCache:
             },
         ):
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_openrouter_models
-                mock_response.raise_for_status = MagicMock()
-
-                async def mock_get(*args, **kwargs):
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                setup_async_client_mock(mock_httpx_client, mock_openrouter_models)
 
                 with patch.object(cache, "_save_to_file_cache") as mock_save:
                     models = await cache.get_models()
@@ -407,26 +372,7 @@ class TestModelCache:
             },
         ):
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_openrouter_models
-                mock_response.raise_for_status = MagicMock()
-
-                async def mock_get(*args, **kwargs):
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                setup_async_client_mock(mock_httpx_client, mock_openrouter_models)
 
                 with patch.object(cache, "_save_to_file_cache") as mock_save:
                     await cache.refresh_cache(force=True)

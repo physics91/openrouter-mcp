@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from jsonschema import Draft202012Validator
 
-from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
 from openrouter_mcp.handlers.collective_intelligence import (
     AdaptiveModelRequest,
     CollaborativeSolvingRequest,
@@ -22,6 +21,10 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _cross_model_validation_impl,
     _ensemble_reasoning_impl,
 )
+from tests.fixtures.collective_payloads import (
+    cleanup_collective_lifecycle,
+    contract_model_pair,
+)
 from tests.fixtures.mock_clients import MockClientFactory
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
@@ -32,31 +35,14 @@ MODEL_IDS = ["openai/gpt-4", "anthropic/claude-3-opus"]
 async def cleanup_lifecycle_manager():
     """Reset singleton lifecycle manager between contract tests."""
     yield
-    await shutdown_lifecycle_manager()
+    await cleanup_collective_lifecycle()
 
 
 @pytest.fixture
 def contract_mock_client():
     """Create a deterministic OpenRouter client mock for contract tests."""
     client = MockClientFactory.create_openrouter_client()
-    client.list_models = AsyncMock(
-        return_value=[
-            {
-                "id": "openai/gpt-4",
-                "name": "GPT-4",
-                "provider": "openai",
-                "context_length": 8192,
-                "pricing": {"prompt": "0.00003", "completion": "0.00006"},
-            },
-            {
-                "id": "anthropic/claude-3-opus",
-                "name": "Claude 3 Opus",
-                "provider": "anthropic",
-                "context_length": 200000,
-                "pricing": {"prompt": "0.000015", "completion": "0.000075"},
-            },
-        ]
-    )
+    client.list_models = AsyncMock(return_value=contract_model_pair())
     client.get_model_pricing = AsyncMock(
         return_value={"prompt": 0.00001, "completion": 0.00002}
     )

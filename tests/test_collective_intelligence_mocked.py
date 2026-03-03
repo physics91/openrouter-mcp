@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
 from openrouter_mcp.handlers.collective_intelligence import (
     AdaptiveModelRequest,
     CollaborativeSolvingRequest,
@@ -44,42 +43,24 @@ from openrouter_mcp.handlers.collective_intelligence import (
 from openrouter_mcp.handlers.collective_intelligence import (
     _ensemble_reasoning_impl as ensemble_reasoning,
 )
+from tests.fixtures.collective_payloads import (
+    assert_collective_chat_response_shape,
+    cleanup_collective_lifecycle,
+    mocked_available_models,
+)
 
 
 @pytest.fixture(autouse=True)
 async def cleanup_lifecycle_manager():
     """Cleanup lifecycle manager after each test."""
     yield
-    # Shutdown lifecycle manager to prevent task leaks
-    await shutdown_lifecycle_manager()
+    await cleanup_collective_lifecycle()
 
 
 @pytest.fixture
 def mock_available_models():
     """Fixture providing a list of mock available models."""
-    return [
-        {
-            "id": "openai/gpt-4",
-            "name": "GPT-4",
-            "provider": "openai",
-            "context_length": 8192,
-            "pricing": {"completion": "0.00003", "prompt": "0.00001"},
-        },
-        {
-            "id": "anthropic/claude-3-opus",
-            "name": "Claude 3 Opus",
-            "provider": "anthropic",
-            "context_length": 200000,
-            "pricing": {"completion": "0.000015", "prompt": "0.000005"},
-        },
-        {
-            "id": "meta-llama/llama-3-70b",
-            "name": "Llama 3 70B",
-            "provider": "meta-llama",
-            "context_length": 8000,
-            "pricing": {"completion": "0.00001", "prompt": "0.000005"},
-        },
-    ]
+    return mocked_available_models()
 
 
 @pytest.fixture
@@ -93,29 +74,7 @@ def setup_mock_client():
         if list_models_response:
             mock_client.list_models.return_value = list_models_response
         else:
-            mock_client.list_models.return_value = [
-                {
-                    "id": "openai/gpt-4",
-                    "name": "GPT-4",
-                    "provider": "openai",
-                    "context_length": 8192,
-                    "pricing": {"completion": "0.00003", "prompt": "0.00001"},
-                },
-                {
-                    "id": "anthropic/claude-3-opus",
-                    "name": "Claude 3 Opus",
-                    "provider": "anthropic",
-                    "context_length": 200000,
-                    "pricing": {"completion": "0.000015", "prompt": "0.000005"},
-                },
-                {
-                    "id": "meta-llama/llama-3-70b",
-                    "name": "Llama 3 70B",
-                    "provider": "meta-llama",
-                    "context_length": 8000,
-                    "pricing": {"completion": "0.00001", "prompt": "0.000005"},
-                },
-            ]
+            mock_client.list_models.return_value = mocked_available_models()
 
         # Set up chat_completion
         if chat_responses:
@@ -219,19 +178,7 @@ class TestCollectiveChatCompletionMocked:
         result = await collective_chat_completion(request)
 
         # Assertions - test behavior, not structure
-        assert isinstance(result, dict)
-        assert "consensus_response" in result
-        assert "agreement_level" in result
-        assert "confidence_score" in result
-        assert "participating_models" in result
-        assert "individual_responses" in result
-
-        # Verify structure
-        assert isinstance(result["consensus_response"], str)
-        assert len(result["consensus_response"]) > 0
-        assert 0.0 <= result["confidence_score"] <= 1.0
-        assert len(result["participating_models"]) >= 2
-        assert len(result["individual_responses"]) >= 2
+        assert_collective_chat_response_shape(result)
 
         # Verify the client was called
         assert mock_client.chat_completion.call_count >= 2

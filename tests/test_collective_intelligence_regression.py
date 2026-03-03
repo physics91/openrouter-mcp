@@ -43,6 +43,10 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _cross_model_validation_impl,
     _ensemble_reasoning_impl,
 )
+from tests.fixtures.collective_payloads import (
+    cleanup_collective_lifecycle,
+    regression_mock_models,
+)
 
 # ============================================================================
 # FIXTURES
@@ -53,42 +57,13 @@ from openrouter_mcp.handlers.collective_intelligence import (
 async def cleanup_lifecycle():
     """Cleanup lifecycle manager after each test to prevent state leakage."""
     yield
-    await shutdown_lifecycle_manager()
+    await cleanup_collective_lifecycle()
 
 
 @pytest.fixture
 def mock_models():
     """Standard set of mock models for testing."""
-    return [
-        {
-            "id": "openai/gpt-4",
-            "name": "GPT-4",
-            "provider": "openai",
-            "context_length": 8192,
-            "pricing": {"prompt": "0.00003", "completion": "0.00006"},
-        },
-        {
-            "id": "anthropic/claude-3-opus",
-            "name": "Claude 3 Opus",
-            "provider": "anthropic",
-            "context_length": 200000,
-            "pricing": {"prompt": "0.000015", "completion": "0.000075"},
-        },
-        {
-            "id": "meta-llama/llama-3-70b",
-            "name": "Llama 3 70B",
-            "provider": "meta-llama",
-            "context_length": 8000,
-            "pricing": {"prompt": "0.00001", "completion": "0.00002"},
-        },
-        {
-            "id": "deepseek/deepseek-coder",
-            "name": "DeepSeek Coder",
-            "provider": "deepseek",
-            "context_length": 16000,
-            "pricing": {"prompt": "0.000001", "completion": "0.000002"},
-        },
-    ]
+    return regression_mock_models()
 
 
 @pytest.fixture

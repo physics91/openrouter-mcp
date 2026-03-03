@@ -33,6 +33,7 @@ from src.openrouter_mcp.handlers.benchmark import (
     ModelPerformanceAnalyzer,
     ResponseQualityAnalyzer,
 )
+from tests.fixtures.benchmark_samples import build_enhanced_metric_results
 
 pytestmark = pytest.mark.unit
 
@@ -169,34 +170,7 @@ class TestEnhancedBenchmarkMetrics:
 
     def test_metrics_from_successful_results(self):
         """Test creating metrics from successful results."""
-        results = [
-            BenchmarkResult(
-                model_id="test-model",
-                prompt="test",
-                response="response1",
-                response_time_ms=1000,
-                tokens_used=100,
-                cost=0.005,
-                timestamp=datetime.now(timezone.utc),
-                prompt_tokens=40,
-                completion_tokens=60,
-                quality_score=0.8,
-                throughput_tokens_per_second=100.0,
-            ),
-            BenchmarkResult(
-                model_id="test-model",
-                prompt="test",
-                response="response2",
-                response_time_ms=1500,
-                tokens_used=150,
-                cost=0.0075,
-                timestamp=datetime.now(timezone.utc),
-                prompt_tokens=50,
-                completion_tokens=100,
-                quality_score=0.9,
-                throughput_tokens_per_second=100.0,
-            ),
-        ]
+        results = build_enhanced_metric_results(BenchmarkResult)
 
         metrics = EnhancedBenchmarkMetrics.from_benchmark_results(results)
 

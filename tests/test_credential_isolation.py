@@ -6,12 +6,13 @@ Verifies that multiple clients with different credentials don't interfere
 with each other, and that credential threading works correctly.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from src.openrouter_mcp.client.openrouter import OpenRouterClient
 from src.openrouter_mcp.models.cache import ModelCache
+from tests.fixtures.httpx_mocks import setup_async_client_mock
 
 
 class TestCredentialIsolation:
@@ -73,30 +74,11 @@ class TestCredentialIsolation:
             },
         ):
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                # Track the headers used in the request
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get("headers", {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 # Fetch models
                 await cache._fetch_models_from_api()
@@ -120,29 +102,11 @@ class TestCredentialIsolation:
             },
         ):
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get("headers", {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 await cache._fetch_models_from_api()
 
@@ -227,29 +191,11 @@ class TestCredentialIsolation:
 
             # Mock the API call
             with patch("httpx.AsyncClient") as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get("headers", {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 # Trigger cache refresh
                 await client._model_cache.get_models(force_refresh=True)
