@@ -6,6 +6,7 @@ Comprehensive testing documentation for the OpenRouter MCP Server, built with Te
 - [Testing Philosophy](#testing-philosophy)
 - [Test Structure](#test-structure)
 - [Running Tests](#running-tests)
+- [Assurance Gate](#assurance-gate)
 - [Writing Tests](#writing-tests)
 - [Test Coverage](#test-coverage)
 - [Continuous Integration](#continuous-integration)
@@ -100,6 +101,22 @@ pytest --lf
 # Run failed tests first, then others
 pytest --ff
 ```
+
+## Assurance Gate
+
+The assurance gate is the default PR-quality test entrypoint.
+It combines Python assurance slices and Node security checks.
+
+```bash
+# Run assurance gate locally
+npm run test:assurance
+```
+
+Included in the assurance gate:
+- Python: `-m \"unit or contract or property or replay\"`
+- Node: `npm run test:security`
+- Coverage: branch coverage enabled with fail-under threshold
+- Coverage dependency: `pytest-cov` is required; missing plugin causes fast failure
 
 ## Writing Tests
 

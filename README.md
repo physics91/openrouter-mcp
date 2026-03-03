@@ -3,7 +3,7 @@
 A Model Context Protocol (MCP) server for OpenRouter. Use OpenRouter models from MCP clients (Claude Desktop, Claude Code, etc.) with chat, vision, benchmarking, and collective-intelligence tools.
 
 ## Features
-- MCP tools: chat, model listing, usage stats, vision chat, vision model listing
+- MCP tools: chat, model listing, usage stats, vision chat, vision model listing, free chat, free model listing, free model metrics
 - Benchmarking suite and performance comparison tools
 - Collective intelligence tools (consensus, ensemble reasoning, adaptive routing, cross-model validation, collaborative solving)
 - Secure API key storage (OS keychain, encrypted file, or .env) with audit logging
@@ -24,7 +24,8 @@ openrouter-mcp start
 
 ## Prerequisites
 - Node.js 16+
-- Python 3.9+ (dependencies auto-installed on first run)
+- Python 3.9+ (`python` and `pip` commands must be available in `PATH`; if your system uses `python3`/`pip3`, create aliases or symlinks)
+- First run attempts dependency install via `pip install -r requirements.txt`
 - OpenRouter API key: https://openrouter.ai
 
 ## CLI
@@ -41,11 +42,13 @@ Commands:
 - `security-audit` Audit credential storage and permissions
 - `migrate-encryption` Migrate encrypted credentials to v2.0
 
-Common options: `--verbose`, `--debug`, `--host`, `--port`.
+Global options: `--verbose`, `--debug`  
+`start` options: `--host`, `--port`
 
 ## Integrations
 - Claude Desktop: `openrouter-mcp install-claude`
 - Claude Code CLI: `openrouter-mcp install-claude-code`
+- Generated integration config uses: `npx openrouter-mcp start`
 
 See:
 - `docs/CLAUDE_DESKTOP_GUIDE.md`

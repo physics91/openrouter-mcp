@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "collaborative_problem_solving.response.schema.json",
+  "title": "CollaborativeProblemSolvingResponse",
+  "type": "object",
+  "required": [
+    "final_solution",
+    "solution_path",
+    "alternative_solutions",
+    "quality_assessment",
+    "component_contributions",
+    "confidence",
+    "improvement_suggestions",
+    "processing_time",
+    "session_id",
+    "strategy_used",
+    "components_used"
+  ],
+  "properties": {
+    "final_solution": {"type": "string", "minLength": 1},
+    "solution_path": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "alternative_solutions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "quality_assessment": {
+      "type": "object",
+      "required": ["overall_score", "accuracy", "consistency", "completeness"],
+      "properties": {
+        "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
+        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "consistency": {"type": "number", "minimum": 0, "maximum": 1},
+        "completeness": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    },
+    "component_contributions": {
+      "type": "object",
+      "additionalProperties": {"type": "number"}
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "improvement_suggestions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "processing_time": {"type": "number", "minimum": 0},
+    "session_id": {"type": "string", "minLength": 1},
+    "strategy_used": {"type": "string", "minLength": 1},
+    "components_used": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": true
+}

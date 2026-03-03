@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "collective_chat_completion.response.schema.json",
+  "title": "CollectiveChatCompletionResponse",
+  "type": "object",
+  "required": [
+    "consensus_response",
+    "agreement_level",
+    "confidence_score",
+    "participating_models",
+    "individual_responses",
+    "strategy_used",
+    "processing_time",
+    "quality_metrics"
+  ],
+  "properties": {
+    "consensus_response": {"type": "string", "minLength": 1},
+    "agreement_level": {"type": "string", "minLength": 1},
+    "confidence_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "participating_models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "individual_responses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["model", "content", "confidence"],
+        "properties": {
+          "model": {"type": "string", "minLength": 1},
+          "content": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "strategy_used": {"type": "string", "minLength": 1},
+    "processing_time": {"type": "number", "minimum": 0},
+    "quality_metrics": {
+      "type": "object",
+      "required": ["accuracy", "consistency", "completeness", "overall_score"],
+      "properties": {
+        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "consistency": {"type": "number", "minimum": 0, "maximum": 1},
+        "completeness": {"type": "number", "minimum": 0, "maximum": 1},
+        "overall_score": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

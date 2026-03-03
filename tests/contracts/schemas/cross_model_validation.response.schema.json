@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cross_model_validation.response.schema.json",
+  "title": "CrossModelValidationResponse",
+  "type": "object",
+  "required": [
+    "validation_result",
+    "validation_score",
+    "validation_issues",
+    "model_validations",
+    "recommendations",
+    "confidence",
+    "processing_time",
+    "quality_metrics"
+  ],
+  "properties": {
+    "validation_result": {"type": "string", "enum": ["VALID", "INVALID"]},
+    "validation_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "validation_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["criteria", "severity", "description", "suggestion", "confidence"],
+        "properties": {
+          "criteria": {"type": "string"},
+          "severity": {"type": "string"},
+          "description": {"type": "string"},
+          "suggestion": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": true
+      }
+    },
+    "model_validations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model", "criteria", "issues_found"],
+        "properties": {
+          "model": {"type": "string"},
+          "criteria": {"type": "string"},
+          "issues_found": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": true
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "processing_time": {"type": "number", "minimum": 0},
+    "quality_metrics": {
+      "type": "object",
+      "required": ["overall_score", "accuracy", "consistency"],
+      "properties": {
+        "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
+        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "consistency": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
