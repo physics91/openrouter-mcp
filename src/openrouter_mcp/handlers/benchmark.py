@@ -31,6 +31,7 @@ from ..utils.pricing import (
     normalize_pricing,
     parse_price,
 )
+from ..utils.text import CORE_ENGLISH_STOPWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -125,24 +126,8 @@ class ResponseQualityAnalyzer:
         response_words = set(response.lower().split())
 
         # Remove common stopwords for better matching
-        stopwords = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-        }
-        prompt_words = prompt_words - stopwords
-        response_words = response_words - stopwords
+        prompt_words = prompt_words - CORE_ENGLISH_STOPWORDS
+        response_words = response_words - CORE_ENGLISH_STOPWORDS
 
         if not prompt_words:
             return 0.5  # Default score if no meaningful words in prompt

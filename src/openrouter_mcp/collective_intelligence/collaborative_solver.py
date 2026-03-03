@@ -551,16 +551,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             "active_tasks": self.concurrency_limiter.get_active_count(),
             "at_capacity": self.concurrency_limiter.is_at_capacity(),
             "completed_sessions_count": self.storage_manager.get_count(),
-            "max_history_size": self.operational_config.storage.max_history_size,
-            "concurrency_config": {
-                "max_concurrent_tasks": self.operational_config.concurrency.max_concurrent_tasks,
-                "max_concurrent_models": self.operational_config.concurrency.max_concurrent_models,
-            },
-            "quota_config": {
-                "max_api_calls_per_request": self.operational_config.quota.max_api_calls_per_request,
-                "max_tokens_per_request": self.operational_config.quota.max_tokens_per_request,
-                "max_cost_per_request": self.operational_config.quota.max_cost_per_request,
-            },
+            **self.operational_config.limits_snapshot(),
         }
 
     async def shutdown(self) -> None:

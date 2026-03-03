@@ -24,6 +24,7 @@ from .base import (
     QualityMetrics,
     TaskContext,
     TaskType,
+    build_quality_metrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -1020,7 +1021,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         confidence = accuracy
         coherence = consistency  # Simplified
 
-        return QualityMetrics(
+        return build_quality_metrics(
             accuracy=accuracy,
             consistency=consistency,
             completeness=completeness,

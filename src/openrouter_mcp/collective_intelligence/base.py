@@ -144,6 +144,26 @@ class QualityMetrics:
         return sum(metrics) / len(metrics)
 
 
+def build_quality_metrics(
+    *,
+    accuracy: float,
+    consistency: float,
+    completeness: float,
+    relevance: float,
+    confidence: float,
+    coherence: float,
+) -> QualityMetrics:
+    """Construct a normalized QualityMetrics value in one place."""
+    return QualityMetrics(
+        accuracy=accuracy,
+        consistency=consistency,
+        completeness=completeness,
+        relevance=relevance,
+        confidence=confidence,
+        coherence=coherence,
+    )
+
+
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for system monitoring."""

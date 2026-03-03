@@ -21,6 +21,7 @@ from .base import (
     ProcessingResult,
     QualityMetrics,
     TaskContext,
+    build_quality_metrics,
 )
 from .operational_controls import OperationalConfig, init_operational_controls
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
@@ -636,14 +637,15 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         confidence = statistics.mean(confidences)
         coherence = consistency  # Simplified
 
-        return QualityMetrics(
-            accuracy=accuracy,
-            consistency=consistency,
-            completeness=completeness,
-            relevance=relevance,
-            confidence=confidence,
-            coherence=coherence,
-        )
+        metric_values = {
+            "accuracy": accuracy,
+            "consistency": consistency,
+            "completeness": completeness,
+            "relevance": relevance,
+            "confidence": confidence,
+            "coherence": coherence,
+        }
+        return build_quality_metrics(**metric_values)
 
     def _update_model_reliability(
         self, responses: List[ModelResponse], consensus: ConsensusResult
@@ -679,16 +681,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             "active_tasks": self.concurrency_limiter.get_active_count(),
             "at_capacity": self.concurrency_limiter.is_at_capacity(),
             "history_size": self.storage_manager.get_count(),
-            "max_history_size": self.operational_config.storage.max_history_size,
-            "concurrency_config": {
-                "max_concurrent_tasks": self.operational_config.concurrency.max_concurrent_tasks,
-                "max_concurrent_models": self.operational_config.concurrency.max_concurrent_models,
-            },
-            "quota_config": {
-                "max_api_calls_per_request": self.operational_config.quota.max_api_calls_per_request,
-                "max_tokens_per_request": self.operational_config.quota.max_tokens_per_request,
-                "max_cost_per_request": self.operational_config.quota.max_cost_per_request,
-            },
+            **self.operational_config.limits_snapshot(),
         }
 
     async def shutdown(self) -> None:

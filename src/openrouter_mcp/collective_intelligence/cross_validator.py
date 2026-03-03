@@ -24,6 +24,7 @@ from .base import (
     QualityMetrics,
     TaskContext,
     TaskType,
+    build_quality_metrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -1210,14 +1211,15 @@ class CrossValidator(CollectiveIntelligenceComponent):
             ValidationCriteria.COHERENCE, 0.5
         )
 
-        return QualityMetrics(
-            accuracy=accuracy,
-            consistency=consistency,
-            completeness=completeness,
-            relevance=relevance,
-            confidence=confidence,
-            coherence=coherence,
+        metric_pairs = (
+            ("accuracy", accuracy),
+            ("consistency", consistency),
+            ("completeness", completeness),
+            ("relevance", relevance),
+            ("confidence", confidence),
+            ("coherence", coherence),
         )
+        return build_quality_metrics(**dict(metric_pairs))
 
     def _update_validator_performance(
         self, validation_report: ValidationReport
