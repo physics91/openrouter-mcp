@@ -9,6 +9,7 @@ const os = require('os');
 
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
+const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
 program
   .name('openrouter-mcp')
@@ -29,7 +30,8 @@ program
   .action(async (options) => {
     console.log(chalk.blue('🚀 Starting OpenRouter MCP Server...'));
     
-    if (!await checkPythonRequirements()) {
+    const pythonCommand = await checkPythonRequirements();
+    if (!pythonCommand) {
       process.exit(1);
     }
     
@@ -37,7 +39,7 @@ program
       console.log(chalk.yellow('⚠️  No OpenRouter API key found. Run "openrouter-mcp init" to configure.'));
     }
     
-    await startServer(options);
+    await startServer(options, pythonCommand);
   });
 
 // Init command
@@ -117,8 +119,13 @@ async function checkPythonRequirements() {
   
   try {
     // Check Python version
-    const pythonVersion = await runCommand('python', ['--version']);
-    console.log(chalk.green(`✓ Python found: ${pythonVersion.trim()}`));
+    const pythonInfo = await resolvePythonCommand();
+    if (!pythonInfo) {
+      console.log(chalk.red('✗ Python not found or not accessible'));
+      console.log(chalk.blue('Please install Python 3.9+ and ensure "python" or "python3" is in your PATH'));
+      return null;
+    }
+    console.log(chalk.green(`✓ Python found: ${pythonInfo.version} (${pythonInfo.command})`));
     
     // Check if in virtual environment
     const isVenv = process.env.VIRTUAL_ENV || process.env.CONDA_DEFAULT_ENV;
@@ -130,28 +137,31 @@ async function checkPythonRequirements() {
     
     // Check required packages
     try {
-      await runCommand('python', ['-c', 'import fastmcp, httpx, pydantic']);
+      await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
       console.log(chalk.green('✓ Required Python packages are installed'));
-      return true;
+      return pythonInfo.command;
     } catch (error) {
       console.log(chalk.red('✗ Missing required Python packages'));
       console.log(chalk.blue('Installing Python dependencies...'));
       
       try {
-        await runCommand('pip', ['install', '-r', path.join(__dirname, '..', 'requirements.txt')]);
+        await runCommand(
+          pythonInfo.command,
+          ['-m', 'pip', 'install', '-r', path.join(__dirname, '..', 'requirements.txt')]
+        );
         console.log(chalk.green('✓ Python dependencies installed successfully'));
-        return true;
+        return pythonInfo.command;
       } catch (installError) {
         console.log(chalk.red('✗ Failed to install Python dependencies'));
-        console.log(chalk.blue('Please run: pip install -r requirements.txt'));
-        return false;
+        console.log(chalk.blue(`Please run: ${pythonInfo.command} -m pip install -r requirements.txt`));
+        return null;
       }
     }
     
   } catch (error) {
     console.log(chalk.red('✗ Python not found or not accessible'));
-    console.log(chalk.blue('Please install Python 3.9+ and ensure it\'s in your PATH'));
-    return false;
+    console.log(chalk.blue('Please install Python 3.9+ and ensure "python" or "python3" is in your PATH'));
+    return null;
   }
 }
 
@@ -169,11 +179,14 @@ async function checkApiKey() {
   return false;
 }
 
-async function startServer(options) {
-  const serverPath = path.join(__dirname, '..', 'src', 'openrouter_mcp', 'server.py');
+async function startServer(options, pythonCommand) {
+  const projectRoot = path.join(__dirname, '..');
+  const srcPath = path.join(projectRoot, 'src');
+  const mergedPythonPath = [srcPath, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
 
   const env = {
     ...process.env,
+    PYTHONPATH: mergedPythonPath,
     HOST: options.host,
     PORT: options.port.toString(),
     LOG_LEVEL: program.opts().debug ? 'debug' : (program.opts().verbose ? 'info' : 'warning')
@@ -206,9 +219,10 @@ async function startServer(options) {
 
   console.log(chalk.blue(`Starting server on ${options.host}:${options.port}`));
 
-  const python = spawn('python', [serverPath], {
+  const python = spawn(pythonCommand, ['-m', 'openrouter_mcp.server'], {
     env,
-    stdio: 'inherit'
+    stdio: 'inherit',
+    cwd: projectRoot
   });
 
   python.on('close', (code) => {
@@ -518,10 +532,10 @@ async function checkStatus() {
   console.log(chalk.blue('Environment:'));
   
   // Python check
-  try {
-    const pythonVersion = await runCommand('python', ['--version']);
-    console.log(chalk.green(`  ✓ Python: ${pythonVersion.trim()}`));
-  } catch {
+  const pythonInfo = await resolvePythonCommand();
+  if (pythonInfo) {
+    console.log(chalk.green(`  ✓ Python: ${pythonInfo.version} (${pythonInfo.command})`));
+  } else {
     console.log(chalk.red('  ✗ Python: Not found'));
   }
   
@@ -533,11 +547,15 @@ async function checkStatus() {
   }
   
   // Dependencies check
-  try {
-    await runCommand('python', ['-c', 'import fastmcp, httpx, pydantic']);
-    console.log(chalk.green('  ✓ Python Dependencies: Installed'));
-  } catch {
-    console.log(chalk.red('  ✗ Python Dependencies: Missing'));
+  if (pythonInfo) {
+    try {
+      await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
+      console.log(chalk.green('  ✓ Python Dependencies: Installed'));
+    } catch {
+      console.log(chalk.red('  ✗ Python Dependencies: Missing'));
+    }
+  } else {
+    console.log(chalk.yellow('  ⚠ Python Dependencies: Not checked (Python unavailable)'));
   }
   
   console.log(chalk.blue('\nConfiguration:'));
@@ -602,7 +620,7 @@ async function installClaudeConfig(apiKey = null) {
   config.mcpServers = config.mcpServers || {};
   config.mcpServers.openrouter = {
     command: "npx",
-    args: ["openrouter-mcp", "start"],
+    args: [MCP_PACKAGE_NAME, "start"],
     env: {
       OPENROUTER_API_KEY: apiKey
     }
@@ -669,7 +687,7 @@ async function installClaudeCodeConfig(apiKey = null) {
   config.mcpServers = config.mcpServers || {};
   config.mcpServers.openrouter = {
     command: "npx",
-    args: ["openrouter-mcp", "start"],
+    args: [MCP_PACKAGE_NAME, "start"],
     env: {
       OPENROUTER_API_KEY: apiKey
     }
@@ -689,7 +707,7 @@ async function installClaudeCodeConfig(apiKey = null) {
     mcpServers: {
       openrouter: {
         command: "npx",
-        args: ["openrouter-mcp", "start"],
+        args: [MCP_PACKAGE_NAME, "start"],
         env: {
           OPENROUTER_API_KEY: "***"
         }
@@ -1155,6 +1173,7 @@ function runCommand(command, args) {
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     let error = '';
+    let settled = false;
 
     child.stdout.on('data', (data) => {
       output += data.toString();
@@ -1164,14 +1183,40 @@ function runCommand(command, args) {
       error += data.toString();
     });
 
+    child.on('error', (spawnError) => {
+      if (settled) return;
+      settled = true;
+      reject(spawnError);
+    });
+
     child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
       if (code === 0) {
-        resolve(output);
+        resolve((output || error).trim());
       } else {
         reject(new Error(error || `Command failed with code ${code}`));
       }
     });
   });
+}
+
+async function resolvePythonCommand() {
+  const candidates = ['python', 'python3'];
+
+  for (const command of candidates) {
+    try {
+      const version = await runCommand(command, ['--version']);
+      return {
+        command,
+        version: version || 'Unknown version'
+      };
+    } catch {
+      // Try next candidate
+    }
+  }
+
+  return null;
 }
 
 // Parse command line arguments

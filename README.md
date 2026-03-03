@@ -24,8 +24,8 @@ openrouter-mcp start
 
 ## Prerequisites
 - Node.js 16+
-- Python 3.9+ (`python` and `pip` commands must be available in `PATH`; if your system uses `python3`/`pip3`, create aliases or symlinks)
-- First run attempts dependency install via `pip install -r requirements.txt`
+- Python 3.9+ (`python` or `python3` must be available in `PATH`)
+- First run attempts dependency install via `<python> -m pip install -r requirements.txt`
 - OpenRouter API key: https://openrouter.ai
 
 ## CLI
@@ -48,7 +48,7 @@ Global options: `--verbose`, `--debug`
 ## Integrations
 - Claude Desktop: `openrouter-mcp install-claude`
 - Claude Code CLI: `openrouter-mcp install-claude-code`
-- Generated integration config uses: `npx openrouter-mcp start`
+- Generated integration config uses: `npx @physics91/openrouter-mcp start`
 
 See:
 - `docs/CLAUDE_DESKTOP_GUIDE.md`

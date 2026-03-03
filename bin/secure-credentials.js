@@ -446,7 +446,7 @@ async function getApiKey() {
   }
 
   // 3. Try encrypted file
-  const encryptedKey = getFromEncryptedFile();
+  const encryptedKey = await getFromEncryptedFile();
   if (encryptedKey) {
     return { key: encryptedKey, source: 'encrypted-file' };
   }
