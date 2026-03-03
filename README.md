@@ -1,5 +1,13 @@
 ﻿# OpenRouter MCP Server
 
+[![npm version](https://img.shields.io/npm/v/@physics91/openrouter-mcp?logo=npm)](https://www.npmjs.com/package/@physics91/openrouter-mcp)
+[![repo version](https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/physics91/openrouter-mcp/develop/package.json&query=%24.version&label=repo%20version)](https://github.com/physics91/openrouter-mcp/blob/develop/package.json)
+[![npm downloads](https://img.shields.io/npm/dw/@physics91/openrouter-mcp?logo=npm)](https://www.npmjs.com/package/@physics91/openrouter-mcp)
+[![node](https://img.shields.io/node/v/@physics91/openrouter-mcp)](https://www.npmjs.com/package/@physics91/openrouter-mcp)
+[![license](https://img.shields.io/npm/l/@physics91/openrouter-mcp)](LICENSE)
+[![assurance required](https://github.com/physics91/openrouter-mcp/actions/workflows/assurance-required.yml/badge.svg?branch=develop)](https://github.com/physics91/openrouter-mcp/actions/workflows/assurance-required.yml?query=branch%3Adevelop)
+[![last commit](https://img.shields.io/github/last-commit/physics91/openrouter-mcp)](https://github.com/physics91/openrouter-mcp/commits/develop)
+
 A Model Context Protocol (MCP) server for OpenRouter. Use OpenRouter models from MCP clients (Claude Desktop, Claude Code, etc.) with chat, vision, benchmarking, and collective-intelligence tools.
 
 ## Features
