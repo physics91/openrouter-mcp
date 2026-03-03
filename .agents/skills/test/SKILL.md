@@ -9,6 +9,7 @@ description: Use when running tests, checking test results, verifying coverage, 
 
 - Prefer `python3` for running `run_tests.py` and installing Python dependencies.
 - If `python3` is unavailable but `python` exists, use `python` as fallback.
+- If pip installation is blocked by externally-managed environment (PEP 668), create and use local `.venv`.
 
 ## Running Tests
 1. If the user does not specify a suite, ask which suite to run. Default recommendation: `assurance` for PR readiness.
@@ -19,6 +20,11 @@ description: Use when running tests, checking test results, verifying coverage, 
 3. If `pytest-cov` is missing (assurance/coverage fails), install first:
    ```
    python3 -m pip install -r requirements-dev.txt
+   ```
+   If this fails with an externally-managed-environment error:
+   ```
+   python3 -m venv .venv
+   .venv/bin/python -m pip install -r requirements-dev.txt
    ```
 4. Report pass/fail outcome. Surface failing test names or coverage shortfall.
 
@@ -41,7 +47,7 @@ description: Use when running tests, checking test results, verifying coverage, 
 - `--no-cov`: Use only for debugging when speed is more important than coverage gating.
 
 ## Notes
-- The `assurance` suite also runs `npm run test:security` (Node.js) and requires `npm`.
+- The `assurance` suite runs `npm run test:security` (Node.js) only after the pytest gate succeeds, and requires `npm`.
 - If `node_modules/` is missing, `run_tests.py` may run `npm install --no-audit --no-fund` automatically.
 - For `real` suite, `OPENROUTER_API_KEY` must be set. This is interactive (prompts y/N).
 - Static linting is NOT part of this skill - use the `build` skill.

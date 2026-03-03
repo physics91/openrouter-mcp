@@ -10,7 +10,6 @@ pytest-timeout>=2.1.0
 pytest-xdist>=3.0.0
 pytest-benchmark>=4.0.0
 jsonschema>=4.0.0
-httpx-mock>=0.9.0; python_version < "3.13"
 
 # Code quality and formatting
 black>=23.0.0

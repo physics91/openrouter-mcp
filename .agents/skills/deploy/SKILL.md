@@ -11,6 +11,7 @@ Target: npm registry (`@physics91/openrouter-mcp`). Always manual, intentional.
 
 - Prefer `python3` for Python commands.
 - If `python3` is unavailable but `python` exists, use `python` as fallback.
+- If pip installation is blocked by externally-managed environment (PEP 668), run quality/test gates in local `.venv`.
 
 ## Pre-flight Checklist
 
@@ -45,4 +46,5 @@ Defined by `files` field in `package.json`:
 ## Notes
 - No automated publish CI exists. This is always a deliberate manual action.
 - The `prepublishOnly` script is a no-op; pre-flight checks above are the guard.
+- The assurance gate's Node security test runs only after the pytest gate succeeds.
 - Always confirm with the user before running `npm publish`.
