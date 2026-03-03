@@ -19,6 +19,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import List, Set
 
+from ..utils.text import EXTENDED_ENGLISH_STOPWORDS
+
 
 @dataclass
 class SimilarityScore:
@@ -190,69 +192,12 @@ class SemanticSimilarityCalculator:
         # Split on word boundaries and punctuation
         tokens = re.findall(r"\b\w+\b", text)
 
-        stopwords = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "being",
-            "this",
-            "that",
-            "it",
-            "as",
-            "from",
-            "into",
-            "than",
-            "then",
-            "so",
-            "such",
-            "these",
-            "those",
-            "their",
-            "there",
-            "here",
-            "we",
-            "they",
-            "you",
-            "your",
-            "our",
-            "us",
-            "i",
-            "me",
-            "my",
-            "mine",
-            "yours",
-            "he",
-            "she",
-            "him",
-            "her",
-            "his",
-            "hers",
-            "them",
-            "its",
-        }
-
         # Filter by minimum length
         return [
             token
             for token in tokens
-            if len(token) >= self.min_token_length and token not in stopwords
+            if len(token) >= self.min_token_length
+            and token not in EXTENDED_ENGLISH_STOPWORDS
         ]
 
     def _jaccard_similarity(self, text1: str, text2: str) -> float:

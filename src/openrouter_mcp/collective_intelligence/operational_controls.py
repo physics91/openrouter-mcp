@@ -118,6 +118,21 @@ class OperationalConfig:
             ),
         )
 
+    def limits_snapshot(self) -> Dict[str, Any]:
+        """Return shared operational limit fields for status reporting."""
+        return {
+            "max_history_size": self.storage.max_history_size,
+            "concurrency_config": {
+                "max_concurrent_tasks": self.concurrency.max_concurrent_tasks,
+                "max_concurrent_models": self.concurrency.max_concurrent_models,
+            },
+            "quota_config": {
+                "max_api_calls_per_request": self.quota.max_api_calls_per_request,
+                "max_tokens_per_request": self.quota.max_tokens_per_request,
+                "max_cost_per_request": self.quota.max_cost_per_request,
+            },
+        }
+
 
 class ConcurrencyLimiter:
     """Manages concurrency limits using semaphores."""
