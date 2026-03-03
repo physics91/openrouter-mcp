@@ -671,5 +671,5 @@ For security vulnerabilities in OpenRouter MCP:
 ---
 
 **Last Updated:** 2025-11-17
-**Version:** 1.0.0
+**Version:** 1.4.0
 **Next Review:** 2025-02-17

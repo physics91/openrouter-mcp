@@ -308,4 +308,4 @@ openrouter-mcp start --production
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0

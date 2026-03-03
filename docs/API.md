@@ -598,6 +598,6 @@ For a complete documentation overview, see the [Documentation Index](INDEX.md).
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0
 
 For more information, see the [main README](../README.md) or visit [OpenRouter Documentation](https://openrouter.ai/docs).
