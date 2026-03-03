@@ -6,22 +6,22 @@ These tests verify that the consensus engine correctly uses semantic similarity
 to group model responses, replacing the old length-based heuristic.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock
-from dataclasses import dataclass
 
-from openrouter_mcp.collective_intelligence.consensus_engine import (
-    ConsensusEngine,
-    ConsensusConfig,
-    ModelResponse,
-    ConsensusStrategy,
-)
+import pytest
+
 from openrouter_mcp.collective_intelligence.base import (
+    ModelInfo,
+    ModelProvider,
     ProcessingResult,
     TaskContext,
     TaskType,
-    ModelProvider,
-    ModelInfo,
+)
+from openrouter_mcp.collective_intelligence.consensus_engine import (
+    ConsensusConfig,
+    ConsensusEngine,
+    ConsensusStrategy,
+    ModelResponse,
 )
 
 
@@ -29,11 +29,13 @@ from openrouter_mcp.collective_intelligence.base import (
 def mock_model_provider():
     """Create a mock model provider."""
     provider = Mock(spec=ModelProvider)
-    provider.get_available_models = AsyncMock(return_value=[
-        ModelInfo(model_id="model_a", name="Model A", provider="test"),
-        ModelInfo(model_id="model_b", name="Model B", provider="test"),
-        ModelInfo(model_id="model_c", name="Model C", provider="test"),
-    ])
+    provider.get_available_models = AsyncMock(
+        return_value=[
+            ModelInfo(model_id="model_a", name="Model A", provider="test"),
+            ModelInfo(model_id="model_b", name="Model B", provider="test"),
+            ModelInfo(model_id="model_c", name="Model C", provider="test"),
+        ]
+    )
     return provider
 
 
@@ -62,27 +64,27 @@ class TestSemanticGrouping:
                 result=ProcessingResult(
                     content="Renewable energy reduces carbon emissions.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Renewable energy reduces carbon emissions.",
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="Renewable energy reduces carbon emissions.",
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -100,27 +102,27 @@ class TestSemanticGrouping:
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable and reduce carbon emissions.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable, and reduce carbon emissions.",  # Added comma
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable and reduce carbon emissions!",  # Added exclamation
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -138,27 +140,27 @@ class TestSemanticGrouping:
                 result=ProcessingResult(
                     content="Renewable energy reduces carbon emissions.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Python is a versatile programming language.",
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="The stock market is experiencing volatility.",
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -177,38 +179,37 @@ class TestSemanticGrouping:
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable and reduce carbon emissions.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Renewable energy is sustainable and helps reduce carbon emissions.",
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable and reduce greenhouse gas emissions.",
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
-
             # Group 2: Different topic (1 response)
             ModelResponse(
                 model_id="model_d",
                 result=ProcessingResult(
                     content="Python is excellent for data science and machine learning applications.",
                     confidence=0.87,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -232,29 +233,27 @@ class TestSemanticGrouping:
             ModelResponse(
                 model_id="model_a",
                 result=ProcessingResult(
-                    content="Yes.",  # 4 chars
-                    confidence=0.9,
-                    metadata={}
+                    content="Yes.", confidence=0.9, metadata={}  # 4 chars
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Yes, that is correct.",  # 22 chars (within 50)
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="Yes, that is absolutely correct and I completely agree with this assessment.",  # 77 chars (beyond 50 from first)
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -273,18 +272,18 @@ class TestSemanticGrouping:
                 result=ProcessingResult(
                     content="Machine learning models require large datasets for training.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="ML models need substantial amounts of data to train effectively.",
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
-                weight=1.0
+                weight=1.0,
             ),
         ]
 
@@ -306,11 +305,9 @@ class TestSemanticGrouping:
             ModelResponse(
                 model_id="model_a",
                 result=ProcessingResult(
-                    content="Single response",
-                    confidence=0.9,
-                    metadata={}
+                    content="Single response", confidence=0.9, metadata={}
                 ),
-                weight=1.0
+                weight=1.0,
             )
         ]
 
@@ -331,20 +328,18 @@ class TestSemanticGrouping:
                 ModelResponse(
                     model_id="model_a",
                     result=ProcessingResult(
-                        content="Hello world",
-                        confidence=0.9,
-                        metadata={}
+                        content="Hello world", confidence=0.9, metadata={}
                     ),
-                    weight=1.0
+                    weight=1.0,
                 ),
                 ModelResponse(
                     model_id="model_b",
                     result=ProcessingResult(
                         content="Hello world!",  # Minor difference
                         confidence=0.85,
-                        metadata={}
+                        metadata={},
                     ),
-                    weight=1.0
+                    weight=1.0,
                 ),
             ]
 
@@ -371,18 +366,18 @@ class TestSemanticGrouping:
                     result=ProcessingResult(
                         content="Machine learning is important.",
                         confidence=0.9,
-                        metadata={}
+                        metadata={},
                     ),
-                    weight=1.0
+                    weight=1.0,
                 ),
                 ModelResponse(
                     model_id="model_b",
                     result=ProcessingResult(
                         content="ML matters significantly.",
                         confidence=0.85,
-                        metadata={}
+                        metadata={},
                     ),
-                    weight=1.0
+                    weight=1.0,
                 ),
             ]
 
@@ -405,7 +400,7 @@ class TestConsensusWithSemanticGrouping:
             task_id="test_task",
             task_type=TaskType.REASONING,
             content="What are the benefits of renewable energy?",
-            metadata={}
+            metadata={},
         )
 
         # Create responses where 3 models give similar answers (Group 1)
@@ -417,54 +412,52 @@ class TestConsensusWithSemanticGrouping:
                 result=ProcessingResult(
                     content="Renewable energy is sustainable and reduces carbon emissions.",
                     confidence=0.9,
-                    metadata={}
+                    metadata={},
                 ),
                 weight=1.0,
-                reliability_score=1.0
+                reliability_score=1.0,
             ),
             ModelResponse(
                 model_id="model_b",
                 result=ProcessingResult(
                     content="Renewable energy sources are sustainable and help reduce carbon emissions.",
                     confidence=0.85,
-                    metadata={}
+                    metadata={},
                 ),
                 weight=1.0,
-                reliability_score=1.0
+                reliability_score=1.0,
             ),
             ModelResponse(
                 model_id="model_c",
                 result=ProcessingResult(
                     content="Renewable energy is sustainable and reduces greenhouse gas emissions.",
                     confidence=0.88,
-                    metadata={}
+                    metadata={},
                 ),
                 weight=1.0,
-                reliability_score=1.0
+                reliability_score=1.0,
             ),
-
             # Group 2: Economic focus (1 model)
             ModelResponse(
                 model_id="model_d",
                 result=ProcessingResult(
                     content="Renewable energy creates jobs and drives economic growth.",
                     confidence=0.87,
-                    metadata={}
+                    metadata={},
                 ),
                 weight=1.0,
-                reliability_score=1.0
+                reliability_score=1.0,
             ),
-
             # Group 3: Technology focus (1 model)
             ModelResponse(
                 model_id="model_e",
                 result=ProcessingResult(
                     content="Advances in solar and wind technology have improved efficiency.",
                     confidence=0.86,
-                    metadata={}
+                    metadata={},
                 ),
                 weight=1.0,
-                reliability_score=1.0
+                reliability_score=1.0,
             ),
         ]
 
@@ -473,9 +466,11 @@ class TestConsensusWithSemanticGrouping:
 
         # Should select from Group 1 (largest semantic group)
         # The consensus content should be from one of the sustainability-focused responses
-        assert "sustainable" in result.consensus_content.lower() or \
-               "carbon" in result.consensus_content.lower() or \
-               "emissions" in result.consensus_content.lower()
+        assert (
+            "sustainable" in result.consensus_content.lower()
+            or "carbon" in result.consensus_content.lower()
+            or "emissions" in result.consensus_content.lower()
+        )
 
         # Agreement level should reflect 3/5 agreement
         assert result.agreement_level.value in ["high_consensus", "moderate_consensus"]

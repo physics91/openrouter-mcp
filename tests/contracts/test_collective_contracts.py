@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from jsonschema import Draft202012Validator
 
-from tests.fixtures.mock_clients import MockClientFactory
 from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
 from openrouter_mcp.handlers.collective_intelligence import (
     AdaptiveModelRequest,
@@ -23,7 +22,7 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _cross_model_validation_impl,
     _ensemble_reasoning_impl,
 )
-
+from tests.fixtures.mock_clients import MockClientFactory
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
 MODEL_IDS = ["openai/gpt-4", "anthropic/claude-3-opus"]
@@ -58,7 +57,9 @@ def contract_mock_client():
             },
         ]
     )
-    client.get_model_pricing = AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002})
+    client.get_model_pricing = AsyncMock(
+        return_value={"prompt": 0.00001, "completion": 0.00002}
+    )
     client.chat_completion = AsyncMock(
         return_value={
             "choices": [
@@ -85,7 +86,9 @@ def _assert_schema(instance: dict, schema_file: str) -> None:
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collective_chat_completion_contract(mock_get_client, contract_mock_client):
+async def test_collective_chat_completion_contract(
+    mock_get_client, contract_mock_client
+):
     mock_get_client.return_value = contract_mock_client
 
     response = await _collective_chat_completion_impl(
@@ -157,7 +160,9 @@ async def test_cross_model_validation_contract(mock_get_client, contract_mock_cl
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collaborative_problem_solving_contract(mock_get_client, contract_mock_client):
+async def test_collaborative_problem_solving_contract(
+    mock_get_client, contract_mock_client
+):
     mock_get_client.return_value = contract_mock_client
 
     response = await _collaborative_problem_solving_impl(

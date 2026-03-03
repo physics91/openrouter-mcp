@@ -5,10 +5,8 @@ Tests for server initialization, configuration validation, shutdown handling,
 and signal registration. Targets 0% coverage areas identified in Phase 7.
 """
 
-import asyncio
-import os
-import signal
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -57,8 +55,9 @@ class TestCreateApp:
         """Should return the FastMCP instance."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
 
-        from openrouter_mcp.server import create_app
         from fastmcp import FastMCP
+
+        from openrouter_mcp.server import create_app
 
         app = create_app()
 
@@ -194,8 +193,7 @@ class TestServerInitialization:
             create_app()
 
         assert any(
-            "initialized successfully" in record.message
-            for record in caplog.records
+            "initialized successfully" in record.message for record in caplog.records
         )
 
     def test_initialization_validates_first(self, monkeypatch):
@@ -217,8 +215,8 @@ class TestMCPRegistryIntegration:
         """Should use the shared MCP instance from registry."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
 
-        from openrouter_mcp.server import create_app
         from openrouter_mcp.mcp_registry import mcp
+        from openrouter_mcp.server import create_app
 
         app = create_app()
 
@@ -230,11 +228,10 @@ class TestMCPRegistryIntegration:
 
         # Import server to trigger handler registration
         import importlib
+
         import openrouter_mcp.server
 
         importlib.reload(openrouter_mcp.server)
-
-        from openrouter_mcp.mcp_registry import mcp
 
         # MCP should have tools registered
         # Note: Actual tool count depends on handlers
@@ -260,10 +257,7 @@ class TestErrorHandling:
                     # Should not raise
                     main()
 
-        assert any(
-            "shutdown" in record.message.lower()
-            for record in caplog.records
-        )
+        assert any("shutdown" in record.message.lower() for record in caplog.records)
 
     def test_main_raises_on_other_errors(self, monkeypatch):
         """Should re-raise non-interrupt exceptions."""

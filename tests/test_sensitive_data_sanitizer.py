@@ -5,7 +5,6 @@ Tests verify that sensitive data is properly masked, hashed, and sanitized
 before being logged, preventing security leaks.
 """
 
-import pytest
 from src.openrouter_mcp.client.openrouter import SensitiveDataSanitizer
 
 
@@ -51,7 +50,7 @@ class TestSanitizeHeaders:
         """Test sanitization of Authorization header with Bearer token."""
         headers = {
             "Authorization": "Bearer sk-or-v1-1234567890abcdef",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         sanitized = SensitiveDataSanitizer.sanitize_headers(headers)
@@ -64,10 +63,7 @@ class TestSanitizeHeaders:
 
     def test_sanitize_api_key_header(self):
         """Test sanitization of X-API-Key header."""
-        headers = {
-            "X-API-Key": "secret-key-12345",
-            "Content-Type": "application/json"
-        }
+        headers = {"X-API-Key": "secret-key-12345", "Content-Type": "application/json"}
 
         sanitized = SensitiveDataSanitizer.sanitize_headers(headers)
 
@@ -78,7 +74,7 @@ class TestSanitizeHeaders:
         """Test that header sanitization is case-insensitive."""
         headers = {
             "authorization": "Bearer sk-test-123",
-            "AUTHORIZATION": "Bearer sk-test-456"
+            "AUTHORIZATION": "Bearer sk-test-456",
         }
 
         sanitized = SensitiveDataSanitizer.sanitize_headers(headers)
@@ -91,7 +87,7 @@ class TestSanitizeHeaders:
         headers = {
             "Content-Type": "application/json",
             "X-Title": "MyApp",
-            "HTTP-Referer": "https://example.com"
+            "HTTP-Referer": "https://example.com",
         }
 
         sanitized = SensitiveDataSanitizer.sanitize_headers(headers)
@@ -168,7 +164,7 @@ class TestSanitizeMessages:
         """Test message sanitization in hash mode."""
         messages = [
             {"role": "user", "content": "What is the capital of France?"},
-            {"role": "assistant", "content": "The capital of France is Paris."}
+            {"role": "assistant", "content": "The capital of France is Paris."},
         ]
 
         sanitized = SensitiveDataSanitizer.sanitize_messages(messages, mode="hash")
@@ -183,9 +179,7 @@ class TestSanitizeMessages:
     def test_sanitize_messages_truncate_mode(self):
         """Test message sanitization in truncate mode."""
         long_content = "A" * 200
-        messages = [
-            {"role": "user", "content": long_content}
-        ]
+        messages = [{"role": "user", "content": long_content}]
 
         sanitized = SensitiveDataSanitizer.sanitize_messages(messages, mode="truncate")
 
@@ -197,9 +191,7 @@ class TestSanitizeMessages:
 
     def test_sanitize_messages_metadata_mode(self):
         """Test message sanitization in metadata mode."""
-        messages = [
-            {"role": "user", "content": "Test message"}
-        ]
+        messages = [{"role": "user", "content": "Test message"}]
 
         sanitized = SensitiveDataSanitizer.sanitize_messages(messages, mode="metadata")
 
@@ -217,8 +209,11 @@ class TestSanitizeMessages:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "What's in this image?"},
-                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
-                ]
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,..."},
+                    },
+                ],
             }
         ]
 
@@ -237,14 +232,14 @@ class TestSanitizePayload:
         """Test basic payload sanitization."""
         payload = {
             "model": "openai/gpt-4",
-            "messages": [
-                {"role": "user", "content": "Sensitive user query"}
-            ],
+            "messages": [{"role": "user", "content": "Sensitive user query"}],
             "temperature": 0.7,
-            "max_tokens": 100
+            "max_tokens": 100,
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_payload(payload, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_payload(
+            payload, enable_verbose=False
+        )
 
         assert sanitized["model"] == "openai/gpt-4"
         assert sanitized["temperature"] == 0.7
@@ -258,13 +253,13 @@ class TestSanitizePayload:
         """Test payload sanitization with verbose mode enabled."""
         payload = {
             "model": "openai/gpt-4",
-            "messages": [
-                {"role": "user", "content": "A" * 200}
-            ],
-            "temperature": 0.7
+            "messages": [{"role": "user", "content": "A" * 200}],
+            "temperature": 0.7,
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_payload(payload, enable_verbose=True)
+        sanitized = SensitiveDataSanitizer.sanitize_payload(
+            payload, enable_verbose=True
+        )
 
         assert "messages" in sanitized
         # In verbose mode, should have truncated content
@@ -279,10 +274,12 @@ class TestSanitizePayload:
             "top_p": 0.9,
             "frequency_penalty": 0.5,
             "presence_penalty": 0.3,
-            "n": 1
+            "n": 1,
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_payload(payload, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_payload(
+            payload, enable_verbose=False
+        )
 
         assert sanitized["top_p"] == 0.9
         assert sanitized["frequency_penalty"] == 0.5
@@ -303,19 +300,17 @@ class TestSanitizeResponse:
                 {
                     "message": {
                         "role": "assistant",
-                        "content": "Sensitive AI response content"
+                        "content": "Sensitive AI response content",
                     },
-                    "finish_reason": "stop"
+                    "finish_reason": "stop",
                 }
             ],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 20,
-                "total_tokens": 30
-            }
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_response(response, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_response(
+            response, enable_verbose=False
+        )
 
         assert sanitized["id"] == "chatcmpl-123"
         assert sanitized["model"] == "openai/gpt-4"
@@ -331,16 +326,15 @@ class TestSanitizeResponse:
             "created": 1234567890,
             "choices": [
                 {
-                    "message": {
-                        "role": "assistant",
-                        "content": "A" * 200
-                    },
-                    "finish_reason": "stop"
+                    "message": {"role": "assistant", "content": "A" * 200},
+                    "finish_reason": "stop",
                 }
-            ]
+            ],
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_response(response, enable_verbose=True)
+        sanitized = SensitiveDataSanitizer.sanitize_response(
+            response, enable_verbose=True
+        )
 
         assert "first_choice" in sanitized
         assert "content" in sanitized["first_choice"]
@@ -356,11 +350,13 @@ class TestSanitizeResponse:
             "usage": {
                 "prompt_tokens": 50,
                 "completion_tokens": 100,
-                "total_tokens": 150
-            }
+                "total_tokens": 150,
+            },
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_response(response, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_response(
+            response, enable_verbose=False
+        )
 
         assert sanitized["usage"]["prompt_tokens"] == 50
         assert sanitized["usage"]["completion_tokens"] == 100
@@ -375,7 +371,7 @@ class TestSecurityGuarantees:
         secret_key = "sk-or-v1-secret-api-key-do-not-log"
         headers = {
             "Authorization": f"Bearer {secret_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         sanitized = SensitiveDataSanitizer.sanitize_headers(headers)
@@ -389,12 +385,12 @@ class TestSecurityGuarantees:
         secret_prompt = "My SSN is 123-45-6789 and my password is hunter2"
         payload = {
             "model": "openai/gpt-4",
-            "messages": [
-                {"role": "user", "content": secret_prompt}
-            ]
+            "messages": [{"role": "user", "content": secret_prompt}],
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_payload(payload, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_payload(
+            payload, enable_verbose=False
+        )
         sanitized_str = str(sanitized)
 
         assert "123-45-6789" not in sanitized_str
@@ -409,16 +405,15 @@ class TestSecurityGuarantees:
             "model": "openai/gpt-4",
             "choices": [
                 {
-                    "message": {
-                        "role": "assistant",
-                        "content": secret_response
-                    },
-                    "finish_reason": "stop"
+                    "message": {"role": "assistant", "content": secret_response},
+                    "finish_reason": "stop",
                 }
-            ]
+            ],
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_response(response, enable_verbose=False)
+        sanitized = SensitiveDataSanitizer.sanitize_response(
+            response, enable_verbose=False
+        )
         sanitized_str = str(sanitized)
 
         assert "4111-1111-1111-1111" not in sanitized_str
@@ -429,12 +424,12 @@ class TestSecurityGuarantees:
         long_secret = "My secret is: " + ("X" * 200)
         payload = {
             "model": "openai/gpt-4",
-            "messages": [
-                {"role": "user", "content": long_secret}
-            ]
+            "messages": [{"role": "user", "content": long_secret}],
         }
 
-        sanitized = SensitiveDataSanitizer.sanitize_payload(payload, enable_verbose=True)
+        sanitized = SensitiveDataSanitizer.sanitize_payload(
+            payload, enable_verbose=True
+        )
         sanitized_str = str(sanitized)
 
         # The first 50 chars might be logged, but not the full secret

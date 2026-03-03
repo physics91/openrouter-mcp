@@ -14,18 +14,18 @@ Key Features:
 
 import asyncio
 import logging
-from typing import Callable, Optional, TypeVar
 from contextlib import asynccontextmanager
+from typing import Callable, Optional, TypeVar
+
+from .adaptive_router import AdaptiveRouter
+from .base import ModelProvider
+from .collaborative_solver import CollaborativeSolver
+from .consensus_engine import ConsensusConfig, ConsensusEngine
+from .cross_validator import CrossValidator
+from .ensemble_reasoning import EnsembleReasoner
+from .operational_controls import OperationalConfig
 
 T = TypeVar("T")
-
-from .consensus_engine import ConsensusEngine, ConsensusConfig
-from .collaborative_solver import CollaborativeSolver
-from .ensemble_reasoning import EnsembleReasoner
-from .adaptive_router import AdaptiveRouter
-from .cross_validator import CrossValidator
-from .operational_controls import OperationalConfig
-from .base import ModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class CollectiveIntelligenceLifecycleManager:
     def configure(
         self,
         model_provider: ModelProvider,
-        operational_config: Optional[OperationalConfig] = None
+        operational_config: Optional[OperationalConfig] = None,
     ) -> None:
         """
         Configure the lifecycle manager with required dependencies.
@@ -71,7 +71,9 @@ class CollectiveIntelligenceLifecycleManager:
             operational_config: Optional operational configuration (defaults to conservative)
         """
         self._model_provider = model_provider
-        self._operational_config = operational_config or OperationalConfig.conservative()
+        self._operational_config = (
+            operational_config or OperationalConfig.conservative()
+        )
         logger.info("CollectiveIntelligenceLifecycleManager configured")
 
     async def _get_or_create_component(
@@ -84,7 +86,9 @@ class CollectiveIntelligenceLifecycleManager:
         if self._is_shutdown:
             raise RuntimeError("LifecycleManager is shutdown, cannot create instances")
         if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
+            raise RuntimeError(
+                "LifecycleManager not configured. Call configure() first."
+            )
 
         async with self._init_lock:
             instance = getattr(self, attr_name)
@@ -96,14 +100,15 @@ class CollectiveIntelligenceLifecycleManager:
             return instance
 
     async def get_consensus_engine(
-        self,
-        config: Optional[ConsensusConfig] = None
+        self, config: Optional[ConsensusConfig] = None
     ) -> ConsensusEngine:
         """Get or create singleton ConsensusEngine instance."""
+
         def factory() -> ConsensusEngine:
             cfg = config if config is not None else ConsensusConfig()
             cfg.operational_config = self._operational_config
             return ConsensusEngine(self._model_provider, cfg)
+
         return await self._get_or_create_component(
             "_consensus_engine", factory, "ConsensusEngine"
         )
@@ -171,17 +176,17 @@ class CollectiveIntelligenceLifecycleManager:
 
         if self._ensemble_reasoner is not None:
             logger.info("Shutting down EnsembleReasoner...")
-            if hasattr(self._ensemble_reasoner, 'shutdown'):
+            if hasattr(self._ensemble_reasoner, "shutdown"):
                 shutdown_tasks.append(self._ensemble_reasoner.shutdown())
 
         if self._adaptive_router is not None:
             logger.info("Shutting down AdaptiveRouter...")
-            if hasattr(self._adaptive_router, 'shutdown'):
+            if hasattr(self._adaptive_router, "shutdown"):
                 shutdown_tasks.append(self._adaptive_router.shutdown())
 
         if self._cross_validator is not None:
             logger.info("Shutting down CrossValidator...")
-            if hasattr(self._cross_validator, 'shutdown'):
+            if hasattr(self._cross_validator, "shutdown"):
                 shutdown_tasks.append(self._cross_validator.shutdown())
 
         # Execute all shutdown tasks

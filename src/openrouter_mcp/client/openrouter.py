@@ -1,37 +1,44 @@
+import json as json_lib
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional
+
 import httpx
-import json as json_lib
+
+# Import centralized configuration constants
+from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
-# Import centralized configuration constants
-from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults
-# Import sanitizer from utils (extracted for SRP compliance)
-from ..utils.sanitizer import SensitiveDataSanitizer
-from ..utils.http import build_openrouter_headers
-from ..utils.pricing import normalize_pricing
 from ..utils.async_utils import maybe_await
 from ..utils.env import get_env_value, get_required_env
+from ..utils.http import build_openrouter_headers
+from ..utils.pricing import normalize_pricing
+
+# Import sanitizer from utils (extracted for SRP compliance)
+from ..utils.sanitizer import SensitiveDataSanitizer
 
 
 class OpenRouterError(Exception):
     """Base exception for OpenRouter API errors."""
+
     pass
 
 
 class AuthenticationError(OpenRouterError):
     """Raised when API key is invalid or missing."""
+
     pass
 
 
 class RateLimitError(OpenRouterError):
     """Raised when rate limit is exceeded."""
+
     pass
 
 
 class InvalidRequestError(OpenRouterError):
     """Raised when request is invalid."""
+
     pass
 
 
@@ -42,10 +49,10 @@ class InvalidRequestError(OpenRouterError):
 
 class OpenRouterClient:
     """Client for OpenRouter API.
-    
+
     This client provides async methods to interact with the OpenRouter API,
     including model listing, chat completions, and usage tracking.
-    
+
     Example:
         >>> async with OpenRouterClient(api_key="your-key") as client:
         ...     models = await client.list_models()
@@ -54,7 +61,7 @@ class OpenRouterClient:
         ...         messages=[{"role": "user", "content": "Hello!"}]
         ...     )
     """
-    
+
     def __init__(
         self,
         api_key: str,
@@ -65,7 +72,7 @@ class OpenRouterClient:
         logger: Optional[logging.Logger] = None,
         enable_cache: bool = True,
         cache_ttl: int = CacheConfig.DEFAULT_TTL_SECONDS,
-        enable_verbose_logging: bool = False
+        enable_verbose_logging: bool = False,
     ) -> None:
         """Initialize OpenRouter client.
 
@@ -113,9 +120,7 @@ class OpenRouterClient:
             # Minimum TTL to prevent too-frequent refreshes
             ttl_hours = max(CacheConfig.MIN_TTL_HOURS, cache_ttl / 3600.0)
             self._model_cache = ModelCache(
-                ttl_hours=ttl_hours,
-                api_key=self.api_key,
-                base_url=self.base_url
+                ttl_hours=ttl_hours, api_key=self.api_key, base_url=self.base_url
             )
         else:
             self._model_cache = None
@@ -135,9 +140,9 @@ class OpenRouterClient:
             api_key=api_key,
             base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL),
             app_name=get_env_value(EnvVars.APP_NAME),
-            http_referer=get_env_value(EnvVars.HTTP_REFERER)
+            http_referer=get_env_value(EnvVars.HTTP_REFERER),
         )
-    
+
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for requests."""
         return build_openrouter_headers(
@@ -146,25 +151,27 @@ class OpenRouterClient:
             http_referer=self.http_referer,
             fallback_to_env=False,
         )
-    
+
     def _validate_model(self, model: str) -> None:
         """Validate model parameter."""
         if not model or model.strip() == "":
             raise ValueError("Model cannot be empty")
-    
-    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:       
+
+    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:
         """Validate messages parameter."""
         if not messages:
             raise ValueError("Messages cannot be empty")
-        
+
         valid_roles = {"system", "user", "assistant"}
-        
+
         for message in messages:
             if "role" not in message or "content" not in message:
                 raise ValueError("Message must have 'role' and 'content' fields")
 
             if message["role"] not in valid_roles:
-                raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
+                raise ValueError(
+                    f"Invalid role: {message['role']}. Must be one of {valid_roles}"
+                )
 
     def _validate_messages_if_text(self, messages: List[Dict[str, Any]]) -> None:
         """Validate messages when they are simple text-only payloads."""
@@ -238,7 +245,7 @@ class OpenRouterClient:
         method: str,
         endpoint: str,
         json: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None
+        params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Make HTTP request to OpenRouter API.
 
@@ -260,11 +267,7 @@ class OpenRouterClient:
 
         try:
             response = await self._client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=json,
-                params=params
+                method=method, url=url, headers=headers, json=json, params=params
             )
 
             self.logger.debug(f"Response status: {response.status_code}")
@@ -283,24 +286,28 @@ class OpenRouterClient:
                         self.logger.debug(f"Response data: {sanitized_response}")
                     else:
                         # For non-completion responses (like model lists), log keys only
-                        self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+                        self.logger.debug(
+                            f"Response data keys: {list(response_data.keys())}"
+                        )
                 else:
-                    self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+                    self.logger.debug(
+                        f"Response data keys: {list(response_data.keys())}"
+                    )
             else:
                 self.logger.debug("Response data type: non-dict response")
 
             return response_data
 
         except httpx.HTTPStatusError as e:
-            self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
+            self.logger.warning(
+                f"HTTP error {e.response.status_code} for {method} {url}"
+            )
             await self._handle_http_error(e.response)
         except Exception as e:
             self._handle_request_error(e, method, url)
 
     async def _stream_request(
-        self,
-        endpoint: str,
-        json_data: Dict[str, Any]
+        self, endpoint: str, json_data: Dict[str, Any]
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Make streaming request to OpenRouter API.
 
@@ -320,27 +327,28 @@ class OpenRouterClient:
 
         try:
             async with self._client.stream(
-                "POST",
-                url,
-                headers=headers,
-                json=json_data
+                "POST", url, headers=headers, json=json_data
             ) as response:
                 self.logger.debug(f"Stream response status: {response.status_code}")
-                await maybe_await(response.raise_for_status())      
+                await maybe_await(response.raise_for_status())
 
                 chunk_count = 0
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data = line[6:]  # Remove "data: " prefix
                         if data.strip() == "[DONE]":
-                            self.logger.debug(f"Stream completed after {chunk_count} chunks")
+                            self.logger.debug(
+                                f"Stream completed after {chunk_count} chunks"
+                            )
                             break
                         try:
                             chunk = json_lib.loads(data)
                             chunk_count += 1
 
                             # Log chunk metadata only (don't log content even in verbose mode for streaming)
-                            if chunk_count % 10 == 1:  # Log every 10th chunk to reduce noise
+                            if (
+                                chunk_count % 10 == 1
+                            ):  # Log every 10th chunk to reduce noise
                                 self.logger.debug(
                                     f"Streaming chunk {chunk_count} "
                                     f"(keys: {list(chunk.keys()) if isinstance(chunk, dict) else 'non-dict'})"
@@ -355,11 +363,13 @@ class OpenRouterClient:
                             continue
 
         except httpx.HTTPStatusError as e:
-            self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
+            self.logger.warning(
+                f"HTTP error {e.response.status_code} for streaming POST {url}"
+            )
             await self._handle_http_error(e.response)
         except Exception as e:
             self._handle_request_error(e, "streaming POST", url)
-    
+
     async def _handle_http_error(self, response: httpx.Response) -> None:
         """Handle HTTP errors from OpenRouter API.
 
@@ -371,9 +381,11 @@ class OpenRouterClient:
         except (json_lib.JSONDecodeError, KeyError):
             # SECURITY: Don't include raw response.text - it may contain sensitive data
             # Truncate and sanitize the response body
-            response_preview = SensitiveDataSanitizer.truncate_content(
-                response.text, max_length=100
-            ) if response.text else "No response body"
+            response_preview = (
+                SensitiveDataSanitizer.truncate_content(response.text, max_length=100)
+                if response.text
+                else "No response body"
+            )
             error_message = f"HTTP {response.status_code}: {response_preview}"
 
         if response.status_code == 401:
@@ -384,12 +396,12 @@ class OpenRouterClient:
             raise InvalidRequestError(error_message)
         else:
             raise OpenRouterError(f"API error: {error_message}")
-    
+
     async def list_models(
         self,
         filter_by: Optional[str] = None,
         use_cache: bool = True,
-        _bypass_cache: bool = False
+        _bypass_cache: bool = False,
     ) -> List[Dict[str, Any]]:
         """List available models from OpenRouter.
 
@@ -428,7 +440,8 @@ class OpenRouterClient:
                     if filter_by:
                         filter_lower = filter_by.lower()
                         filtered_models = [
-                            model for model in all_models
+                            model
+                            for model in all_models
                             if filter_lower in model.get("name", "").lower()
                             or filter_lower in model.get("id", "").lower()
                         ]
@@ -441,7 +454,9 @@ class OpenRouterClient:
                 # Continue to API fetch
 
         # Fallback: Fetch directly from API if cache is disabled or failed
-        self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
+        self.logger.info(
+            f"Fetching models directly from API with filter: {filter_by or 'none'}"
+        )
 
         params = {}
         if filter_by:
@@ -452,13 +467,13 @@ class OpenRouterClient:
 
         self.logger.info(f"Retrieved {len(models)} models from API")
         return models
-    
+
     async def get_model_info(self, model: str) -> Dict[str, Any]:
         """Get information about a specific model.
-        
+
         Args:
             model: Model identifier (e.g., "openai/gpt-4")
-            
+
         Returns:
             Model information dictionary
         """
@@ -486,7 +501,7 @@ class OpenRouterClient:
             self.logger.warning(f"Failed to fetch pricing for model {model}: {e}")
 
         return normalize_pricing(pricing)
-    
+
     async def chat_completion(
         self,
         model: str,
@@ -494,10 +509,10 @@ class OpenRouterClient:
         temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         stream: bool = ModelDefaults.STREAM,
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """Create a chat completion.
-        
+
         Args:
             model: Model to use
             messages: List of message dictionaries (can include image content)
@@ -505,7 +520,7 @@ class OpenRouterClient:
             max_tokens: Maximum tokens to generate
             stream: Whether to stream the response
             **kwargs: Additional parameters
-            
+
         Returns:
             Chat completion response
         """
@@ -519,24 +534,24 @@ class OpenRouterClient:
         )
 
         return await self._make_request("POST", "/chat/completions", json=payload)
-    
+
     async def stream_chat_completion(
         self,
         model: str,
         messages: List[Dict[str, Any]],
         temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
-        **kwargs
+        **kwargs,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Create a streaming chat completion.
-        
+
         Args:
             model: Model to use
             messages: List of message dictionaries (can include image content)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             **kwargs: Additional parameters
-            
+
         Yields:
             Chat completion chunks
         """
@@ -551,18 +566,16 @@ class OpenRouterClient:
 
         async for chunk in self._stream_request("/chat/completions", payload):
             yield chunk
-    
+
     async def track_usage(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> Dict[str, Any]:
         """Track API usage statistics.
-        
+
         Args:
             start_date: Start date for usage tracking (YYYY-MM-DD)
             end_date: End date for usage tracking (YYYY-MM-DD)
-            
+
         Returns:
             Usage statistics dictionary
         """
@@ -571,33 +584,33 @@ class OpenRouterClient:
             params["start_date"] = start_date
         if end_date:
             params["end_date"] = end_date
-        
+
         return await self._make_request("GET", "/generation", params=params)
-    
+
     async def close(self) -> None:
         """Close the HTTP client."""
         await self._client.aclose()
-    
+
     def get_cache_info(self) -> Optional[Dict[str, Any]]:
         """Get information about the model cache.
-        
+
         Returns:
             Cache information dictionary or None if cache is disabled.
         """
         if self._model_cache:
             return self._model_cache.get_cache_stats()
         return None
-    
+
     async def clear_cache(self) -> None:
         """Clear the model cache."""
         if self._model_cache:
             self._model_cache.clear()
             self.logger.info("Model cache cleared")
-    
+
     async def __aenter__(self) -> "OpenRouterClient":
         """Async context manager entry."""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit."""
         await self.close()

@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from src.openrouter_mcp.free.router import FreeModelRouter
 
 
@@ -32,6 +34,7 @@ def _reset_handler_singletons():
     """Reset handler module-level singletons between tests to prevent state leakage."""
     yield
     from src.openrouter_mcp.handlers import free_chat as handler_module
+
     handler_module._router = None
     handler_module._router_lock = None
     # _metrics and _classifier are added in Task 8. Setting to None here is safe

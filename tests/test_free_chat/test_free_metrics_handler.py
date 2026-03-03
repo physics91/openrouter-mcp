@@ -1,17 +1,20 @@
 """Tests for the get_free_model_metrics MCP tool handler."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from src.openrouter_mcp.handlers.free_chat import get_free_model_metrics
+import pytest
+
 from src.openrouter_mcp.free.metrics import ModelMetrics
+from src.openrouter_mcp.handlers.free_chat import get_free_model_metrics
 
 
 class TestGetFreeModelMetrics:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_returns_empty_metrics(self):
-        with patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics:
             mock_collector = MagicMock()
             mock_collector.get_all_metrics.return_value = {}
             mock_get_metrics.return_value = mock_collector
@@ -23,12 +26,17 @@ class TestGetFreeModelMetrics:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_returns_metrics_with_data(self):
-        with patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics:
             mock_collector = MagicMock()
             mock_collector.get_all_metrics.return_value = {
                 "google/gemma:free": ModelMetrics(
-                    total_requests=10, success_count=9, failure_count=1,
-                    total_latency_ms=4500.0, total_tokens=900,
+                    total_requests=10,
+                    success_count=9,
+                    failure_count=1,
+                    total_latency_ms=4500.0,
+                    total_tokens=900,
                 ),
             }
             mock_collector.get_performance_score.return_value = 0.85

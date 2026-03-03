@@ -24,9 +24,10 @@ Usage:
         result = await client.list_models()
 """
 
-import logging
 import asyncio
+import logging
 from typing import Optional
+
 from fastmcp import FastMCP
 
 from .config.constants import APIConfig, CacheConfig, EnvVars
@@ -82,7 +83,9 @@ async def get_shared_client():
     if _client_initialized and _client_instance is not None:
         loop_matches = _client_loop is None or _client_loop is current_loop
         loop_closed = _client_loop.is_closed() if _client_loop is not None else False
-        key_matches = (not env_key) or (getattr(_client_instance, "api_key", None) == env_key)
+        key_matches = (not env_key) or (
+            getattr(_client_instance, "api_key", None) == env_key
+        )
 
         if loop_matches and not loop_closed and key_matches:
             return _client_instance
@@ -95,13 +98,19 @@ async def get_shared_client():
         # Double-check after acquiring lock (another coroutine might have initialized)
         if _client_initialized and _client_instance is not None:
             loop_matches = _client_loop is None or _client_loop is current_loop
-            loop_closed = _client_loop.is_closed() if _client_loop is not None else False
-            key_matches = (not env_key) or (getattr(_client_instance, "api_key", None) == env_key)
+            loop_closed = (
+                _client_loop.is_closed() if _client_loop is not None else False
+            )
+            key_matches = (not env_key) or (
+                getattr(_client_instance, "api_key", None) == env_key
+            )
 
             if loop_matches and not loop_closed and key_matches:
                 return _client_instance
 
-            logger.info("Reinitializing shared OpenRouterClient due to loop or key change")
+            logger.info(
+                "Reinitializing shared OpenRouterClient due to loop or key change"
+            )
             try:
                 await _client_instance.__aexit__(None, None, None)
             except Exception as e:
@@ -125,7 +134,7 @@ async def get_shared_client():
             app_name=get_env_value(EnvVars.APP_NAME),
             http_referer=get_env_value(EnvVars.HTTP_REFERER),
             enable_cache=True,
-            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS
+            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS,
         )
 
         # Enter the async context manager once

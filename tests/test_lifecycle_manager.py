@@ -10,18 +10,15 @@ These tests verify that:
 """
 
 import asyncio
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
 
 from openrouter_mcp.collective_intelligence import (
+    CollectiveIntelligenceLifecycleManager,
+    ModelInfo,
+    ProcessingResult,
     get_lifecycle_manager,
     shutdown_lifecycle_manager,
-    CollectiveIntelligenceLifecycleManager,
-    TaskContext,
-    TaskType,
-    ModelInfo,
-    ProcessingResult
 )
 
 
@@ -37,7 +34,7 @@ class MockModelProvider:
             confidence=0.8,
             processing_time=0.1,
             tokens_used=100,
-            cost=0.001
+            cost=0.001,
         )
 
     async def get_available_models(self):
@@ -48,15 +45,15 @@ class MockModelProvider:
                 name="Model 1",
                 provider="test",
                 context_length=4096,
-                cost_per_token=0.00001
+                cost_per_token=0.00001,
             ),
             ModelInfo(
                 model_id="model-2",
                 name="Model 2",
                 provider="test",
                 context_length=8192,
-                cost_per_token=0.00002
-            )
+                cost_per_token=0.00002,
+            ),
         ]
 
 
@@ -71,6 +68,7 @@ async def lifecycle_manager(mock_model_provider):
     """Provide a fresh lifecycle manager for each test."""
     # Reset the global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     manager = await get_lifecycle_manager()
@@ -88,6 +86,7 @@ async def test_singleton_creation():
     """Test that lifecycle manager is a singleton."""
     # Reset global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     try:
@@ -107,7 +106,9 @@ async def test_consensus_engine_singleton(lifecycle_manager):
     engine1 = await lifecycle_manager.get_consensus_engine()
     engine2 = await lifecycle_manager.get_consensus_engine()
 
-    assert engine1 is engine2, "ConsensusEngine should be a singleton within lifecycle manager"
+    assert (
+        engine1 is engine2
+    ), "ConsensusEngine should be a singleton within lifecycle manager"
 
 
 @pytest.mark.asyncio
@@ -116,7 +117,9 @@ async def test_collaborative_solver_singleton(lifecycle_manager):
     solver1 = await lifecycle_manager.get_collaborative_solver()
     solver2 = await lifecycle_manager.get_collaborative_solver()
 
-    assert solver1 is solver2, "CollaborativeSolver should be a singleton within lifecycle manager"
+    assert (
+        solver1 is solver2
+    ), "CollaborativeSolver should be a singleton within lifecycle manager"
 
 
 @pytest.mark.asyncio
@@ -125,7 +128,9 @@ async def test_ensemble_reasoner_singleton(lifecycle_manager):
     reasoner1 = await lifecycle_manager.get_ensemble_reasoner()
     reasoner2 = await lifecycle_manager.get_ensemble_reasoner()
 
-    assert reasoner1 is reasoner2, "EnsembleReasoner should be a singleton within lifecycle manager"
+    assert (
+        reasoner1 is reasoner2
+    ), "EnsembleReasoner should be a singleton within lifecycle manager"
 
 
 @pytest.mark.asyncio
@@ -134,7 +139,9 @@ async def test_adaptive_router_singleton(lifecycle_manager):
     router1 = await lifecycle_manager.get_adaptive_router()
     router2 = await lifecycle_manager.get_adaptive_router()
 
-    assert router1 is router2, "AdaptiveRouter should be a singleton within lifecycle manager"
+    assert (
+        router1 is router2
+    ), "AdaptiveRouter should be a singleton within lifecycle manager"
 
 
 @pytest.mark.asyncio
@@ -143,7 +150,9 @@ async def test_cross_validator_singleton(lifecycle_manager):
     validator1 = await lifecycle_manager.get_cross_validator()
     validator2 = await lifecycle_manager.get_cross_validator()
 
-    assert validator1 is validator2, "CrossValidator should be a singleton within lifecycle manager"
+    assert (
+        validator1 is validator2
+    ), "CrossValidator should be a singleton within lifecycle manager"
 
 
 @pytest.mark.asyncio
@@ -154,8 +163,12 @@ async def test_shutdown_cancels_cleanup_tasks(lifecycle_manager):
     solver = await lifecycle_manager.get_collaborative_solver()
 
     # Verify cleanup tasks exist
-    assert engine.storage_manager._cleanup_task is not None, "ConsensusEngine should have cleanup task"
-    assert solver.storage_manager._cleanup_task is not None, "CollaborativeSolver should have cleanup task"
+    assert (
+        engine.storage_manager._cleanup_task is not None
+    ), "ConsensusEngine should have cleanup task"
+    assert (
+        solver.storage_manager._cleanup_task is not None
+    ), "CollaborativeSolver should have cleanup task"
 
     cleanup_task1 = engine.storage_manager._cleanup_task
     cleanup_task2 = solver.storage_manager._cleanup_task
@@ -167,8 +180,12 @@ async def test_shutdown_cancels_cleanup_tasks(lifecycle_manager):
     await asyncio.sleep(0.1)
 
     # Verify tasks were cancelled
-    assert cleanup_task1.cancelled() or cleanup_task1.done(), "ConsensusEngine cleanup task should be cancelled"
-    assert cleanup_task2.cancelled() or cleanup_task2.done(), "CollaborativeSolver cleanup task should be cancelled"
+    assert (
+        cleanup_task1.cancelled() or cleanup_task1.done()
+    ), "ConsensusEngine cleanup task should be cancelled"
+    assert (
+        cleanup_task2.cancelled() or cleanup_task2.done()
+    ), "CollaborativeSolver cleanup task should be cancelled"
 
 
 @pytest.mark.asyncio
@@ -198,8 +215,9 @@ async def test_no_task_leaks_after_shutdown(lifecycle_manager):
     final_tasks = len([t for t in asyncio.all_tasks() if not t.done()])
 
     # Allow for the current test task itself
-    assert final_tasks <= initial_tasks + 1, \
-        f"Tasks should be cleaned up after shutdown. Initial: {initial_tasks}, After creation: {after_creation_tasks}, Final: {final_tasks}"
+    assert (
+        final_tasks <= initial_tasks + 1
+    ), f"Tasks should be cleaned up after shutdown. Initial: {initial_tasks}, After creation: {after_creation_tasks}, Final: {final_tasks}"
 
 
 @pytest.mark.asyncio
@@ -219,6 +237,7 @@ async def test_cannot_create_without_configuration():
     """Test that instances cannot be created without configuration."""
     # Reset global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     try:
@@ -238,6 +257,7 @@ async def test_concurrent_initialization_thread_safe(mock_model_provider):
     """Test that concurrent initialization is thread-safe."""
     # Reset global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     try:
@@ -248,7 +268,7 @@ async def test_concurrent_initialization_thread_safe(mock_model_provider):
         tasks = [
             manager.get_consensus_engine(),
             manager.get_consensus_engine(),
-            manager.get_consensus_engine()
+            manager.get_consensus_engine(),
         ]
 
         engines = await asyncio.gather(*tasks)
@@ -286,6 +306,7 @@ async def test_lifespan_context_manager(mock_model_provider):
     """Test the lifespan context manager."""
     # Reset global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     try:
@@ -309,6 +330,7 @@ async def test_global_shutdown_lifecycle_manager():
     """Test the global shutdown function."""
     # Reset global singleton
     import openrouter_mcp.collective_intelligence.lifecycle_manager as lm_module
+
     lm_module._lifecycle_manager = None
 
     try:
@@ -339,13 +361,13 @@ async def test_operational_metrics_accessible(lifecycle_manager):
     solver_metrics = solver.get_operational_metrics()
 
     # Verify metrics structure
-    assert 'active_tasks' in engine_metrics
-    assert 'history_size' in engine_metrics
-    assert 'concurrency_config' in engine_metrics
+    assert "active_tasks" in engine_metrics
+    assert "history_size" in engine_metrics
+    assert "concurrency_config" in engine_metrics
 
-    assert 'active_sessions' in solver_metrics
-    assert 'active_tasks' in solver_metrics
-    assert 'concurrency_config' in solver_metrics
+    assert "active_sessions" in solver_metrics
+    assert "active_tasks" in solver_metrics
+    assert "concurrency_config" in solver_metrics
 
 
 @pytest.mark.asyncio

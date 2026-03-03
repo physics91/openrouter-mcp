@@ -17,9 +17,7 @@ class TestModelMetrics:
         assert metrics.total_tokens == 0
 
     def test_success_rate_with_data(self) -> None:
-        metrics = ModelMetrics(
-            total_requests=10, success_count=8, failure_count=2
-        )
+        metrics = ModelMetrics(total_requests=10, success_count=8, failure_count=2)
         assert metrics.success_rate == 0.8
 
     def test_success_rate_zero_requests(self) -> None:
@@ -43,9 +41,7 @@ class TestModelMetrics:
         assert metrics.tokens_per_second == 0.0
 
     def test_zero_tokens_success(self) -> None:
-        metrics = ModelMetrics(
-            success_count=1, total_latency_ms=100.0, total_tokens=0
-        )
+        metrics = ModelMetrics(success_count=1, total_latency_ms=100.0, total_tokens=0)
         assert metrics.tokens_per_second == 0.0
 
 
@@ -88,14 +84,10 @@ class TestMetricsCollector:
         assert m.error_counts["timeout"] == 2
         assert m.error_counts["rate_limit"] == 1
 
-    def test_get_metrics_unknown_model(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_get_metrics_unknown_model(self, collector: MetricsCollector) -> None:
         assert collector.get_metrics("nonexistent") is None
 
-    def test_get_all_metrics_empty(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_get_all_metrics_empty(self, collector: MetricsCollector) -> None:
         result = collector.get_all_metrics()
         assert result == {}
 
@@ -109,9 +101,7 @@ class TestMetricsCollector:
         result["model-c"] = ModelMetrics()
         assert "model-c" not in collector.get_all_metrics()
 
-    def test_multiple_records_accumulate(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_multiple_records_accumulate(self, collector: MetricsCollector) -> None:
         collector.record_success("model-a", latency_ms=100.0, tokens_used=20)
         collector.record_success("model-a", latency_ms=300.0, tokens_used=30)
         collector.record_failure("model-a", error_type="error")
@@ -123,14 +113,10 @@ class TestMetricsCollector:
         assert m.total_latency_ms == 400.0
         assert m.total_tokens == 50
 
-    def test_performance_score_no_data(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_performance_score_no_data(self, collector: MetricsCollector) -> None:
         assert collector.get_performance_score("unknown") == 0.0
 
-    def test_performance_score_perfect(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_performance_score_perfect(self, collector: MetricsCollector) -> None:
         """Perfect model: 100% success, 0ms latency, max throughput."""
         # success_rate = 1.0, latency_score = 1.0, throughput_score = 1.0
         # score = 0.5*1.0 + 0.3*1.0 + 0.2*1.0 = 1.0
@@ -148,9 +134,7 @@ class TestMetricsCollector:
         # total = 0.5 + 0.2997 + 0.2 = 0.9997
         assert score == pytest.approx(0.9997, abs=1e-4)
 
-    def test_performance_score_range(
-        self, collector: MetricsCollector
-    ) -> None:
+    def test_performance_score_range(self, collector: MetricsCollector) -> None:
         """Score is always between 0.0 and 1.0."""
         collector.record_success("model-x", latency_ms=5000.0, tokens_used=10)
         collector.record_failure("model-x", error_type="error")

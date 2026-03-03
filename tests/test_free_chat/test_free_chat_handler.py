@@ -1,10 +1,14 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.openrouter_mcp.handlers.free_chat import free_chat, FreeChatRequest
+import pytest
+
 from src.openrouter_mcp.client.openrouter import (
-    RateLimitError, OpenRouterError, AuthenticationError, InvalidRequestError,
+    AuthenticationError,
+    InvalidRequestError,
+    OpenRouterError,
+    RateLimitError,
 )
+from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
 
 
 @pytest.fixture
@@ -27,8 +31,11 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_successful_free_chat(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
             mock_client.chat_completion.return_value = mock_chat_response
             mock_get_client.return_value = mock_client
@@ -49,8 +56,11 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_rate_limit_triggers_fallback(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
             mock_client.chat_completion.side_effect = [
                 RateLimitError("rate limited"),
@@ -70,13 +80,18 @@ class TestFreeChatHandler:
             result = await free_chat(request)
 
             assert result["model_used"] == "meta-llama/llama-4-scout:free"
-            mock_router.report_rate_limit.assert_called_once_with("google/gemma-3-27b:free")
+            mock_router.report_rate_limit.assert_called_once_with(
+                "google/gemma-3-27b:free"
+            )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_all_models_exhausted(self):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
             mock_client.chat_completion.side_effect = RateLimitError("rate limited")
             mock_get_client.return_value = mock_client
@@ -98,8 +113,11 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_system_prompt_included(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
             mock_client.chat_completion.return_value = mock_chat_response
             mock_get_client.return_value = mock_client
@@ -123,10 +141,15 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_authentication_error_propagates_immediately(self):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
-            mock_client.chat_completion.side_effect = AuthenticationError("Invalid API key")
+            mock_client.chat_completion.side_effect = AuthenticationError(
+                "Invalid API key"
+            )
             mock_get_client.return_value = mock_client
 
             mock_router = AsyncMock()
@@ -142,8 +165,11 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_invalid_request_error_propagates_immediately(self):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
             mock_client = AsyncMock()
             mock_client.chat_completion.side_effect = InvalidRequestError("Bad request")
             mock_get_client.return_value = mock_client
@@ -170,10 +196,15 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_response_includes_task_type(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_classifier"
+        ) as mock_get_classifier:
             mock_client = AsyncMock()
             mock_client.chat_completion.return_value = mock_chat_response
             mock_get_client.return_value = mock_client
@@ -186,6 +217,7 @@ class TestFreeChatHandler:
             mock_get_metrics.return_value = mock_collector
 
             from src.openrouter_mcp.free.classifier import TaskClassifier
+
             mock_get_classifier.return_value = TaskClassifier()
 
             request = FreeChatRequest(message="파이썬 코드를 작성해줘")
@@ -197,10 +229,15 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_metrics_recorded_on_success(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_classifier"
+        ) as mock_get_classifier:
             mock_client = AsyncMock()
             mock_client.chat_completion.return_value = mock_chat_response
             mock_get_client.return_value = mock_client
@@ -213,6 +250,7 @@ class TestFreeChatHandler:
             mock_get_metrics.return_value = mock_collector
 
             from src.openrouter_mcp.free.classifier import TaskClassifier
+
             mock_get_classifier.return_value = TaskClassifier()
 
             request = FreeChatRequest(message="Hello")
@@ -225,10 +263,15 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_metrics_recorded_on_rate_limit(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_classifier"
+        ) as mock_get_classifier:
             mock_client = AsyncMock()
             mock_client.chat_completion.side_effect = [
                 RateLimitError("rate limited"),
@@ -248,6 +291,7 @@ class TestFreeChatHandler:
             mock_get_metrics.return_value = mock_collector
 
             from src.openrouter_mcp.free.classifier import TaskClassifier
+
             mock_get_classifier.return_value = TaskClassifier()
 
             request = FreeChatRequest(message="Hello")
@@ -261,10 +305,15 @@ class TestFreeChatHandler:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_metrics_recorded_on_openrouter_error(self, mock_chat_response):
-        with patch("src.openrouter_mcp.handlers.free_chat.get_openrouter_client") as mock_get_client, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_metrics") as mock_get_metrics, \
-             patch("src.openrouter_mcp.handlers.free_chat._get_classifier") as mock_get_classifier:
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_metrics"
+        ) as mock_get_metrics, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_classifier"
+        ) as mock_get_classifier:
             mock_client = AsyncMock()
             mock_client.chat_completion.side_effect = [
                 OpenRouterError("server error"),
@@ -284,6 +333,7 @@ class TestFreeChatHandler:
             mock_get_metrics.return_value = mock_collector
 
             from src.openrouter_mcp.free.classifier import TaskClassifier
+
             mock_get_classifier.return_value = TaskClassifier()
 
             request = FreeChatRequest(message="Hello")

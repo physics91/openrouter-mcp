@@ -7,10 +7,10 @@ base64 encoding, model filtering, and chat completion with images.
 
 import base64
 import io
-import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from PIL import Image
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 from openrouter_mcp.handlers import multimodal as multimodal_module
 from openrouter_mcp.handlers.multimodal import (
@@ -18,12 +18,12 @@ from openrouter_mcp.handlers.multimodal import (
     VisionChatRequest,
     VisionModelRequest,
     encode_image_to_base64,
-    validate_image_format,
-    process_image,
-    format_vision_message,
-    is_vision_model,
     filter_vision_models,
+    format_vision_message,
     get_vision_model_names,
+    is_vision_model,
+    process_image,
+    validate_image_format,
 )
 
 pytestmark = pytest.mark.unit
@@ -64,7 +64,7 @@ class TestVisionChatRequest:
         req = VisionChatRequest(
             model="openai/gpt-4o",
             messages=[{"role": "user", "content": "What's in this image?"}],
-            images=images
+            images=images,
         )
         assert req.model == "openai/gpt-4o"
         assert len(req.messages) == 1
@@ -81,7 +81,7 @@ class TestVisionChatRequest:
             images=images,
             temperature=0.5,
             max_tokens=1000,
-            stream=True
+            stream=True,
         )
         assert req.temperature == 0.5
         assert req.max_tokens == 1000
@@ -112,7 +112,10 @@ class TestGetOpenRouterClient:
         mock_client = MagicMock()
 
         # Mock get_openrouter_client to return the mock client
-        with patch("openrouter_mcp.handlers.multimodal.get_openrouter_client", new_callable=AsyncMock) as mock_get_client:
+        with patch(
+            "openrouter_mcp.handlers.multimodal.get_openrouter_client",
+            new_callable=AsyncMock,
+        ) as mock_get_client:
             mock_get_client.return_value = mock_client
 
             # Call the function
@@ -127,8 +130,13 @@ class TestGetOpenRouterClient:
     async def test_get_client_missing_api_key(self):
         """Test client creation fails without API key."""
         # Mock get_openrouter_client to raise ValueError (simulating missing API key)
-        with patch("openrouter_mcp.handlers.multimodal.get_openrouter_client", new_callable=AsyncMock) as mock_get_client:
-            mock_get_client.side_effect = ValueError("OPENROUTER_API_KEY environment variable is required")
+        with patch(
+            "openrouter_mcp.handlers.multimodal.get_openrouter_client",
+            new_callable=AsyncMock,
+        ) as mock_get_client:
+            mock_get_client.side_effect = ValueError(
+                "OPENROUTER_API_KEY environment variable is required"
+            )
 
             # Verify that the error is propagated
             with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
@@ -142,7 +150,7 @@ class TestEncodeImageToBase64:
         """Test encoding image from bytes."""
         image_bytes = b"test_image_data"
         result = encode_image_to_base64(image_bytes)
-        assert result == base64.b64encode(image_bytes).decode('utf-8')
+        assert result == base64.b64encode(image_bytes).decode("utf-8")
 
     def test_encode_image_rejects_string_path(self):
         """Test that file path strings are rejected for security reasons."""
@@ -185,12 +193,12 @@ class TestValidateImageFormat:
 class TestProcessImage:
     """Test image processing functionality."""
 
-    def create_test_image(self, width=100, height=100, format='JPEG'):
+    def create_test_image(self, width=100, height=100, format="JPEG"):
         """Helper to create test image."""
-        img = Image.new('RGB', (width, height), color='red')
+        img = Image.new("RGB", (width, height), color="red")
         buffer = io.BytesIO()
         img.save(buffer, format=format)
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     def test_process_small_image_no_resize(self):
         """Test processing small image that doesn't need resizing."""
@@ -220,10 +228,10 @@ class TestProcessImage:
     def test_process_image_with_unsupported_format(self):
         """Test processing image with unsupported format converts to JPEG."""
         # Create image with transparency (RGBA)
-        img = Image.new('RGBA', (100, 100), color=(255, 0, 0, 128))
+        img = Image.new("RGBA", (100, 100), color=(255, 0, 0, 128))
         buffer = io.BytesIO()
-        img.save(buffer, format='PNG')
-        image_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        img.save(buffer, format="PNG")
+        image_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         # Force processing by setting very small max size
         result, was_resized = process_image(image_data, max_size_mb=0.0001)
@@ -252,32 +260,35 @@ class TestFormatVisionMessage:
     def test_format_message_with_single_base64_image(self):
         """Test formatting message with single base64 image."""
         result = format_vision_message(
-            text="Analyze this",
-            image_data="base64data",
-            image_type="base64"
+            text="Analyze this", image_data="base64data", image_type="base64"
         )
 
         assert len(result["content"]) == 2
         assert result["content"][0]["type"] == "text"
         assert result["content"][1]["type"] == "image_url"
-        assert "data:image/jpeg;base64,base64data" in result["content"][1]["image_url"]["url"]
+        assert (
+            "data:image/jpeg;base64,base64data"
+            in result["content"][1]["image_url"]["url"]
+        )
 
     def test_format_message_with_single_url_image(self):
         """Test formatting message with single URL image."""
         result = format_vision_message(
             text="Analyze this",
             image_data="https://example.com/image.jpg",
-            image_type="url"
+            image_type="url",
         )
 
         assert len(result["content"]) == 2
-        assert result["content"][1]["image_url"]["url"] == "https://example.com/image.jpg"
+        assert (
+            result["content"][1]["image_url"]["url"] == "https://example.com/image.jpg"
+        )
 
     def test_format_message_with_multiple_images(self):
         """Test formatting message with multiple images."""
         images = [
             {"data": "base64data1", "type": "base64"},
-            {"data": "https://example.com/image.jpg", "type": "url"}
+            {"data": "https://example.com/image.jpg", "type": "url"},
         ]
 
         result = format_vision_message(text="Analyze these", images=images)
@@ -294,9 +305,7 @@ class TestIsVisionModel:
         """Test detecting model with image support."""
         model_info = {
             "id": "openai/gpt-4o",
-            "architecture": {
-                "input_modalities": ["text", "image"]
-            }
+            "architecture": {"input_modalities": ["text", "image"]},
         }
         assert is_vision_model(model_info) is True
 
@@ -304,27 +313,18 @@ class TestIsVisionModel:
         """Test detecting text-only model."""
         model_info = {
             "id": "openai/gpt-3.5-turbo",
-            "architecture": {
-                "input_modalities": ["text"]
-            }
+            "architecture": {"input_modalities": ["text"]},
         }
         assert is_vision_model(model_info) is False
 
     def test_is_vision_model_no_architecture(self):
         """Test detecting model with no architecture info."""
-        model_info = {
-            "id": "unknown/model"
-        }
+        model_info = {"id": "unknown/model"}
         assert is_vision_model(model_info) is False
 
     def test_is_vision_model_empty_modalities(self):
         """Test detecting model with empty modalities."""
-        model_info = {
-            "id": "unknown/model",
-            "architecture": {
-                "input_modalities": []
-            }
-        }
+        model_info = {"id": "unknown/model", "architecture": {"input_modalities": []}}
         assert is_vision_model(model_info) is False
 
 
@@ -336,16 +336,16 @@ class TestFilterVisionModels:
         models = [
             {
                 "id": "openai/gpt-4o",
-                "architecture": {"input_modalities": ["text", "image"]}
+                "architecture": {"input_modalities": ["text", "image"]},
             },
             {
                 "id": "openai/gpt-3.5-turbo",
-                "architecture": {"input_modalities": ["text"]}
+                "architecture": {"input_modalities": ["text"]},
             },
             {
                 "id": "anthropic/claude-3-opus",
-                "architecture": {"input_modalities": ["text", "image"]}
-            }
+                "architecture": {"input_modalities": ["text", "image"]},
+            },
         ]
 
         result = filter_vision_models(models)
@@ -364,7 +364,7 @@ class TestFilterVisionModels:
         models = [
             {
                 "id": "openai/gpt-3.5-turbo",
-                "architecture": {"input_modalities": ["text"]}
+                "architecture": {"input_modalities": ["text"]},
             }
         ]
 
@@ -381,13 +381,13 @@ class TestGetVisionModelNames:
             {
                 "id": "openai/gpt-4o",
                 "name": "GPT-4 Omni",
-                "architecture": {"input_modalities": ["text", "image"]}
+                "architecture": {"input_modalities": ["text", "image"]},
             },
             {
                 "id": "openai/gpt-3.5-turbo",
                 "name": "GPT-3.5 Turbo",
-                "architecture": {"input_modalities": ["text"]}
-            }
+                "architecture": {"input_modalities": ["text"]},
+            },
         ]
 
         result = get_vision_model_names(models)
@@ -400,7 +400,7 @@ class TestGetVisionModelNames:
         models = [
             {
                 "id": "openai/gpt-4o",
-                "architecture": {"input_modalities": ["text", "image"]}
+                "architecture": {"input_modalities": ["text", "image"]},
             }
         ]
 
@@ -421,7 +421,7 @@ class TestImageProcessingEdgeCases:
     def test_encode_empty_bytes(self):
         """Test encoding empty bytes."""
         result = encode_image_to_base64(b"")
-        assert result == base64.b64encode(b"").decode('utf-8')
+        assert result == base64.b64encode(b"").decode("utf-8")
 
     def test_validate_mixed_case_formats(self):
         """Test format validation is case-insensitive."""
@@ -445,14 +445,14 @@ class TestImageProcessingEdgeCases:
         # Model with video support (should also be vision)
         model = {
             "id": "test/model",
-            "architecture": {"input_modalities": ["text", "image", "video"]}
+            "architecture": {"input_modalities": ["text", "image", "video"]},
         }
         assert is_vision_model(model) is True
 
         # Model with only audio (not vision)
         model_audio = {
             "id": "test/audio",
-            "architecture": {"input_modalities": ["text", "audio"]}
+            "architecture": {"input_modalities": ["text", "audio"]},
         }
         assert is_vision_model(model_audio) is False
 
@@ -462,15 +462,19 @@ class TestImageProcessingEdgeCases:
         models = []
         for i in range(100):
             if i % 3 == 0:
-                models.append({
-                    "id": f"provider/vision-model-{i}",
-                    "architecture": {"input_modalities": ["text", "image"]}
-                })
+                models.append(
+                    {
+                        "id": f"provider/vision-model-{i}",
+                        "architecture": {"input_modalities": ["text", "image"]},
+                    }
+                )
             else:
-                models.append({
-                    "id": f"provider/text-model-{i}",
-                    "architecture": {"input_modalities": ["text"]}
-                })
+                models.append(
+                    {
+                        "id": f"provider/text-model-{i}",
+                        "architecture": {"input_modalities": ["text"]},
+                    }
+                )
 
         result = filter_vision_models(models)
 
@@ -485,17 +489,17 @@ class TestImageProcessingEdgeCases:
             {
                 "id": "model1",
                 "name": "Model 1",
-                "architecture": {"input_modalities": ["text", "image"]}
+                "architecture": {"input_modalities": ["text", "image"]},
             },
             {
                 "id": "model2",
                 # No name field
-                "architecture": {"input_modalities": ["text", "image"]}
+                "architecture": {"input_modalities": ["text", "image"]},
             },
             {
                 # No id or name
                 "architecture": {"input_modalities": ["text", "image"]}
-            }
+            },
         ]
 
         result = get_vision_model_names(models)

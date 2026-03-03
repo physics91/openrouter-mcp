@@ -4,19 +4,20 @@ Tests for test fixture factories.
 Ensures fixture factories work correctly and produce valid test data.
 """
 
-import pytest
 from unittest.mock import AsyncMock
 
-from .mock_clients import MockClientFactory, MockEnvFactory
-from .mock_responses import ResponseFactory, create_mock_response
+import pytest
+
 from .ci_fixtures import (
+    ConsensusConfigFactory,
+    MockModelProviderFactory,
+    OperationalConfigFactory,
+    create_processing_results,
     create_sample_models,
     create_sample_task,
-    create_processing_results,
-    MockModelProviderFactory,
-    ConsensusConfigFactory,
-    OperationalConfigFactory,
 )
+from .mock_clients import MockClientFactory, MockEnvFactory
+from .mock_responses import ResponseFactory, create_mock_response
 
 
 class TestMockClientFactory:

@@ -30,7 +30,7 @@ class CacheConfig:
     """Cache configuration for model and response caching."""
 
     DEFAULT_TTL_SECONDS: int = 3600  # 1 hour
-    MIN_TTL_HOURS: float = 0.08334   # 5 minutes minimum
+    MIN_TTL_HOURS: float = 0.08334  # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
     MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
     BENCHMARK_CACHE_TTL_HOURS: float = 6.0
@@ -130,7 +130,7 @@ class ImageProcessingConfig:
     MAX_PIXELS: int = 89_478_485
     MAX_DIMENSION: int = 65535
     MAX_SIZE_MB: int = 20
-    SUPPORTED_FORMATS: tuple = ('JPEG', 'PNG', 'WEBP', 'GIF')
+    SUPPORTED_FORMATS: tuple = ("JPEG", "PNG", "WEBP", "GIF")
 
 
 class FreeChatConfig:
@@ -145,14 +145,16 @@ class FreeChatConfig:
     FEATURES_WEIGHT: float = 0.2
     USAGE_PENALTY_FACTOR: float = 0.06
     DEFAULT_REPUTATION: float = 0.5
-    MODEL_REPUTATION: MappingProxyType = MappingProxyType({
-        "google": 0.9,
-        "meta": 0.85,
-        "qwen": 0.8,
-        "mistral": 0.75,
-        "microsoft": 0.7,
-        "deepseek": 0.7,
-    })
+    MODEL_REPUTATION: MappingProxyType = MappingProxyType(
+        {
+            "google": 0.9,
+            "meta": 0.85,
+            "qwen": 0.8,
+            "mistral": 0.75,
+            "microsoft": 0.7,
+            "deepseek": 0.7,
+        }
+    )
 
     # Adaptive scoring
     ADAPTIVE_MIN_REQUESTS: int = 5

@@ -8,12 +8,12 @@ This test verifies that:
 3. The singleton pattern works correctly across async operations
 """
 
-import pytest
 import asyncio
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+
+import pytest
+
 
 @pytest.fixture(autouse=True)
 def _set_test_api_key(monkeypatch):
@@ -23,7 +23,7 @@ def _set_test_api_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_shared_client_singleton():
     """Test that get_shared_client returns the same instance across calls."""
-    from openrouter_mcp.mcp_registry import get_shared_client, cleanup_shared_client
+    from openrouter_mcp.mcp_registry import cleanup_shared_client, get_shared_client
 
     try:
         # Get client multiple times
@@ -44,7 +44,7 @@ async def test_shared_client_singleton():
 @pytest.mark.asyncio
 async def test_concurrent_client_access():
     """Test that concurrent handler calls share the same client."""
-    from openrouter_mcp.mcp_registry import get_shared_client, cleanup_shared_client
+    from openrouter_mcp.mcp_registry import cleanup_shared_client, get_shared_client
 
     try:
         # Simulate concurrent access from multiple handlers
@@ -58,7 +58,9 @@ async def test_concurrent_client_access():
 
         # All should have the same client ID
         client_ids = [result[0] for result in results]
-        assert len(set(client_ids)) == 1, "All handlers should share the same client instance"
+        assert (
+            len(set(client_ids)) == 1
+        ), "All handlers should share the same client instance"
 
     finally:
         await cleanup_shared_client()
@@ -67,11 +69,12 @@ async def test_concurrent_client_access():
 @pytest.mark.asyncio
 async def test_file_locking_prevents_corruption():
     """Test that file locking prevents concurrent write corruption."""
-    from openrouter_mcp.models.cache import ModelCache
     import json
 
+    from openrouter_mcp.models.cache import ModelCache
+
     # Create temporary cache file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         cache_file = f.name
 
     try:
@@ -96,11 +99,11 @@ async def test_file_locking_prevents_corruption():
         await asyncio.gather(
             write_models(cache1, models1),
             write_models(cache2, models2),
-            write_models(cache3, models3)
+            write_models(cache3, models3),
         )
 
         # File should still be valid JSON (not corrupted)
-        with open(cache_file, 'r') as f:
+        with open(cache_file, "r") as f:
             data = json.load(f)
 
         # Verify structure is intact
@@ -120,16 +123,20 @@ async def test_file_locking_prevents_corruption():
 @pytest.mark.asyncio
 async def test_concurrent_cache_read_write():
     """Test concurrent reads and writes to cache file."""
-    from openrouter_mcp.models.cache import ModelCache
     import json
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    from openrouter_mcp.models.cache import ModelCache
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         cache_file = f.name
         # Initialize with some data
-        json.dump({
-            "models": [{"id": "initial", "name": "Initial Model"}],
-            "updated_at": "2025-01-01T00:00:00"
-        }, f)
+        json.dump(
+            {
+                "models": [{"id": "initial", "name": "Initial Model"}],
+                "updated_at": "2025-01-01T00:00:00",
+            },
+            f,
+        )
 
     try:
         cache = ModelCache(ttl_hours=1.0, cache_file=cache_file, api_key="test-key")
@@ -148,16 +155,18 @@ async def test_concurrent_cache_read_write():
         async def writer(writer_id: int):
             nonlocal write_count
             for i in range(3):
-                models = [{"id": f"writer{writer_id}_model{i}", "name": f"Writer {writer_id} Model {i}"}]
+                models = [
+                    {
+                        "id": f"writer{writer_id}_model{i}",
+                        "name": f"Writer {writer_id} Model {i}",
+                    }
+                ]
                 cache._save_to_file_cache(models)
                 write_count += 1
                 await asyncio.sleep(0.01)
 
         # Run concurrent readers and writers
-        tasks = (
-            [reader(i) for i in range(3)] +
-            [writer(i) for i in range(2)]
-        )
+        tasks = [reader(i) for i in range(3)] + [writer(i) for i in range(2)]
         await asyncio.gather(*tasks)
 
         # Verify we had successful reads and writes
@@ -165,7 +174,7 @@ async def test_concurrent_cache_read_write():
         assert write_count > 0, "Should have successful writes"
 
         # Final file should still be valid
-        with open(cache_file, 'r') as f:
+        with open(cache_file, "r") as f:
             data = json.load(f)
         assert "models" in data
         assert isinstance(data["models"], list)
@@ -178,12 +187,7 @@ async def test_concurrent_cache_read_write():
 @pytest.mark.asyncio
 async def test_client_cleanup():
     """Test that client cleanup works properly."""
-    from openrouter_mcp.mcp_registry import (
-        get_shared_client,
-        cleanup_shared_client,
-        _client_instance,
-        _client_initialized
-    )
+    from openrouter_mcp.mcp_registry import cleanup_shared_client, get_shared_client
 
     # Get client
     client = await get_shared_client()
@@ -204,7 +208,9 @@ async def test_client_cleanup():
 async def test_handlers_use_shared_client():
     """Test that handlers actually use the shared client (integration test)."""
     from openrouter_mcp.handlers.chat import get_openrouter_client as chat_get_client
-    from openrouter_mcp.handlers.multimodal import get_openrouter_client as multimodal_get_client
+    from openrouter_mcp.handlers.multimodal import (
+        get_openrouter_client as multimodal_get_client,
+    )
     from openrouter_mcp.mcp_registry import cleanup_shared_client
 
     try:

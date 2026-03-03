@@ -12,28 +12,26 @@ Tests cover:
 - Error handling
 """
 
-import pytest
 import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.openrouter_mcp.handlers.benchmark import (
-    BenchmarkHandler,
-    EnhancedBenchmarkHandler,
-    BenchmarkResult,
-    BenchmarkMetrics,
-    ModelComparison,
+    BenchmarkError,
     BenchmarkReportExporter,
+    BenchmarkResult,
+    EnhancedBenchmarkHandler,
+    EnhancedBenchmarkMetrics,
+    EnhancedBenchmarkResult,
+    ModelComparison,
     ModelPerformanceAnalyzer,
     ResponseQualityAnalyzer,
-    BenchmarkError,
-    EnhancedBenchmarkResult,
-    EnhancedBenchmarkMetrics,
 )
 
 pytestmark = pytest.mark.unit
@@ -46,7 +44,7 @@ class TestResponseQualityAnalyzer:
         """Test analyzer initialization."""
         analyzer = ResponseQualityAnalyzer()
         assert analyzer is not None
-        assert hasattr(analyzer, 'code_patterns')
+        assert hasattr(analyzer, "code_patterns")
         assert len(analyzer.code_patterns) > 0
 
     def test_analyze_empty_response(self):
@@ -104,7 +102,9 @@ This function prints a greeting."""
         assert 0 <= short_score <= 1
 
         # Long complete response
-        long_response = "This is a comprehensive answer that provides detailed information. " * 5
+        long_response = (
+            "This is a comprehensive answer that provides detailed information. " * 5
+        )
         long_score = analyzer._calculate_completeness("test", long_response)
         assert long_score > short_score
 
@@ -181,7 +181,7 @@ class TestEnhancedBenchmarkMetrics:
                 prompt_tokens=40,
                 completion_tokens=60,
                 quality_score=0.8,
-                throughput_tokens_per_second=100.0
+                throughput_tokens_per_second=100.0,
             ),
             BenchmarkResult(
                 model_id="test-model",
@@ -194,8 +194,8 @@ class TestEnhancedBenchmarkMetrics:
                 prompt_tokens=50,
                 completion_tokens=100,
                 quality_score=0.9,
-                throughput_tokens_per_second=100.0
-            )
+                throughput_tokens_per_second=100.0,
+            ),
         ]
 
         metrics = EnhancedBenchmarkMetrics.from_benchmark_results(results)
@@ -220,7 +220,7 @@ class TestEnhancedBenchmarkMetrics:
                 tokens_used=100,
                 cost=0.005,
                 timestamp=datetime.now(timezone.utc),
-                quality_score=0.8
+                quality_score=0.8,
             ),
             BenchmarkResult(
                 model_id="test-model",
@@ -230,8 +230,8 @@ class TestEnhancedBenchmarkMetrics:
                 tokens_used=0,
                 cost=0,
                 timestamp=datetime.now(timezone.utc),
-                error="API Error"
-            )
+                error="API Error",
+            ),
         ]
 
         metrics = EnhancedBenchmarkMetrics.from_benchmark_results(results)
@@ -246,12 +246,12 @@ class TestEnhancedBenchmarkHandler:
     @pytest.fixture
     def handler(self, tmp_path):
         """Create enhanced benchmark handler for testing."""
-        with patch('src.openrouter_mcp.handlers.benchmark.ModelCache') as mock_cache:
+        with patch("src.openrouter_mcp.handlers.benchmark.ModelCache") as mock_cache:
             results_dir = tmp_path / "benchmarks"
             handler = EnhancedBenchmarkHandler(
                 api_key="test-api-key",
                 model_cache=mock_cache(),
-                results_dir=str(results_dir)
+                results_dir=str(results_dir),
             )
             return handler
 
@@ -261,7 +261,7 @@ class TestEnhancedBenchmarkHandler:
         assert handler.client is not None
         assert handler.model_cache is not None
         assert handler.quality_analyzer is not None
-        assert hasattr(handler, 'results_dir')
+        assert hasattr(handler, "results_dir")
 
     def test_assess_response_quality(self, handler):
         """Test response quality assessment."""
@@ -296,16 +296,12 @@ This computes the factorial recursively."""
     def test_calculate_detailed_cost(self, handler):
         """Test detailed cost calculation."""
         api_response = {
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 15,
-                "total_tokens": 25
-            }
+            "usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
         }
 
         model_pricing = {
             "prompt": 0.03,  # per 1k tokens
-            "completion": 0.06  # per 1k tokens
+            "completion": 0.06,  # per 1k tokens
         }
 
         cost_details = handler.calculate_detailed_cost(api_response, model_pricing)
@@ -326,23 +322,16 @@ This computes the factorial recursively."""
         """Test successful single model benchmark."""
         mock_response = {
             "choices": [{"message": {"content": "Test response"}}],
-            "usage": {
-                "total_tokens": 50,
-                "prompt_tokens": 20,
-                "completion_tokens": 30
-            }
+            "usage": {"total_tokens": 50, "prompt_tokens": 20, "completion_tokens": 30},
         }
 
         handler.client.chat_completion = AsyncMock(return_value=mock_response)
-        handler.model_cache.get_model_info = AsyncMock(return_value={
-            "pricing": {"prompt": 0.03, "completion": 0.06}
-        })
+        handler.model_cache.get_model_info = AsyncMock(
+            return_value={"pricing": {"prompt": 0.03, "completion": 0.06}}
+        )
 
         result = await handler.benchmark_model(
-            model_id="test-model",
-            prompt="test prompt",
-            temperature=0.7,
-            max_tokens=100
+            model_id="test-model", prompt="test prompt", temperature=0.7, max_tokens=100
         )
 
         assert result.model_id == "test-model"
@@ -359,9 +348,7 @@ This computes the factorial recursively."""
         handler.client.chat_completion = AsyncMock(side_effect=asyncio.TimeoutError())
 
         result = await handler.benchmark_model(
-            model_id="test-model",
-            prompt="test",
-            timeout=1.0
+            model_id="test-model", prompt="test", timeout=1.0
         )
 
         assert result.error is not None
@@ -373,10 +360,7 @@ This computes the factorial recursively."""
         """Test benchmark with missing choices in response."""
         handler.client.chat_completion = AsyncMock(return_value={"choices": []})
 
-        result = await handler.benchmark_model(
-            model_id="test-model",
-            prompt="test"
-        )
+        result = await handler.benchmark_model(model_id="test-model", prompt="test")
 
         assert result.error is not None
         assert result.response is None
@@ -386,18 +370,16 @@ This computes the factorial recursively."""
         """Test parallel benchmarking."""
         mock_response = {
             "choices": [{"message": {"content": "Response"}}],
-            "usage": {"total_tokens": 30}
+            "usage": {"total_tokens": 30},
         }
 
         handler.client.chat_completion = AsyncMock(return_value=mock_response)
-        handler.model_cache.get_model_info = AsyncMock(return_value={
-            "pricing": {"prompt": 0.01, "completion": 0.02}
-        })
+        handler.model_cache.get_model_info = AsyncMock(
+            return_value={"pricing": {"prompt": 0.01, "completion": 0.02}}
+        )
 
         comparison = await handler.benchmark_models_parallel(
-            models=["model1", "model2", "model3"],
-            prompt="test",
-            max_concurrent=2
+            models=["model1", "model2", "model3"], prompt="test", max_concurrent=2
         )
 
         assert len(comparison.models) == 3
@@ -423,7 +405,7 @@ This computes the factorial recursively."""
         model_info = {
             "pricing": {
                 "prompt": "0.03",  # String to test conversion
-                "completion": "0.06"
+                "completion": "0.06",
             }
         }
 
@@ -449,11 +431,11 @@ This computes the factorial recursively."""
                         response_time_ms=100,
                         tokens_used=20,
                         cost=0.001,
-                        timestamp=timestamp
+                        timestamp=timestamp,
                     )
                 ]
             },
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -488,11 +470,11 @@ This computes the factorial recursively."""
                                 response_time_ms=100,
                                 tokens_used=20,
                                 cost=0.001,
-                                timestamp=datetime.now(timezone.utc)
+                                timestamp=datetime.now(timezone.utc),
                             )
                         ]
                     },
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=datetime.now(timezone.utc),
                 )
                 handler.save_comparison(comparison)
 
@@ -513,6 +495,7 @@ class TestBenchmarkReportExporter:
     @pytest.fixture
     def mock_results(self):
         """Create mock benchmark results."""
+
         class MockMetrics:
             avg_response_time = 1.5
             avg_cost = 0.002
@@ -527,15 +510,12 @@ class TestBenchmarkReportExporter:
                 self.response = "Test response from " + model_id
                 self.metrics = MockMetrics()
 
-        return {
-            "model1": MockResult("model1"),
-            "model2": MockResult("model2")
-        }
+        return {"model1": MockResult("model1"), "model2": MockResult("model2")}
 
     @pytest.mark.asyncio
     async def test_export_markdown(self, exporter, mock_results):
         """Test exporting to markdown format."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             output_path = f.name
 
         try:
@@ -543,7 +523,7 @@ class TestBenchmarkReportExporter:
 
             assert os.path.exists(output_path)
 
-            with open(output_path, 'r', encoding='utf-8') as f:
+            with open(output_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 assert "# Benchmark Report" in content
                 assert "model1" in content
@@ -555,7 +535,7 @@ class TestBenchmarkReportExporter:
     @pytest.mark.asyncio
     async def test_export_csv(self, exporter, mock_results):
         """Test exporting to CSV format."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             output_path = f.name
 
         try:
@@ -563,7 +543,7 @@ class TestBenchmarkReportExporter:
 
             assert os.path.exists(output_path)
 
-            with open(output_path, 'r', encoding='utf-8') as f:
+            with open(output_path, "r", encoding="utf-8") as f:
                 content = f.read()
                 assert "model_id" in content
                 assert "model1" in content
@@ -574,7 +554,7 @@ class TestBenchmarkReportExporter:
     @pytest.mark.asyncio
     async def test_export_json(self, exporter, mock_results):
         """Test exporting to JSON format."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             output_path = f.name
 
         try:
@@ -582,7 +562,7 @@ class TestBenchmarkReportExporter:
 
             assert os.path.exists(output_path)
 
-            with open(output_path, 'r', encoding='utf-8') as f:
+            with open(output_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 assert "timestamp" in data
                 assert "results" in data
@@ -613,7 +593,7 @@ class TestModelPerformanceAnalyzer:
                 speed_score=0.9 - i * 0.1,
                 cost_score=0.8 - i * 0.1,
                 throughput_score=0.7 - i * 0.1,
-                success_rate=1.0
+                success_rate=1.0,
             )
 
             result = EnhancedBenchmarkResult(
@@ -622,7 +602,7 @@ class TestModelPerformanceAnalyzer:
                 response="Test response",
                 error_message=None,
                 metrics=metrics,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
             results.append(result)
 
@@ -652,7 +632,7 @@ class TestModelPerformanceAnalyzer:
             response=None,
             error_message="API Error",
             metrics=None,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
 
         ranked = analyzer.rank_models([failed_result])
@@ -661,12 +641,7 @@ class TestModelPerformanceAnalyzer:
 
     def test_rank_models_with_weights(self, analyzer, mock_results):
         """Test ranking with custom weights."""
-        weights = {
-            "speed": 0.5,
-            "cost": 0.3,
-            "quality": 0.1,
-            "throughput": 0.1
-        }
+        weights = {"speed": 0.5, "cost": 0.3, "quality": 0.1, "throughput": 0.1}
 
         ranked = analyzer.rank_models_with_weights(mock_results, weights)
 
@@ -708,7 +683,7 @@ class TestModelPerformanceAnalyzer:
                 response=None,
                 error_message="Error",
                 metrics=None,
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
         ]
 
@@ -724,9 +699,9 @@ class TestMCPBenchmarkTools:
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self):
         """Test getting benchmark handler singleton."""
-        from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler, _benchmark_handler
+        from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
 
-        with patch.dict(os.environ, {'OPENROUTER_API_KEY': 'test-key'}):
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
             handler1 = await get_benchmark_handler()
             handler2 = await get_benchmark_handler()
 
@@ -740,7 +715,7 @@ class TestMCPBenchmarkTools:
         # Import the module to access the decorated function
         import src.openrouter_mcp.handlers.mcp_benchmark as benchmark_module
 
-        with patch.object(benchmark_module, 'get_benchmark_handler') as mock_handler:
+        with patch.object(benchmark_module, "get_benchmark_handler") as mock_handler:
             # Create mock handler
             handler = MagicMock()
             mock_result = EnhancedBenchmarkResult(
@@ -756,20 +731,19 @@ class TestMCPBenchmarkTools:
                     speed_score=0.9,
                     cost_score=0.85,
                     throughput_score=0.5,
-                    success_rate=1.0
+                    success_rate=1.0,
                 ),
-                timestamp=datetime.now(timezone.utc)
+                timestamp=datetime.now(timezone.utc),
             )
 
-            handler.benchmark_models_enhanced = AsyncMock(return_value={
-                "test-model": mock_result
-            })
+            handler.benchmark_models_enhanced = AsyncMock(
+                return_value={"test-model": mock_result}
+            )
             handler.save_results = AsyncMock()
 
             mock_handler.return_value = handler
 
             # Access the actual function (unwrapped from decorator)
-            from src.openrouter_mcp.handlers import mcp_benchmark
             # The function is registered as an MCP tool, but we can still call the underlying function
             # Skip this test if the function isn't directly accessible
             # assert True  # Placeholder for now
@@ -780,7 +754,7 @@ class TestMCPBenchmarkTools:
         # Test the utility functions that power the tool
         import src.openrouter_mcp.handlers.mcp_benchmark as benchmark_module
 
-        with patch.object(benchmark_module, 'get_benchmark_handler') as mock_handler:
+        with patch.object(benchmark_module, "get_benchmark_handler") as mock_handler:
             handler = MagicMock()
             handler.results_dir = tempfile.mkdtemp()
 
@@ -788,16 +762,13 @@ class TestMCPBenchmarkTools:
             test_data = {
                 "timestamp": datetime.now().isoformat(),
                 "results": {
-                    "model1": {
-                        "success": True,
-                        "metrics": {"quality_score": 0.8}
-                    }
+                    "model1": {"success": True, "metrics": {"quality_score": 0.8}}
                 },
-                "config": {"models": ["model1"]}
+                "config": {"models": ["model1"]},
             }
 
             test_file = os.path.join(handler.results_dir, "benchmark_test.json")
-            with open(test_file, 'w') as f:
+            with open(test_file, "w") as f:
                 json.dump(test_data, f)
 
             mock_handler.return_value = handler
@@ -811,15 +782,15 @@ class TestMCPBenchmarkTools:
         """Test utility functions in mcp_benchmark."""
         from src.openrouter_mcp.handlers.mcp_benchmark import (
             _calculate_avg_response_time,
+            _calculate_std,
             _get_best_model,
             _get_category_prompt,
-            _calculate_std
         )
 
         # Test avg response time
         results = {
             "model1": {"success": True, "metrics": {"avg_response_time": 1.0}},
-            "model2": {"success": True, "metrics": {"avg_response_time": 2.0}}
+            "model2": {"success": True, "metrics": {"avg_response_time": 2.0}},
         }
         avg = _calculate_avg_response_time(results)
         assert avg == 1.5
@@ -827,7 +798,7 @@ class TestMCPBenchmarkTools:
         # Test get best model
         results_quality = {
             "model1": {"success": True, "metrics": {"quality_score": 0.7}},
-            "model2": {"success": True, "metrics": {"quality_score": 0.9}}
+            "model2": {"success": True, "metrics": {"quality_score": 0.9}},
         }
         best = _get_best_model(results_quality)
         assert best == "model2"
@@ -848,12 +819,12 @@ class TestIntegration:
     async def test_end_to_end_benchmark_workflow(self):
         """Test complete benchmark workflow."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch('src.openrouter_mcp.handlers.benchmark.ModelCache') as mock_cache:
+            with patch(
+                "src.openrouter_mcp.handlers.benchmark.ModelCache"
+            ) as mock_cache:
                 # Create handler
                 handler = EnhancedBenchmarkHandler(
-                    api_key="test-key",
-                    model_cache=mock_cache(),
-                    results_dir=tmpdir
+                    api_key="test-key", model_cache=mock_cache(), results_dir=tmpdir
                 )
 
                 # Mock API responses
@@ -862,19 +833,18 @@ class TestIntegration:
                     "usage": {
                         "total_tokens": 50,
                         "prompt_tokens": 20,
-                        "completion_tokens": 30
-                    }
+                        "completion_tokens": 30,
+                    },
                 }
 
                 handler.client.chat_completion = AsyncMock(return_value=mock_response)
-                handler.model_cache.get_model_info = AsyncMock(return_value={
-                    "pricing": {"prompt": 0.03, "completion": 0.06}
-                })
+                handler.model_cache.get_model_info = AsyncMock(
+                    return_value={"pricing": {"prompt": 0.03, "completion": 0.06}}
+                )
 
                 # Run benchmark
                 result = await handler.benchmark_model(
-                    model_id="test-model",
-                    prompt="test prompt"
+                    model_id="test-model", prompt="test prompt"
                 )
 
                 assert result.error is None
@@ -886,7 +856,7 @@ class TestIntegration:
                     prompt="test",
                     models=["test-model"],
                     results={"test-model": [result]},
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=datetime.now(timezone.utc),
                 )
 
                 # Save comparison
@@ -902,13 +872,17 @@ class TestIntegration:
                         self.model_id = "test-model"
                         self.success = True
                         self.response = "test"
-                        self.metrics = type('obj', (), {
-                            'avg_response_time': 1.0,
-                            'avg_cost': 0.001,
-                            'quality_score': 0.8,
-                            'throughput': 50.0,
-                            'avg_total_tokens': 50
-                        })()
+                        self.metrics = type(
+                            "obj",
+                            (),
+                            {
+                                "avg_response_time": 1.0,
+                                "avg_cost": 0.001,
+                                "quality_score": 0.8,
+                                "throughput": 50.0,
+                                "avg_total_tokens": 50,
+                            },
+                        )()
 
                 mock_results = {"test-model": MockResult()}
 

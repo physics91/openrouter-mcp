@@ -3,10 +3,11 @@
 Verifies the full flow: classify → select → record metrics → adaptive score shift → ranking change.
 """
 
-import pytest
 from unittest.mock import MagicMock
 
-from src.openrouter_mcp.free.classifier import TaskClassifier, FreeTaskType
+import pytest
+
+from src.openrouter_mcp.free.classifier import FreeTaskType, TaskClassifier
 from src.openrouter_mcp.free.metrics import MetricsCollector
 from src.openrouter_mcp.free.router import FreeModelRouter
 from tests.test_free_chat.conftest import make_free_model
@@ -86,7 +87,7 @@ class TestEndToEndFlow:
 
         # With CODING task type, deepseek gets +0.15 affinity bonus
         router._usage_counts.clear()
-        first_coding = await router.select_model(task_type=FreeTaskType.CODING)
+        await router.select_model(task_type=FreeTaskType.CODING)
         # Still google first because google static (0.9) + context > deepseek (0.7) + 0.15
         # But deepseek's relative position should improve
         score_deepseek_coding = router._score_model(
@@ -103,7 +104,7 @@ class TestEndToEndFlow:
     async def test_failure_metrics_tracked_with_error_type(self, mock_cache):
         """Error types are correctly accumulated per model."""
         metrics = MetricsCollector()
-        router = FreeModelRouter(mock_cache, metrics=metrics)
+        FreeModelRouter(mock_cache, metrics=metrics)
 
         metrics.record_failure("google/gemma:free", "RateLimitError")
         metrics.record_failure("google/gemma:free", "RateLimitError")
@@ -170,7 +171,7 @@ class TestEndToEndFlow:
     async def test_get_free_model_metrics_reflects_state(self, mock_cache):
         """get_free_model_metrics returns current accumulated state."""
         metrics = MetricsCollector()
-        router = FreeModelRouter(mock_cache, metrics=metrics)
+        FreeModelRouter(mock_cache, metrics=metrics)
 
         # Simulate usage
         for _ in range(10):

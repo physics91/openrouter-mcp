@@ -23,34 +23,31 @@ Test Strategy:
 """
 
 import asyncio
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from datetime import datetime, timedelta
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock, patch, call, MagicMock
 
-from openrouter_mcp.handlers.collective_intelligence import (
-    _collective_chat_completion_impl,
-    _ensemble_reasoning_impl,
-    _adaptive_model_selection_impl,
-    _cross_model_validation_impl,
-    _collaborative_problem_solving_impl,
-    CollectiveChatRequest,
-    EnsembleReasoningRequest,
-    AdaptiveModelRequest,
-    CrossValidationRequest,
-    CollaborativeSolvingRequest,
-    get_openrouter_client,
-    OpenRouterModelProvider,
-)
 from openrouter_mcp.collective_intelligence import (
-    shutdown_lifecycle_manager,
     get_lifecycle_manager,
+    shutdown_lifecycle_manager,
 )
-
+from openrouter_mcp.handlers.collective_intelligence import (
+    AdaptiveModelRequest,
+    CollaborativeSolvingRequest,
+    CollectiveChatRequest,
+    CrossValidationRequest,
+    EnsembleReasoningRequest,
+    _adaptive_model_selection_impl,
+    _collaborative_problem_solving_impl,
+    _collective_chat_completion_impl,
+    _cross_model_validation_impl,
+    _ensemble_reasoning_impl,
+)
 
 # ============================================================================
 # FIXTURES
 # ============================================================================
+
 
 @pytest.fixture(autouse=True)
 async def cleanup_lifecycle():
@@ -68,35 +65,36 @@ def mock_models():
             "name": "GPT-4",
             "provider": "openai",
             "context_length": 8192,
-            "pricing": {"prompt": "0.00003", "completion": "0.00006"}
+            "pricing": {"prompt": "0.00003", "completion": "0.00006"},
         },
         {
             "id": "anthropic/claude-3-opus",
             "name": "Claude 3 Opus",
             "provider": "anthropic",
             "context_length": 200000,
-            "pricing": {"prompt": "0.000015", "completion": "0.000075"}
+            "pricing": {"prompt": "0.000015", "completion": "0.000075"},
         },
         {
             "id": "meta-llama/llama-3-70b",
             "name": "Llama 3 70B",
             "provider": "meta-llama",
             "context_length": 8000,
-            "pricing": {"prompt": "0.00001", "completion": "0.00002"}
+            "pricing": {"prompt": "0.00001", "completion": "0.00002"},
         },
         {
             "id": "deepseek/deepseek-coder",
             "name": "DeepSeek Coder",
             "provider": "deepseek",
             "context_length": 16000,
-            "pricing": {"prompt": "0.000001", "completion": "0.000002"}
-        }
+            "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+        },
     ]
 
 
 @pytest.fixture
 def create_mock_client(mock_models):
     """Factory fixture to create mock OpenRouter client."""
+
     def _create(chat_responses=None, pricing_override=None):
         mock_client = AsyncMock()
 
@@ -111,11 +109,13 @@ def create_mock_client(mock_models):
 
         # Setup get_model_pricing (public API)
         from openrouter_mcp.utils.pricing import normalize_pricing
+
         async def _get_model_pricing(model_id):
             for model in models:
                 if model["id"] == model_id:
                     return normalize_pricing(model.get("pricing", {}))
             return normalize_pricing({})
+
         mock_client.get_model_pricing.side_effect = _get_model_pricing
 
         # Setup chat_completion
@@ -127,15 +127,14 @@ def create_mock_client(mock_models):
         else:
             # Default response
             default_response = {
-                "choices": [{
-                    "message": {"content": "Test response"},
-                    "finish_reason": "stop"
-                }],
+                "choices": [
+                    {"message": {"content": "Test response"}, "finish_reason": "stop"}
+                ],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 20,
-                    "total_tokens": 30
-                }
+                    "total_tokens": 30,
+                },
             }
             mock_client.chat_completion.return_value = default_response
 
@@ -148,11 +147,12 @@ def create_mock_client(mock_models):
 # TEST 1: get_openrouter_client() Import and Usage
 # ============================================================================
 
+
 class TestClientImportAndUsage:
     """Test that get_openrouter_client() is properly imported and called."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_get_openrouter_client_is_called_not_awaited(
         self, mock_get_client, create_mock_client
     ):
@@ -166,9 +166,7 @@ class TestClientImportAndUsage:
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            min_models=1,
-            max_models=2
+            prompt="Test prompt", min_models=1, max_models=2
         )
 
         await _collective_chat_completion_impl(request)
@@ -181,7 +179,7 @@ class TestClientImportAndUsage:
         assert mock_get_client.called
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_client_not_wrapped_in_async_with(
         self, mock_get_client, create_mock_client
     ):
@@ -195,9 +193,7 @@ class TestClientImportAndUsage:
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            min_models=1,
-            max_models=1
+            prompt="Test prompt", min_models=1, max_models=1
         )
 
         await _collective_chat_completion_impl(request)
@@ -212,11 +208,12 @@ class TestClientImportAndUsage:
 # TEST 2: Parameter Wiring
 # ============================================================================
 
+
 class TestParameterWiring:
     """Test that request parameters are correctly wired through the system."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_temperature_propagates_to_model_provider(
         self, mock_get_client, create_mock_client
     ):
@@ -231,10 +228,7 @@ class TestParameterWiring:
 
         custom_temp = 0.3
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            temperature=custom_temp,
-            min_models=1,
-            max_models=1
+            prompt="Test prompt", temperature=custom_temp, min_models=1, max_models=1
         )
 
         await _collective_chat_completion_impl(request)
@@ -246,7 +240,7 @@ class TestParameterWiring:
         assert call_kwargs["temperature"] == custom_temp
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_models_list_used_for_selection(
         self, mock_get_client, create_mock_client
     ):
@@ -261,10 +255,7 @@ class TestParameterWiring:
 
         specific_models = ["openai/gpt-4", "anthropic/claude-3-opus"]
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            models=specific_models,
-            min_models=2,
-            max_models=2
+            prompt="Test prompt", models=specific_models, min_models=2, max_models=2
         )
 
         await _collective_chat_completion_impl(request)
@@ -283,11 +274,13 @@ class TestParameterWiring:
         # Verify all used models are in the specified list
         for model in models_used:
             assert model in specific_models or model in [
-                "openai/gpt-4", "anthropic/claude-3-opus", "meta-llama/llama-3-70b"
+                "openai/gpt-4",
+                "anthropic/claude-3-opus",
+                "meta-llama/llama-3-70b",
             ]
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_max_iterations_affects_solver_behavior(
         self, mock_get_client, create_mock_client
     ):
@@ -297,18 +290,26 @@ class TestParameterWiring:
         Issue: max_iterations should control the number of iteration rounds
         in collaborative problem solving.
         """
-        responses = [{
-            "choices": [{"message": {"content": f"Iteration {i}"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-        } for i in range(20)]  # Provide enough responses
+        responses = [
+            {
+                "choices": [
+                    {"message": {"content": f"Iteration {i}"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "total_tokens": 30,
+                },
+            }
+            for i in range(20)
+        ]  # Provide enough responses
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
 
         max_iter = 2
         request = CollaborativeSolvingRequest(
-            problem="Test problem",
-            max_iterations=max_iter
+            problem="Test problem", max_iterations=max_iter
         )
 
         result = await _collaborative_problem_solving_impl(request)
@@ -323,11 +324,12 @@ class TestParameterWiring:
 # TEST 3: Concurrent Request Isolation
 # ============================================================================
 
+
 class TestConcurrentRequestIsolation:
     """Test that concurrent requests don't interfere with each other."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_concurrent_requests_isolated(
         self, mock_get_client, create_mock_client
     ):
@@ -344,24 +346,18 @@ class TestConcurrentRequestIsolation:
 
         # Create two requests with different temperatures
         request_1 = CollectiveChatRequest(
-            prompt="Request 1",
-            temperature=0.2,
-            min_models=1,
-            max_models=1
+            prompt="Request 1", temperature=0.2, min_models=1, max_models=1
         )
 
         request_2 = CollectiveChatRequest(
-            prompt="Request 2",
-            temperature=0.9,
-            min_models=1,
-            max_models=1
+            prompt="Request 2", temperature=0.9, min_models=1, max_models=1
         )
 
         # Execute concurrently
         results = await asyncio.gather(
             _collective_chat_completion_impl(request_1),
             _collective_chat_completion_impl(request_2),
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # Both should complete without exceptions
@@ -386,11 +382,12 @@ class TestConcurrentRequestIsolation:
 # TEST 4: Quota and Cost Tracking
 # ============================================================================
 
+
 class TestQuotaAndCostTracking:
     """Test quota tracking and cost calculation with real values."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_cost_calculated_with_real_pricing(
         self, mock_get_client, create_mock_client, mock_models
     ):
@@ -402,24 +399,21 @@ class TestQuotaAndCostTracking:
         """
         # Create response with known token usage
         response = {
-            "choices": [{
-                "message": {"content": "Test response"},
-                "finish_reason": "stop"
-            }],
+            "choices": [
+                {"message": {"content": "Test response"}, "finish_reason": "stop"}
+            ],
             "usage": {
                 "prompt_tokens": 100,
                 "completion_tokens": 200,
-                "total_tokens": 300
-            }
+                "total_tokens": 300,
+            },
         }
 
         mock_client = create_mock_client(chat_responses=response)
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            min_models=1,
-            max_models=1
+            prompt="Test prompt", min_models=1, max_models=1
         )
 
         result = await _collective_chat_completion_impl(request)
@@ -434,7 +428,7 @@ class TestQuotaAndCostTracking:
             assert mock_client.get_model_pricing.called
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_quota_tracking_accumulates(
         self, mock_get_client, create_mock_client
     ):
@@ -445,22 +439,32 @@ class TestQuotaAndCostTracking:
         """
         responses = [
             {
-                "choices": [{"message": {"content": "Response 1"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150}
+                "choices": [
+                    {"message": {"content": "Response 1"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 50,
+                    "completion_tokens": 100,
+                    "total_tokens": 150,
+                },
             },
             {
-                "choices": [{"message": {"content": "Response 2"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 60, "completion_tokens": 120, "total_tokens": 180}
-            }
+                "choices": [
+                    {"message": {"content": "Response 2"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 60,
+                    "completion_tokens": 120,
+                    "total_tokens": 180,
+                },
+            },
         ]
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            min_models=2,
-            max_models=2
+            prompt="Test prompt", min_models=2, max_models=2
         )
 
         result = await _collective_chat_completion_impl(request)
@@ -476,14 +480,13 @@ class TestQuotaAndCostTracking:
 # TEST 5: TTL Cleanup and History Limits
 # ============================================================================
 
+
 class TestTTLAndHistoryManagement:
     """Test TTL cleanup and history size limits."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
-    async def test_lifecycle_manager_cleanup(
-        self, mock_get_client, create_mock_client
-    ):
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
+    async def test_lifecycle_manager_cleanup(self, mock_get_client, create_mock_client):
         """
         REGRESSION TEST: Verify lifecycle manager cleans up properly.
 
@@ -493,9 +496,7 @@ class TestTTLAndHistoryManagement:
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="Test prompt",
-            min_models=1,
-            max_models=1
+            prompt="Test prompt", min_models=1, max_models=1
         )
 
         await _collective_chat_completion_impl(request)
@@ -508,7 +509,7 @@ class TestTTLAndHistoryManagement:
         await shutdown_lifecycle_manager()
 
         # After shutdown, getting lifecycle manager should create a new one
-        new_lifecycle = await get_lifecycle_manager()
+        await get_lifecycle_manager()
         # They should be different instances after shutdown
         # (or same if singleton is recreated, both behaviors are valid)
 
@@ -517,36 +518,52 @@ class TestTTLAndHistoryManagement:
 # TEST 6: End-to-End Handler Tests
 # ============================================================================
 
+
 class TestCollectiveChatCompletionE2E:
     """End-to-end tests for collective_chat_completion handler."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_e2e_majority_vote(self, mock_get_client, create_mock_client):
         """E2E test for collective chat with majority vote strategy."""
         responses = [
             {
-                "choices": [{"message": {"content": "Answer A"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+                "choices": [
+                    {"message": {"content": "Answer A"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
             },
             {
-                "choices": [{"message": {"content": "Answer A"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+                "choices": [
+                    {"message": {"content": "Answer A"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
             },
             {
-                "choices": [{"message": {"content": "Answer B"}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-            }
+                "choices": [
+                    {"message": {"content": "Answer B"}, "finish_reason": "stop"}
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+            },
         ]
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
 
         request = CollectiveChatRequest(
-            prompt="What is 2+2?",
-            strategy="majority_vote",
-            min_models=3,
-            max_models=3
+            prompt="What is 2+2?", strategy="majority_vote", min_models=3, max_models=3
         )
 
         result = await _collective_chat_completion_impl(request)
@@ -561,13 +578,25 @@ class TestEnsembleReasoningE2E:
     """End-to-end tests for ensemble_reasoning handler."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_e2e_with_decomposition(self, mock_get_client, create_mock_client):
         """E2E test for ensemble reasoning with task decomposition."""
-        responses = [{
-            "choices": [{"message": {"content": f"Subtask result {i}"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 20, "completion_tokens": 30, "total_tokens": 50}
-        } for i in range(10)]
+        responses = [
+            {
+                "choices": [
+                    {
+                        "message": {"content": f"Subtask result {i}"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 30,
+                    "total_tokens": 50,
+                },
+            }
+            for i in range(10)
+        ]
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
@@ -576,7 +605,7 @@ class TestEnsembleReasoningE2E:
             problem="Design a sustainable city",
             task_type="analysis",
             decompose=True,
-            temperature=0.7
+            temperature=0.7,
         )
 
         result = await _ensemble_reasoning_impl(request)
@@ -589,15 +618,17 @@ class TestAdaptiveModelSelectionE2E:
     """End-to-end tests for adaptive_model_selection handler."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_e2e_code_task_selection(self, mock_get_client, create_mock_client):
         """E2E test for adaptive model selection with code task."""
         response = {
-            "choices": [{
-                "message": {"content": "def hello(): return 'world'"},
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 15, "completion_tokens": 25, "total_tokens": 40}
+            "choices": [
+                {
+                    "message": {"content": "def hello(): return 'world'"},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 15, "completion_tokens": 25, "total_tokens": 40},
         }
 
         mock_client = create_mock_client(chat_responses=response)
@@ -606,7 +637,7 @@ class TestAdaptiveModelSelectionE2E:
         request = AdaptiveModelRequest(
             query="Write a hello world function",
             task_type="code_generation",
-            performance_requirements={"accuracy": 0.9}
+            performance_requirements={"accuracy": 0.9},
         )
 
         result = await _adaptive_model_selection_impl(request)
@@ -620,13 +651,25 @@ class TestCrossModelValidationE2E:
     """End-to-end tests for cross_model_validation handler."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_e2e_validation_pass(self, mock_get_client, create_mock_client):
         """E2E test for cross-model validation with passing content."""
-        responses = [{
-            "choices": [{"message": {"content": "Content is valid"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
-        } for _ in range(5)]
+        responses = [
+            {
+                "choices": [
+                    {
+                        "message": {"content": "Content is valid"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 10,
+                    "total_tokens": 30,
+                },
+            }
+            for _ in range(5)
+        ]
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
@@ -634,7 +677,7 @@ class TestCrossModelValidationE2E:
         request = CrossValidationRequest(
             content="Python is a programming language",
             validation_criteria=["factual_accuracy"],
-            threshold=0.7
+            threshold=0.7,
         )
 
         # Cross-validation may fail due to internal implementation details
@@ -652,13 +695,25 @@ class TestCollaborativeProblemSolvingE2E:
     """End-to-end tests for collaborative_problem_solving handler."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_e2e_iterative_solving(self, mock_get_client, create_mock_client):
         """E2E test for collaborative problem solving."""
-        responses = [{
-            "choices": [{"message": {"content": f"Solution iteration {i}"}, "finish_reason": "stop"}],
-            "usage": {"prompt_tokens": 30, "completion_tokens": 40, "total_tokens": 70}
-        } for i in range(20)]
+        responses = [
+            {
+                "choices": [
+                    {
+                        "message": {"content": f"Solution iteration {i}"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 30,
+                    "completion_tokens": 40,
+                    "total_tokens": 70,
+                },
+            }
+            for i in range(20)
+        ]
 
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
@@ -666,7 +721,7 @@ class TestCollaborativeProblemSolvingE2E:
         request = CollaborativeSolvingRequest(
             problem="Design a recycling program",
             max_iterations=2,
-            models=["openai/gpt-4", "anthropic/claude-3-opus"]
+            models=["openai/gpt-4", "anthropic/claude-3-opus"],
         )
 
         result = await _collaborative_problem_solving_impl(request)
@@ -679,11 +734,12 @@ class TestCollaborativeProblemSolvingE2E:
 # TEST 7: Error Handling and Edge Cases
 # ============================================================================
 
+
 class TestErrorHandling:
     """Test error handling and edge cases."""
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_handles_api_timeout(self, mock_get_client):
         """Test handling of API timeout errors."""
         mock_client = AsyncMock()
@@ -693,28 +749,26 @@ class TestErrorHandling:
                 "name": "Test",
                 "provider": "test",
                 "context_length": 4096,
-                "pricing": {"prompt": "0.00001", "completion": "0.00001"}
+                "pricing": {"prompt": "0.00001", "completion": "0.00001"},
             }
         ]
 
         # Setup model cache
         mock_cache = AsyncMock()
+
         async def get_model_info(model_id):
             return {
                 "id": "test/model",
-                "pricing": {"prompt": "0.00001", "completion": "0.00001"}
+                "pricing": {"prompt": "0.00001", "completion": "0.00001"},
             }
+
         mock_cache.get_model_info.side_effect = get_model_info
         mock_client._model_cache = mock_cache
 
         mock_client.chat_completion.side_effect = asyncio.TimeoutError("API timeout")
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test",
-            min_models=1,
-            max_models=1
-        )
+        request = CollectiveChatRequest(prompt="Test", min_models=1, max_models=1)
 
         # Should handle timeout by raising an error (consensus requires at least 1 response)
         # The test verifies the error is properly propagated
@@ -722,18 +776,14 @@ class TestErrorHandling:
             await _collective_chat_completion_impl(request)
 
     @pytest.mark.asyncio
-    @patch('openrouter_mcp.handlers.collective_intelligence.get_openrouter_client')
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
     async def test_handles_empty_model_list(self, mock_get_client):
         """Test handling when no models are available."""
         mock_client = AsyncMock()
         mock_client.list_models.return_value = []
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test",
-            min_models=1,
-            max_models=1
-        )
+        request = CollectiveChatRequest(prompt="Test", min_models=1, max_models=1)
 
         # Should handle empty model list by raising an error (no models available)
         # The test verifies the error is properly propagated

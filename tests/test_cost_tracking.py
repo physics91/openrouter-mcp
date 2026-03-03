@@ -5,21 +5,20 @@ Verifies that token counting and cost estimation work correctly across
 the consensus engine and collective intelligence systems.
 """
 
-import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import AsyncMock, Mock
 
-from src.openrouter_mcp.utils.token_counter import (
-    TokenCounter,
-    count_tokens,
-    count_message_tokens
-)
-from src.openrouter_mcp.handlers.collective_intelligence import OpenRouterModelProvider
+import pytest
+
 from src.openrouter_mcp.collective_intelligence import (
+    ProcessingResult,
     TaskContext,
     TaskType,
-    ProcessingResult
+)
+from src.openrouter_mcp.handlers.collective_intelligence import OpenRouterModelProvider
+from src.openrouter_mcp.utils.token_counter import (
+    TokenCounter,
+    count_message_tokens,
+    count_tokens,
 )
 
 
@@ -54,7 +53,7 @@ class TestTokenCounter:
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Hello, how are you?"},
-            {"role": "assistant", "content": "I'm doing well, thank you!"}
+            {"role": "assistant", "content": "I'm doing well, thank you!"},
         ]
 
         tokens = counter.count_message_tokens(messages, model_id="openai/gpt-4")
@@ -64,7 +63,9 @@ class TestTokenCounter:
         # Token count should include message formatting overhead
         # so it should be more than just the sum of content tokens
         total_content = "".join([m["content"] for m in messages])
-        content_only_tokens = counter.count_tokens(total_content, model_id="openai/gpt-4")
+        content_only_tokens = counter.count_tokens(
+            total_content, model_id="openai/gpt-4"
+        )
         assert tokens >= content_only_tokens
 
     def test_count_tokens_multimodal(self):
@@ -76,8 +77,11 @@ class TestTokenCounter:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "What's in this image?"},
-                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
-                ]
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,..."},
+                    },
+                ],
             }
         ]
 
@@ -114,10 +118,12 @@ class TestCostEstimation:
     async def test_get_model_pricing(self):
         """Test fetching model pricing via client public API."""
         mock_client = AsyncMock()
-        mock_client.get_model_pricing = AsyncMock(return_value={
-            "prompt": 0.00003,
-            "completion": 0.00006,
-        })
+        mock_client.get_model_pricing = AsyncMock(
+            return_value={
+                "prompt": 0.00003,
+                "completion": 0.00006,
+            }
+        )
 
         provider = OpenRouterModelProvider(mock_client)
 
@@ -144,24 +150,25 @@ class TestCostEstimation:
     async def test_estimate_cost(self):
         """Test cost estimation with real pricing."""
         mock_client = AsyncMock()
-        mock_client.get_model_pricing = AsyncMock(return_value={
-            "prompt": 0.00003,
-            "completion": 0.00006,
-        })
+        mock_client.get_model_pricing = AsyncMock(
+            return_value={
+                "prompt": 0.00003,
+                "completion": 0.00006,
+            }
+        )
 
         provider = OpenRouterModelProvider(mock_client)
 
         # Estimate cost
-        usage = {
-            "prompt_tokens": 100,
-            "completion_tokens": 50
-        }
+        usage = {"prompt_tokens": 100, "completion_tokens": 50}
 
         cost = await provider._estimate_cost("openai/gpt-4", usage)
 
         # Expected: 100 * 0.00003 + 50 * 0.00006 = 0.003 + 0.003 = 0.006
         expected_cost = 0.006
-        assert abs(cost - expected_cost) < 0.000001  # Allow for floating point precision
+        assert (
+            abs(cost - expected_cost) < 0.000001
+        )  # Allow for floating point precision
 
     @pytest.mark.asyncio
     async def test_estimate_cost_zero_tokens(self):
@@ -171,10 +178,7 @@ class TestCostEstimation:
 
         provider = OpenRouterModelProvider(mock_client)
 
-        usage = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0
-        }
+        usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
         cost = await provider._estimate_cost("openai/gpt-4", usage)
         assert cost == 0.0
@@ -186,33 +190,40 @@ class TestConsensusEngineCostTracking:
     @pytest.mark.asyncio
     async def test_quota_tracking_with_real_tokens(self):
         """Test that consensus engine uses real token counts for quota."""
-        from src.openrouter_mcp.collective_intelligence.consensus_engine import ConsensusEngine, ConsensusConfig
-        from src.openrouter_mcp.collective_intelligence.operational_controls import OperationalConfig
+        from src.openrouter_mcp.collective_intelligence.consensus_engine import (
+            ConsensusConfig,
+            ConsensusEngine,
+        )
+        from src.openrouter_mcp.collective_intelligence.operational_controls import (
+            OperationalConfig,
+        )
 
         # Create mock model provider
         mock_provider = AsyncMock()
-        mock_provider.get_available_models = AsyncMock(return_value=[
-            Mock(model_id="model1", capabilities={}),
-            Mock(model_id="model2", capabilities={}),
-            Mock(model_id="model3", capabilities={})
-        ])
+        mock_provider.get_available_models = AsyncMock(
+            return_value=[
+                Mock(model_id="model1", capabilities={}),
+                Mock(model_id="model2", capabilities={}),
+                Mock(model_id="model3", capabilities={}),
+            ]
+        )
 
         # Create task
         task = TaskContext(
             task_type=TaskType.REASONING,
             content="What is 2+2? Please explain step by step.",
             requirements={},
-            constraints={}
+            constraints={},
         )
 
         # Create consensus engine with strict quota
         config = ConsensusConfig(
             min_models=2,
             max_models=3,
-            operational_config=OperationalConfig.conservative()
+            operational_config=OperationalConfig.conservative(),
         )
 
-        engine = ConsensusEngine(mock_provider, config)
+        ConsensusEngine(mock_provider, config)
 
         # Verify token counting is used (not character length)
         # The task content is 46 characters
@@ -229,7 +240,10 @@ class TestConsensusEngineCostTracking:
     @pytest.mark.asyncio
     async def test_cost_tracking_with_actual_response(self):
         """Test that actual costs from responses update quota tracker."""
-        from src.openrouter_mcp.collective_intelligence.consensus_engine import ConsensusEngine, ConsensusConfig
+        from src.openrouter_mcp.collective_intelligence.consensus_engine import (
+            ConsensusConfig,
+            ConsensusEngine,
+        )
 
         # Create mock model provider that returns results with costs
         mock_provider = AsyncMock()
@@ -243,25 +257,27 @@ class TestConsensusEngineCostTracking:
                 confidence=0.9,
                 processing_time=0.5,
                 tokens_used=25,  # Actual tokens from API
-                cost=0.00075,    # Actual cost from API
-                metadata={}
+                cost=0.00075,  # Actual cost from API
+                metadata={},
             )
 
         mock_provider.process_task = mock_process_task
-        mock_provider.get_available_models = AsyncMock(return_value=[
-            Mock(model_id="model1", capabilities={}),
-            Mock(model_id="model2", capabilities={})
-        ])
+        mock_provider.get_available_models = AsyncMock(
+            return_value=[
+                Mock(model_id="model1", capabilities={}),
+                Mock(model_id="model2", capabilities={}),
+            ]
+        )
 
-        task = TaskContext(
+        TaskContext(
             task_type=TaskType.REASONING,
             content="What is 2+2?",
             requirements={},
-            constraints={}
+            constraints={},
         )
 
         config = ConsensusConfig(min_models=2, max_models=2)
-        engine = ConsensusEngine(mock_provider, config)
+        ConsensusEngine(mock_provider, config)
 
         # The actual test would require mocking the full flow
         # This demonstrates the structure
@@ -285,8 +301,10 @@ class TestIntegration:
         """
         # This would require a full integration test with mocked OpenRouter API
         # For now, we verify the components are properly wired
+        from src.openrouter_mcp.handlers.collective_intelligence import (
+            OpenRouterModelProvider,
+        )
         from src.openrouter_mcp.utils.token_counter import count_tokens
-        from src.openrouter_mcp.handlers.collective_intelligence import OpenRouterModelProvider
 
         # Verify token counter is available
         tokens = count_tokens("test content")
@@ -297,11 +315,12 @@ class TestIntegration:
         mock_client._model_cache = None
         provider = OpenRouterModelProvider(mock_client)
 
-        assert hasattr(provider, '_estimate_cost')
-        assert hasattr(provider, '_get_model_pricing')
+        assert hasattr(provider, "_estimate_cost")
+        assert hasattr(provider, "_get_model_pricing")
 
         # Verify it's async
         import inspect
+
         assert inspect.iscoroutinefunction(provider._estimate_cost)
 
 

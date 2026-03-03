@@ -13,16 +13,17 @@ Algorithms:
 5. Hybrid scoring combining multiple metrics
 """
 
-import re
 import math
-from typing import List, Dict, Set, Tuple
+import re
 from collections import Counter
 from dataclasses import dataclass
+from typing import List, Set
 
 
 @dataclass
 class SimilarityScore:
     """Container for similarity metrics."""
+
     jaccard: float
     levenshtein: float
     cosine: float
@@ -40,7 +41,7 @@ class SemanticSimilarityCalculator:
         self,
         min_token_length: int = 2,
         ngram_size: int = 3,
-        case_sensitive: bool = False
+        case_sensitive: bool = False,
     ):
         """
         Initialize the similarity calculator.
@@ -78,10 +79,10 @@ class SemanticSimilarityCalculator:
         # Hybrid score: weighted combination of metrics
         # Weights tuned for semantic similarity of AI responses
         hybrid = (
-            0.30 * jaccard +      # Token overlap is important
-            0.20 * levenshtein +  # Edit distance helps with paraphrasing
-            0.35 * cosine +       # TF-IDF captures semantic content
-            0.15 * ngram          # Character n-grams catch similar phrasing
+            0.30 * jaccard  # Token overlap is important
+            + 0.20 * levenshtein  # Edit distance helps with paraphrasing
+            + 0.35 * cosine  # TF-IDF captures semantic content
+            + 0.15 * ngram  # Character n-grams catch similar phrasing
         )
 
         hybrid = self._boost_short_affirmations(norm1, norm2, hybrid)
@@ -92,7 +93,7 @@ class SemanticSimilarityCalculator:
             levenshtein=levenshtein,
             cosine=cosine,
             ngram=ngram,
-            hybrid=hybrid
+            hybrid=hybrid,
         )
 
     def _boost_short_affirmations(self, text1: str, text2: str, score: float) -> float:
@@ -112,13 +113,19 @@ class SemanticSimilarityCalculator:
                 return max(score, 0.85)
 
             affirmatives = {
-                "yes", "yeah", "yep", "correct", "true", "affirmative", "agree"
+                "yes",
+                "yeah",
+                "yep",
+                "correct",
+                "true",
+                "affirmative",
+                "agree",
             }
             negatives = {"no", "nope", "incorrect", "false", "negative"}
 
-            if (set1 & affirmatives and set2 & affirmatives):
+            if set1 & affirmatives and set2 & affirmatives:
                 return max(score, 0.8)
-            if (set1 & negatives and set2 & negatives):
+            if set1 & negatives and set2 & negatives:
                 return max(score, 0.8)
 
         return score
@@ -131,12 +138,7 @@ class SemanticSimilarityCalculator:
             return max(score, 0.7)
         return score
 
-    def are_similar(
-        self,
-        text1: str,
-        text2: str,
-        threshold: float = 0.7
-    ) -> bool:
+    def are_similar(self, text1: str, text2: str, threshold: float = 0.7) -> bool:
         """
         Determine if two texts are semantically similar.
 
@@ -171,7 +173,7 @@ class SemanticSimilarityCalculator:
         text = re.sub(r"\b\d+(?:\.\d+)?\b", "num", text)
 
         # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text.strip())
+        text = re.sub(r"\s+", " ", text.strip())
 
         return text
 
@@ -186,20 +188,70 @@ class SemanticSimilarityCalculator:
             List of tokens
         """
         # Split on word boundaries and punctuation
-        tokens = re.findall(r'\b\w+\b', text)
+        tokens = re.findall(r"\b\w+\b", text)
 
         stopwords = {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-            "of", "with", "by", "is", "are", "was", "were", "be", "been", "being",
-            "this", "that", "it", "as", "from", "into", "than", "then", "so",
-            "such", "these", "those", "their", "there", "here", "we", "they",
-            "you", "your", "our", "us", "i", "me", "my", "mine", "yours",
-            "he", "she", "him", "her", "his", "hers", "them", "its",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "being",
+            "this",
+            "that",
+            "it",
+            "as",
+            "from",
+            "into",
+            "than",
+            "then",
+            "so",
+            "such",
+            "these",
+            "those",
+            "their",
+            "there",
+            "here",
+            "we",
+            "they",
+            "you",
+            "your",
+            "our",
+            "us",
+            "i",
+            "me",
+            "my",
+            "mine",
+            "yours",
+            "he",
+            "she",
+            "him",
+            "her",
+            "his",
+            "hers",
+            "them",
+            "its",
         }
 
         # Filter by minimum length
         return [
-            token for token in tokens
+            token
+            for token in tokens
             if len(token) >= self.min_token_length and token not in stopwords
         ]
 
@@ -260,14 +312,16 @@ class SemanticSimilarityCalculator:
             curr_row = [i]
             for j in range(1, len2 + 1):
                 # Cost of substitution
-                cost = 0 if text1[i-1] == text2[j-1] else 1
+                cost = 0 if text1[i - 1] == text2[j - 1] else 1
 
                 # Minimum of: deletion, insertion, substitution
-                curr_row.append(min(
-                    prev_row[j] + 1,      # deletion
-                    curr_row[j-1] + 1,    # insertion
-                    prev_row[j-1] + cost  # substitution
-                ))
+                curr_row.append(
+                    min(
+                        prev_row[j] + 1,  # deletion
+                        curr_row[j - 1] + 1,  # insertion
+                        prev_row[j - 1] + cost,  # substitution
+                    )
+                )
             prev_row = curr_row
 
         # Normalize to 0-1 range
@@ -335,7 +389,7 @@ class SemanticSimilarityCalculator:
         if len(text) < n:
             return {text}
 
-        return {text[i:i+n] for i in range(len(text) - n + 1)}
+        return {text[i : i + n] for i in range(len(text) - n + 1)}
 
     def _ngram_similarity(self, text1: str, text2: str) -> float:
         """
@@ -377,7 +431,7 @@ class ResponseGrouper:
     def __init__(
         self,
         similarity_threshold: float = 0.7,
-        calculator: SemanticSimilarityCalculator = None
+        calculator: SemanticSimilarityCalculator = None,
     ):
         """
         Initialize the response grouper.
@@ -425,9 +479,7 @@ class ResponseGrouper:
                 # (transitive grouping)
                 for group_idx in current_group:
                     if self.calculator.are_similar(
-                        texts[group_idx],
-                        text2,
-                        self.similarity_threshold
+                        texts[group_idx], text2, self.similarity_threshold
                     ):
                         current_group.append(j)
                         assigned.add(j)
@@ -438,9 +490,7 @@ class ResponseGrouper:
         return groups
 
     def get_group_representatives(
-        self,
-        texts: List[str],
-        groups: List[List[int]]
+        self, texts: List[str], groups: List[List[int]]
     ) -> List[int]:
         """
         Get the most representative text from each group.
@@ -470,8 +520,7 @@ class ResponseGrouper:
                 # Calculate average similarity to all other texts in group
                 similarities = [
                     self.calculator.calculate_similarity(
-                        texts[idx],
-                        texts[other_idx]
+                        texts[idx], texts[other_idx]
                     ).hybrid
                     for other_idx in group
                     if other_idx != idx

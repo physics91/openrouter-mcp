@@ -6,7 +6,8 @@ enabling accurate cost estimation for API requests across different models.
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import tiktoken
 
 logger = logging.getLogger(__name__)
@@ -20,27 +21,20 @@ MODEL_ENCODING_MAP = {
     "gpt-4-turbo": "cl100k_base",
     "gpt-4o": "o200k_base",
     "gpt-5": "o200k_base",
-
     # GPT-3.5 family
     "gpt-3.5": "cl100k_base",
-
     # Claude family (approximation using cl100k_base)
     "claude": "cl100k_base",
-
     # Gemini family (approximation)
     "gemini": "cl100k_base",
-
     # Llama family (approximation)
     "llama": "cl100k_base",
-
     # Mistral family
     "mistral": "cl100k_base",
-
     # DeepSeek family
     "deepseek": "cl100k_base",
-
     # Default
-    "default": "cl100k_base"
+    "default": "cl100k_base",
 }
 
 
@@ -121,9 +115,7 @@ class TokenCounter:
             return max(1, len(text) // 4)
 
     def count_message_tokens(
-        self,
-        messages: List[Dict[str, Any]],
-        model_id: str = "default"
+        self, messages: List[Dict[str, Any]], model_id: str = "default"
     ) -> int:
         """
         Count tokens in a list of chat messages.
@@ -146,7 +138,9 @@ class TokenCounter:
             # Token counting logic based on OpenAI's cookbook
             # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
 
-            tokens_per_message = 3  # Every message follows <|start|>{role/name}\n{content}<|end|>\n
+            tokens_per_message = (
+                3  # Every message follows <|start|>{role/name}\n{content}<|end|>\n
+            )
             tokens_per_name = 1  # If there's a name, add 1 token
 
             num_tokens = 0
@@ -193,7 +187,7 @@ class TokenCounter:
         self,
         prompt_tokens: int,
         max_tokens: Optional[int] = None,
-        typical_ratio: float = 0.5
+        typical_ratio: float = 0.5,
     ) -> int:
         """
         Estimate completion tokens based on prompt and constraints.
@@ -248,8 +242,7 @@ def count_tokens(text: str, model_id: str = "default") -> int:
 
 
 def count_message_tokens(
-    messages: List[Dict[str, Any]],
-    model_id: str = "default"
+    messages: List[Dict[str, Any]], model_id: str = "default"
 ) -> int:
     """
     Convenience function to count tokens in messages.

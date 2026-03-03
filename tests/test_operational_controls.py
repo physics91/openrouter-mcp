@@ -6,21 +6,21 @@ quotas, failure handling, and storage management.
 """
 
 import asyncio
-import pytest
 from datetime import datetime, timedelta
-from typing import List
+
+import pytest
 
 from openrouter_mcp.collective_intelligence.operational_controls import (
-    OperationalConfig,
     ConcurrencyConfig,
-    QuotaConfig,
-    StorageConfig,
-    FailureConfig,
     ConcurrencyLimiter,
-    QuotaTracker,
+    FailureConfig,
     FailureController,
+    OperationalConfig,
+    QuotaConfig,
+    QuotaTracker,
+    StorageConfig,
     StorageManager,
-    TaskCancellationManager
+    TaskCancellationManager,
 )
 
 
@@ -41,8 +41,7 @@ class TestConcurrencyLimiter:
 
         # Try to acquire third slot - should return False after timeout
         config_short_timeout = ConcurrencyConfig(
-            max_concurrent_tasks=2,
-            queue_timeout_seconds=0.1
+            max_concurrent_tasks=2, queue_timeout_seconds=0.1
         )
         limiter_short = ConcurrencyLimiter(config_short_timeout)
         await limiter_short.acquire_task_slot("task1")
@@ -157,9 +156,9 @@ class TestQuotaTracker:
         await tracker.check_and_increment("req1", tokens=50, cost=0.3)
 
         usage = tracker.get_usage("req1")
-        assert usage['calls'] == 2
-        assert usage['tokens'] == 150
-        assert usage['cost'] == 0.8
+        assert usage["calls"] == 2
+        assert usage["tokens"] == 150
+        assert usage["cost"] == 0.8
 
 
 class TestFailureController:
@@ -171,7 +170,9 @@ class TestFailureController:
         config = FailureConfig(cancel_on_critical_failure=True)
         controller = FailureController(config)
 
-        should_cancel = await controller.record_failure("req1", "Critical error", is_critical=True)
+        should_cancel = await controller.record_failure(
+            "req1", "Critical error", is_critical=True
+        )
         assert should_cancel
 
     @pytest.mark.asyncio
@@ -215,7 +216,9 @@ class TestFailureController:
     @pytest.mark.asyncio
     async def test_circuit_breaker(self):
         """Test circuit breaker functionality."""
-        config = FailureConfig(circuit_breaker_threshold=3, circuit_breaker_timeout_seconds=1.0)
+        config = FailureConfig(
+            circuit_breaker_threshold=3, circuit_breaker_timeout_seconds=1.0
+        )
         controller = FailureController(config)
 
         # Circuit should be closed initially
@@ -283,12 +286,16 @@ class TestStorageManager:
     @pytest.mark.asyncio
     async def test_ttl_cleanup(self):
         """Test TTL-based cleanup."""
-        config = StorageConfig(history_ttl_hours=1, enable_auto_cleanup=False)  # 1 hour TTL
+        config = StorageConfig(
+            history_ttl_hours=1, enable_auto_cleanup=False
+        )  # 1 hour TTL
         manager = StorageManager(config)
 
         # Add items with backdated timestamps
         await manager.add_item("item1", {"data": "test1"})
-        manager.item_timestamps["item1"] = datetime.now() - timedelta(hours=2)  # Expired
+        manager.item_timestamps["item1"] = datetime.now() - timedelta(
+            hours=2
+        )  # Expired
 
         await manager.add_item("item2", {"data": "test2"})  # Current, not expired
 
@@ -457,8 +464,7 @@ class TestIntegration:
         """Test that failures are properly contained."""
         config = OperationalConfig(
             failure=FailureConfig(
-                max_failures_before_cancel=2,
-                cancel_on_critical_failure=True
+                max_failures_before_cancel=2, cancel_on_critical_failure=True
             )
         )
         controller = FailureController(config.failure)
@@ -481,11 +487,15 @@ class TestIntegration:
         await asyncio.sleep(0.01)
 
         # Record critical failure
-        should_cancel = await controller.record_failure(request_id, "Critical error", is_critical=True)
+        should_cancel = await controller.record_failure(
+            request_id, "Critical error", is_critical=True
+        )
         assert should_cancel
 
         # Cancel all pending tasks
-        cancelled = await cancellation_manager.cancel_all_tasks(request_id, "Failure cascade prevention")
+        cancelled = await cancellation_manager.cancel_all_tasks(
+            request_id, "Failure cascade prevention"
+        )
         assert cancelled == 3
 
         # Wait for cancellation

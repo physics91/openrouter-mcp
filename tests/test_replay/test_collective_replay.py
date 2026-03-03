@@ -8,13 +8,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.fixtures.mock_clients import MockClientFactory
 from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
 from openrouter_mcp.handlers.collective_intelligence import (
     CollectiveChatRequest,
     _collective_chat_completion_impl,
 )
-
+from tests.fixtures.mock_clients import MockClientFactory
 
 FIXTURE_FILE = Path(__file__).parent / "fixtures" / "collective_chat_replay.json"
 
@@ -52,7 +51,9 @@ def replay_mock_client():
             },
         ]
     )
-    client.get_model_pricing = AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002})
+    client.get_model_pricing = AsyncMock(
+        return_value={"prompt": 0.00001, "completion": 0.00002}
+    )
     client.chat_completion = AsyncMock(
         return_value={
             "choices": [
@@ -70,7 +71,9 @@ def replay_mock_client():
 @pytest.mark.asyncio
 @pytest.mark.replay
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collective_chat_replay_is_deterministic(mock_get_client, replay_mock_client, replay_fixture):
+async def test_collective_chat_replay_is_deterministic(
+    mock_get_client, replay_mock_client, replay_fixture
+):
     """Same replay fixture should produce stable key fields across runs."""
     mock_get_client.return_value = replay_mock_client
 
