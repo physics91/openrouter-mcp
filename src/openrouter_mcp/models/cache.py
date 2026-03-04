@@ -448,11 +448,15 @@ class ModelCache:
             # Fallback to file cache if API fails
             logger.warning(f"API fetch failed, trying file cache: {e}")
             loop = asyncio.get_running_loop()
-            models, _ = await loop.run_in_executor(
+            models, last_update = await loop.run_in_executor(
                 self._executor, self._load_from_file_cache
             )
 
             if models:
+                # Hydrate memory cache so filter_models() works after fallback
+                with self._cache_lock:
+                    self._memory_cache = models
+                    self._last_update = last_update or datetime.now()
                 logger.info(f"Using {len(models)} models from file cache fallback")
                 return models
             else:
@@ -653,44 +657,40 @@ class ModelCache:
 
             for model in self._memory_cache:
                 model_id = model.get("id", "")
-                metadata = self.get_model_metadata(model_id)
 
-                # Apply filters
+                # Apply filters (use model dict directly — already enriched by batch_enhance_models)
                 if (
                     provider
-                    and metadata.get("provider", "").lower() != provider.lower()
+                    and model.get("provider", "").lower() != provider.lower()
                 ):
                     continue
 
                 if vision_capable is not None:
-                    caps = metadata.get("capabilities", {})
+                    caps = model.get("capabilities", {})
                     if caps.get("supports_vision", False) != vision_capable:
                         continue
 
                 if reasoning_model is not None:
-                    # Check if model is a reasoning model based on id or description
                     is_reasoning = (
                         "o1" in model_id
-                        or "reasoning" in metadata.get("description", "").lower()
+                        or "reasoning" in model.get("description", "").lower()
                     )
                     if is_reasoning != reasoning_model:
                         continue
 
                 if long_context is not None:
-                    # Long context = > 100k tokens
-                    is_long = metadata.get("context_length", 0) > 100000
+                    is_long = model.get("context_length", 0) > 100000
                     if is_long != long_context:
                         continue
 
                 if free_only is not None:
-                    # Check if model is free based on cost_tier
-                    is_free = metadata.get("cost_tier") == "free"
+                    is_free = model.get("cost_tier") == "free"
                     if is_free != free_only:
                         continue
 
                 if (
                     min_context is not None
-                    and metadata.get("context_length", 0) < min_context
+                    and model.get("context_length", 0) < min_context
                 ):
                     continue
 
@@ -780,27 +780,24 @@ class ModelCache:
             if not isinstance(self._memory_cache, list):
                 return {"total_models": 0, "error": "Cache not initialized"}
 
-            # Count providers
+            # Count providers (use model dict directly — already enriched)
             providers = set()
             vision_count = 0
             reasoning_count = 0
 
             for model in self._memory_cache:
-                metadata = self.get_model_metadata(model.get("id", ""))
-
-                provider = metadata.get("provider")
+                provider = model.get("provider")
                 if provider and provider != "Unknown":
                     providers.add(provider)
 
-                caps = metadata.get("capabilities", {})
+                caps = model.get("capabilities", {})
                 if caps.get("supports_vision", False):
                     vision_count += 1
 
-                # Check if model is a reasoning model
                 model_id = model.get("id", "").lower()
                 if (
                     "o1" in model_id
-                    or "reasoning" in metadata.get("description", "").lower()
+                    or "reasoning" in model.get("description", "").lower()
                 ):
                     reasoning_count += 1
 

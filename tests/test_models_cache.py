@@ -401,6 +401,112 @@ class TestModelCache:
         assert stats["cache_size_mb"] > 0
 
 
+class TestFilterModelsPerformance:
+    """Verify filter_models and get_cache_stats are O(n) — no get_model_metadata calls."""
+
+    @pytest.fixture
+    def populated_cache(self):
+        from src.openrouter_mcp.models.cache import ModelCache
+        from src.openrouter_mcp.utils.metadata import batch_enhance_models
+
+        models_raw = [
+            {"id": "google/gemma:free", "name": "Gemma", "context_length": 131072,
+             "architecture": {"modality": "text"}, "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "openai/gpt-5", "name": "GPT-5", "context_length": 200000,
+             "architecture": {"modality": "text"}, "pricing": {"prompt": "0.01", "completion": "0.03"}},
+        ]
+        cache = ModelCache(ttl_hours=1)
+        cache._memory_cache = batch_enhance_models(models_raw)
+        cache._last_update = datetime.now()
+        return cache
+
+    def test_filter_models_no_metadata_lookup(self, populated_cache):
+        """filter_models must NOT call get_model_metadata (O(n²) avoidance)."""
+        with patch.object(populated_cache, "get_model_metadata", wraps=populated_cache.get_model_metadata) as spy:
+            populated_cache.filter_models(free_only=True)
+            spy.assert_not_called()
+
+    def test_get_cache_stats_no_metadata_lookup(self, populated_cache):
+        """get_cache_stats must NOT call get_model_metadata (O(n²) avoidance)."""
+        with patch.object(populated_cache, "get_model_metadata", wraps=populated_cache.get_model_metadata) as spy:
+            populated_cache.get_cache_stats()
+            spy.assert_not_called()
+
+
+class TestFallbackCacheHydration:
+    """Test that file cache fallback properly hydrates _memory_cache."""
+
+    @pytest.fixture
+    def cache_config(self):
+        return {"ttl_hours": 1, "max_memory_items": 1000, "cache_file": "test.json"}
+
+    @pytest.fixture
+    def sample_models(self):
+        return [
+            {"id": "google/gemma:free", "name": "Gemma", "context_length": 131072,
+             "provider": "google", "cost_tier": "free", "capabilities": {}},
+            {"id": "deepseek/chat:free", "name": "DeepSeek", "context_length": 131072,
+             "provider": "deepseek", "cost_tier": "free", "capabilities": {}},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_fallback_hydrates_memory_cache(self, cache_config, sample_models):
+        """API failure + file cache exists → _memory_cache must be populated."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        assert cache._memory_cache == []
+
+        file_update = datetime.now() - timedelta(minutes=5)
+
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
+        ), patch.object(
+            cache, "_load_from_file_cache", return_value=(sample_models, file_update)
+        ):
+            models = await cache.get_models()
+
+        assert len(models) == 2
+        assert cache._memory_cache == sample_models
+        assert cache._last_update == file_update
+
+    @pytest.mark.asyncio
+    async def test_fallback_hydrates_with_none_last_update(self, cache_config, sample_models):
+        """File cache returns None for last_update → _last_update set to ~now."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
+        ), patch.object(
+            cache, "_load_from_file_cache", return_value=(sample_models, None)
+        ):
+            await cache.get_models()
+
+        assert cache._memory_cache == sample_models
+        assert cache._last_update is not None
+        # Should be approximately now (within 5 seconds)
+        assert (datetime.now() - cache._last_update).total_seconds() < 5
+
+    @pytest.mark.asyncio
+    async def test_fallback_no_file_cache_returns_empty(self, cache_config):
+        """API failure + no file cache → empty list, _memory_cache stays empty."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
+        ), patch.object(
+            cache, "_load_from_file_cache", return_value=([], None)
+        ):
+            models = await cache.get_models()
+
+        assert models == []
+        assert cache._memory_cache == []
+
+
 class TestModelCacheIntegration:
     """Integration tests for model cache with OpenRouter client."""
 
