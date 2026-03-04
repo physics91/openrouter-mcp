@@ -170,6 +170,10 @@ class FreeChatConfig:
     FREE_DAILY_LIMIT: int = 50
     FREE_MINUTE_LIMIT: int = 20
 
+    # Metrics persistence
+    METRICS_CACHE_FILE: str = ".cache/free_metrics.json"
+    METRICS_SAVE_INTERVAL: int = 10
+
 
 __all__ = [
     "APIConfig",

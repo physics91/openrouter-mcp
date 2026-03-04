@@ -1,5 +1,8 @@
 """Tests for free model performance metrics."""
 
+import json
+import os
+
 import pytest
 
 from src.openrouter_mcp.free.metrics import MetricsCollector, ModelMetrics
@@ -140,3 +143,119 @@ class TestMetricsCollector:
         collector.record_failure("model-x", error_type="error")
         score = collector.get_performance_score("model-x")
         assert 0.0 <= score <= 1.0
+
+
+class TestMetricsPersistence:
+    """Tests for metrics save/load roundtrip and corruption recovery."""
+
+    def test_save_load_roundtrip(self, tmp_path):
+        path = str(tmp_path / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        collector.record_success("model-a", latency_ms=100.0, tokens_used=10)
+        collector.record_failure("model-a", error_type="timeout")
+        collector.save()
+
+        loaded = MetricsCollector(persistence_path=path)
+        m = loaded.get_metrics("model-a")
+        assert m is not None
+        assert m.total_requests == 2
+        assert m.success_count == 1
+        assert m.failure_count == 1
+        assert m.error_counts["timeout"] == 1
+
+    def test_missing_file_starts_empty(self, tmp_path):
+        path = str(tmp_path / "nonexistent.json")
+        collector = MetricsCollector(persistence_path=path)
+        assert collector.get_all_metrics() == {}
+
+    def test_corrupted_file_starts_empty(self, tmp_path):
+        path = str(tmp_path / "bad.json")
+        with open(path, "w") as f:
+            f.write("{invalid json!!!")
+        collector = MetricsCollector(persistence_path=path)
+        assert collector.get_all_metrics() == {}
+
+    def test_auto_save_interval(self, tmp_path):
+        path = str(tmp_path / "auto.json")
+        collector = MetricsCollector(persistence_path=path)
+
+        # Record fewer than METRICS_SAVE_INTERVAL (10) — should not save yet
+        for i in range(9):
+            collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
+        assert not os.path.exists(path)
+
+        # 10th record triggers auto-save
+        collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
+        assert os.path.exists(path)
+
+    def test_no_persistence_path_skips_save(self):
+        collector = MetricsCollector()
+        collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
+        collector.save()  # should not raise
+
+    def test_save_creates_directory(self, tmp_path):
+        path = str(tmp_path / "subdir" / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
+        collector.save()
+        assert os.path.exists(path)
+
+    def test_atomic_write_preserves_original_on_failure(self, tmp_path, monkeypatch):
+        path = str(tmp_path / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
+        collector.save()
+
+        # Verify original data exists
+        with open(path) as f:
+            original = json.load(f)
+        assert "model-a" in original
+
+        # Simulate write failure after tmp file is created
+        real_replace = os.replace
+
+        def failing_replace(src, dst):
+            os.unlink(src)  # clean up tmp so test doesn't leak
+            raise OSError("disk full")
+
+        monkeypatch.setattr(os, "replace", failing_replace)
+
+        collector.record_success("model-b", latency_ms=20.0, tokens_used=2)
+        collector.save()  # should fail internally
+
+        monkeypatch.setattr(os, "replace", real_replace)
+
+        # Original file must be intact
+        with open(path) as f:
+            after_failure = json.load(f)
+        assert "model-a" in after_failure
+        assert "model-b" not in after_failure
+
+
+class TestModelMetricsSerialization:
+    def test_to_dict(self):
+        m = ModelMetrics(
+            total_requests=5,
+            success_count=3,
+            failure_count=2,
+            total_latency_ms=1500.0,
+            total_tokens=300,
+        )
+        m.error_counts["timeout"] = 2
+        d = m.to_dict()
+        assert d["total_requests"] == 5
+        assert d["error_counts"] == {"timeout": 2}
+
+    def test_from_dict_roundtrip(self):
+        original = ModelMetrics(
+            total_requests=5,
+            success_count=3,
+            failure_count=2,
+            total_latency_ms=1500.0,
+            total_tokens=300,
+        )
+        original.error_counts["timeout"] = 2
+        restored = ModelMetrics.from_dict(original.to_dict())
+        assert restored.total_requests == original.total_requests
+        assert restored.success_count == original.success_count
+        assert restored.error_counts["timeout"] == 2
