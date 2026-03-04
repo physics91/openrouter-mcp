@@ -438,6 +438,45 @@ class TestProviderConfiguration:
         assert resolve_provider_alias("palm") == "google"  # Old Google model
 
 
+class TestCostTierNonTokenPricing:
+    """Test that cost_tier considers all pricing fields, not just prompt/completion."""
+
+    @pytest.mark.parametrize(
+        "pricing,expected_tier",
+        [
+            # image-only cost → not "free"
+            ({"prompt": "0", "completion": "0", "image": "0.04"}, "low"),
+            # request-only cost → not "free"
+            ({"prompt": "0", "completion": "0", "request": "0.001"}, "low"),
+            # web_search cost → not "free"
+            ({"prompt": "0", "completion": "0", "web_search": "0.005"}, "low"),
+            # internal_reasoning cost → not "free"
+            ({"prompt": "0", "completion": "0", "internal_reasoning": "0.01"}, "low"),
+            # truly free
+            ({"prompt": "0", "completion": "0"}, "free"),
+            # truly free — all fields zero
+            ({"prompt": "0", "completion": "0", "image": "0", "request": "0"}, "free"),
+            # pricing is None explicitly
+            (None, "free"),
+        ],
+    )
+    def test_non_token_pricing_affects_cost_tier(self, pricing, expected_tier):
+        from src.openrouter_mcp.utils.metadata import determine_cost_tier
+
+        model_data = {
+            "pricing": pricing,
+            "architecture": {"modality": "text"},
+        }
+        assert determine_cost_tier(model_data) == expected_tier
+
+    def test_missing_pricing_key_is_free(self):
+        """Model with no pricing key at all should be 'free'."""
+        from src.openrouter_mcp.utils.metadata import determine_cost_tier
+
+        model_data = {"architecture": {"modality": "text"}}
+        assert determine_cost_tier(model_data) == "free"
+
+
 class TestMetadataQualityScoring:
     """Test model quality scoring based on metadata."""
 
