@@ -14,9 +14,14 @@ from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
 
 @pytest.fixture
 def mock_chat_response():
+    """Shared mock response without ``model`` field.
+
+    The ``model`` key is intentionally omitted so that ``_build_result`` uses
+    the ``model_id`` from ``select_model`` (same behaviour as pre-native-fallback).
+    Tests that verify actual-model extraction should add ``model`` explicitly.
+    """
     return {
         "id": "gen-free-001",
-        "model": "google/gemma-3-27b:free",
         "choices": [
             {
                 "index": 0,
@@ -26,6 +31,16 @@ def mock_chat_response():
         ],
         "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8},
     }
+
+
+@pytest.fixture(autouse=True)
+def _disable_native_fallback():
+    """Disable native fallback for tests that validate local retry loop."""
+    import src.openrouter_mcp.handlers.free_chat as handler_module
+
+    handler_module._native_fallback_disabled = True
+    yield
+    handler_module._native_fallback_disabled = False
 
 
 class TestFreeChatHandler:

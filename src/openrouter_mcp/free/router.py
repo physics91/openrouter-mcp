@@ -141,19 +141,18 @@ class FreeModelRouter:
         ]
         return matched
 
-    async def select_model(
+    def _get_scored_candidates(
         self,
-        preferred_models: Optional[List[str]] = None,
         task_type: Optional[FreeTaskType] = None,
         required_capabilities: Optional[Dict[str, bool]] = None,
-    ) -> str:
-        """Select the best available free model."""
-        await self._cache.ensure_cache_ready()
-        self._cleanup_expired_cooldowns()
+    ) -> List[tuple]:
+        """Score and sort available free models by effective score descending.
 
+        Returns list of ``(model_dict, effective_score)`` tuples.
+        Raises :class:`RuntimeError` if no models are available.
+        """
         free_models = self._cache.filter_models(free_only=True)
 
-        # Apply capability filter
         if required_capabilities:
             free_models = self._filter_by_capabilities(free_models, required_capabilities)
             if not free_models:
@@ -165,14 +164,6 @@ class FreeModelRouter:
             raise RuntimeError(
                 "사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요."
             )
-
-        # Try preferred models first (only if they are actually free)
-        if preferred_models:
-            free_model_ids = {m["id"] for m in free_models}
-            for pref_id in preferred_models:
-                if pref_id in free_model_ids and self._is_available(pref_id):
-                    self._usage_counts[pref_id] = self._usage_counts.get(pref_id, 0) + 1
-                    return pref_id
 
         # Decay usage counts when all free models have been used at least once
         if self._usage_counts and len(self._usage_counts) >= len(free_models):
@@ -204,8 +195,35 @@ class FreeModelRouter:
                 f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요."
             )
 
-        # Sort by effective score descending
         candidates.sort(key=lambda x: -x[1])
+        return candidates
+
+    async def select_model(
+        self,
+        preferred_models: Optional[List[str]] = None,
+        task_type: Optional[FreeTaskType] = None,
+        required_capabilities: Optional[Dict[str, bool]] = None,
+    ) -> str:
+        """Select the best available free model."""
+        await self._cache.ensure_cache_ready()
+        self._cleanup_expired_cooldowns()
+
+        # Try preferred models first (only if they are actually free)
+        if preferred_models:
+            free_models = self._cache.filter_models(free_only=True)
+            if required_capabilities:
+                free_models = self._filter_by_capabilities(
+                    free_models, required_capabilities
+                )
+            free_model_ids = {m["id"] for m in free_models}
+            for pref_id in preferred_models:
+                if pref_id in free_model_ids and self._is_available(pref_id):
+                    self._usage_counts[pref_id] = self._usage_counts.get(pref_id, 0) + 1
+                    return pref_id
+
+        candidates = self._get_scored_candidates(
+            task_type=task_type, required_capabilities=required_capabilities
+        )
 
         selected = candidates[0][0]
         model_id = selected["id"]
@@ -213,3 +231,41 @@ class FreeModelRouter:
 
         logger.info(f"Selected free model: {model_id} (score={candidates[0][1]:.3f})")
         return model_id
+
+    async def select_models(
+        self,
+        count: int,
+        preferred_models: Optional[List[str]] = None,
+        task_type: Optional[FreeTaskType] = None,
+        required_capabilities: Optional[Dict[str, bool]] = None,
+    ) -> List[str]:
+        """Select top *count* available free models by score.
+
+        Does not update usage counts — caller records actual usage after
+        knowing which model was used.
+        """
+        await self._cache.ensure_cache_ready()
+        self._cleanup_expired_cooldowns()
+
+        candidates = self._get_scored_candidates(
+            task_type=task_type, required_capabilities=required_capabilities
+        )
+
+        result: List[str] = []
+        candidate_ids = [c[0]["id"] for c in candidates]
+
+        # Prioritize preferred models if they appear in candidates
+        if preferred_models:
+            candidate_set = set(candidate_ids)
+            for pref_id in preferred_models:
+                if pref_id in candidate_set and pref_id not in result:
+                    result.append(pref_id)
+
+        # Fill remaining slots from scored candidates
+        for mid in candidate_ids:
+            if mid not in result:
+                result.append(mid)
+            if len(result) >= count:
+                break
+
+        return result[:count]

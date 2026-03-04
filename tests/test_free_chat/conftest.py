@@ -62,3 +62,4 @@ def _reset_handler_singletons():
     handler_module._metrics = None
     handler_module._classifier = None
     handler_module._quota = None
+    handler_module._native_fallback_disabled = False
