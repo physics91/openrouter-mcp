@@ -1,5 +1,7 @@
 import json as json_lib
 import logging
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
@@ -33,13 +35,45 @@ class AuthenticationError(OpenRouterError):
 class RateLimitError(OpenRouterError):
     """Raised when rate limit is exceeded."""
 
-    pass
+    def __init__(self, message: str, retry_after: Optional[float] = None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class InvalidRequestError(OpenRouterError):
     """Raised when request is invalid."""
 
     pass
+
+
+_MAX_RETRY_AFTER = 3600.0
+
+
+def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
+    """Parse Retry-After header into seconds (clamped to [0, 3600]).
+
+    Supports integer/float seconds and HTTP-date formats.
+    Returns None on missing/unparseable values.
+    """
+    if not header_value:
+        return None
+
+    # Try numeric seconds first
+    try:
+        value = float(header_value)
+        if value != value:  # NaN check
+            return None
+        return max(0.0, min(value, _MAX_RETRY_AFTER))
+    except (ValueError, TypeError):
+        pass
+
+    # Try HTTP-date format
+    try:
+        target = parsedate_to_datetime(header_value)
+        delta = (target - datetime.now(timezone.utc)).total_seconds()
+        return max(0.0, min(delta, _MAX_RETRY_AFTER))
+    except (ValueError, TypeError):
+        return None
 
 
 # Note: SensitiveDataSanitizer has been moved to openrouter_mcp.utils.sanitizer
@@ -391,7 +425,8 @@ class OpenRouterClient:
         if response.status_code == 401:
             raise AuthenticationError(error_message)
         elif response.status_code == 429:
-            raise RateLimitError(error_message)
+            retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+            raise RateLimitError(error_message, retry_after=retry_after)
         elif response.status_code == 400:
             raise InvalidRequestError(error_message)
         else:
