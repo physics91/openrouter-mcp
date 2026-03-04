@@ -8,6 +8,7 @@ from src.openrouter_mcp.client.openrouter import (
     OpenRouterError,
     RateLimitError,
 )
+from src.openrouter_mcp.free.quota import QuotaExceededError
 from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
 
 
@@ -81,7 +82,7 @@ class TestFreeChatHandler:
 
             assert result["model_used"] == "meta-llama/llama-4-scout:free"
             mock_router.report_rate_limit.assert_called_once_with(
-                "google/gemma-3-27b:free"
+                "google/gemma-3-27b:free", cooldown_seconds=60.0
             )
 
     @pytest.mark.unit
@@ -341,4 +342,93 @@ class TestFreeChatHandler:
 
             mock_collector.record_failure.assert_called_once_with(
                 "google/gemma-3-27b:free", "OpenRouterError"
+            )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_quota_exceeded_skips_model_selection(self):
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_quota"
+        ) as mock_get_quota:
+            mock_get_client.return_value = AsyncMock()
+
+            mock_router = AsyncMock()
+            mock_get_router.return_value = mock_router
+
+            mock_quota = AsyncMock()
+            mock_quota.reserve_and_record.side_effect = QuotaExceededError(
+                "일일 무료 사용 한도(50회)를 초과했습니다.",
+                reset_time=MagicMock(),
+            )
+            mock_get_quota.return_value = mock_quota
+
+            request = FreeChatRequest(message="Hello")
+            with pytest.raises(QuotaExceededError, match="일일 무료 사용 한도"):
+                await free_chat(request)
+
+            mock_router.select_model.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_retry_after_passed_to_report_rate_limit(self, mock_chat_response):
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = [
+                RateLimitError("rate limited", retry_after=30.0),
+                mock_chat_response,
+            ]
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.side_effect = [
+                "google/gemma-3-27b:free",
+                "meta-llama/llama-4-scout:free",
+            ]
+            mock_router.report_rate_limit = MagicMock()
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello")
+            await free_chat(request)
+
+            mock_router.report_rate_limit.assert_called_once_with(
+                "google/gemma-3-27b:free", cooldown_seconds=30.0
+            )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_retry_after_zero_uses_zero_not_default(self, mock_chat_response):
+        """Retry-After: 0 should pass 0.0, not fall back to DEFAULT_COOLDOWN_SECONDS."""
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = [
+                RateLimitError("rate limited", retry_after=0.0),
+                mock_chat_response,
+            ]
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.side_effect = [
+                "google/gemma-3-27b:free",
+                "meta-llama/llama-4-scout:free",
+            ]
+            mock_router.report_rate_limit = MagicMock()
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello")
+            await free_chat(request)
+
+            mock_router.report_rate_limit.assert_called_once_with(
+                "google/gemma-3-27b:free", cooldown_seconds=0.0
             )

@@ -166,6 +166,10 @@ class FreeChatConfig:
     MAX_LATENCY_MS: float = 10000.0
     MAX_TOKENS_PER_SECOND: float = 50.0
 
+    # Quota limits
+    FREE_DAILY_LIMIT: int = 50
+    FREE_MINUTE_LIMIT: int = 20
+
 
 __all__ = [
     "APIConfig",

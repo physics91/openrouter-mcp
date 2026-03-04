@@ -53,3 +53,8 @@ class TestFreeChatConfig:
     def test_performance_normalization_constants(self):
         assert FreeChatConfig.MAX_LATENCY_MS == 10000
         assert FreeChatConfig.MAX_TOKENS_PER_SECOND == 50
+
+    @pytest.mark.unit
+    def test_quota_limits(self):
+        assert FreeChatConfig.FREE_DAILY_LIMIT == 50
+        assert FreeChatConfig.FREE_MINUTE_LIMIT == 20

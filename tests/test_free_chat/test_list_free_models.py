@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,7 +12,7 @@ class TestListFreeModels:
         with patch(
             "src.openrouter_mcp.handlers.free_chat._get_router"
         ) as mock_get_router:
-            mock_router = MagicMock()
+            mock_router = AsyncMock()
             mock_router.list_models_with_status.return_value = [
                 {
                     "id": "google/gemma-3-27b:free",
@@ -45,7 +45,7 @@ class TestListFreeModels:
         with patch(
             "src.openrouter_mcp.handlers.free_chat._get_router"
         ) as mock_get_router:
-            mock_router = MagicMock()
+            mock_router = AsyncMock()
             mock_router.list_models_with_status.return_value = [
                 {
                     "id": "google/gemma-3-27b:free",

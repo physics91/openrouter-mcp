@@ -507,6 +507,78 @@ class TestFallbackCacheHydration:
         assert cache._memory_cache == []
 
 
+class TestEnsureCacheReady:
+    """Test ensure_cache_ready() cold start guarantee."""
+
+    @pytest.fixture
+    def cache_config(self):
+        return {"ttl_hours": 1, "max_memory_items": 1000, "cache_file": "test.json"}
+
+    @pytest.fixture
+    def sample_models(self):
+        return [{"id": "test/model", "name": "Test", "provider": "test"}]
+
+    @pytest.mark.asyncio
+    async def test_valid_cache_fast_path(self, cache_config, sample_models):
+        """Valid, non-expired cache → no API call."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        cache._memory_cache = sample_models
+        cache._last_update = datetime.now()
+
+        with patch.object(cache, "get_models") as mock_get:
+            await cache.ensure_cache_ready()
+            mock_get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_cache_triggers_fetch(self, cache_config, sample_models):
+        """Empty cache → calls get_models."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+
+        async def fake_get_models(**kw):
+            cache._memory_cache = sample_models
+            cache._last_update = datetime.now()
+            return sample_models
+
+        with patch.object(cache, "get_models", side_effect=fake_get_models) as mock_get:
+            await cache.ensure_cache_ready()
+            mock_get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_expired_cache_triggers_fetch(self, cache_config, sample_models):
+        """Expired cache → calls get_models."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        cache._memory_cache = sample_models
+        cache._last_update = datetime.now() - timedelta(hours=2)
+
+        async def fake_get_models(**kw):
+            cache._last_update = datetime.now()
+            return sample_models
+
+        with patch.object(cache, "get_models", side_effect=fake_get_models) as mock_get:
+            await cache.ensure_cache_ready()
+            mock_get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_total_failure_raises_runtime_error(self, cache_config):
+        """API + file cache both fail → RuntimeError."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+
+        async def fake_get_models(**kw):
+            return []
+
+        with patch.object(cache, "get_models", side_effect=fake_get_models):
+            with pytest.raises(RuntimeError, match="모델 캐시를 초기화할 수 없습니다"):
+                await cache.ensure_cache_ready()
+
+
 class TestModelCacheIntegration:
     """Integration tests for model cache with OpenRouter client."""
 

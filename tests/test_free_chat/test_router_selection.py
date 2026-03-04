@@ -1,9 +1,7 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from src.openrouter_mcp.free.router import FreeModelRouter
-from tests.test_free_chat.conftest import make_free_model
+from tests.test_free_chat.conftest import _make_mock_cache, make_free_model
 
 
 @pytest.fixture
@@ -17,9 +15,7 @@ def free_models():
 
 @pytest.fixture
 def mock_cache(free_models):
-    cache = MagicMock()
-    cache.filter_models.return_value = free_models
-    return cache
+    return _make_mock_cache(filter_return=free_models)
 
 
 @pytest.fixture
@@ -96,8 +92,7 @@ class TestSelectModel:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_no_free_models_available(self):
-        cache = MagicMock()
-        cache.filter_models.return_value = []
+        cache = _make_mock_cache()
         router = FreeModelRouter(cache)
         with pytest.raises(RuntimeError, match="사용 가능한 free 모델이 없습니다"):
             await router.select_model()
