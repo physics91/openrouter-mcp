@@ -209,6 +209,23 @@ class ModelCache:
         expiry_time = self._last_update + timedelta(seconds=self.ttl_seconds)
         return datetime.now() > expiry_time
 
+    async def ensure_cache_ready(self) -> None:
+        """Guarantee that _memory_cache contains model data.
+
+        If cache is empty or expired, fetches from API (which may fall back
+        to file cache internally via get_models).  After this method returns,
+        _memory_cache is guaranteed to be non-empty — otherwise RuntimeError.
+        """
+        if self._memory_cache and not self.is_expired():
+            return  # fast-path: cache valid
+
+        await self.get_models()
+
+        if not self._memory_cache:
+            raise RuntimeError(
+                "모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가."
+            )
+
     async def _fetch_models_from_api(self) -> List[Dict[str, Any]]:
         """
         Fetch latest models from OpenRouter API and enhance with metadata.

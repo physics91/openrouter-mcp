@@ -76,13 +76,14 @@ class FreeModelRouter:
 
         return min(1.0, base_score)
 
-    def list_models_with_status(self) -> List[Dict[str, Any]]:
+    async def list_models_with_status(self) -> List[Dict[str, Any]]:
         """Return all free models with quality scores and availability.
 
         Note: Scores here exclude task-type affinity bonuses since no specific
         task context is available. Actual selection scores in select_model()
         may differ when a task_type is provided.
         """
+        await self._cache.ensure_cache_ready()
         free_models = self._cache.filter_models(free_only=True)
         result = []
         for model in free_models:
@@ -128,6 +129,7 @@ class FreeModelRouter:
         task_type: Optional[FreeTaskType] = None,
     ) -> str:
         """Select the best available free model."""
+        await self._cache.ensure_cache_ready()
         self._cleanup_expired_cooldowns()
 
         free_models = self._cache.filter_models(free_only=True)

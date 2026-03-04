@@ -16,6 +16,7 @@ from ..client.openrouter import (
 from ..config.constants import FreeChatConfig, ModelDefaults
 from ..free.classifier import TaskClassifier
 from ..free.metrics import MetricsCollector
+from ..free.quota import QuotaTracker
 from ..free.router import FreeModelRouter
 from ..mcp_registry import get_openrouter_client, mcp
 
@@ -25,6 +26,7 @@ _router: Optional[FreeModelRouter] = None
 _router_lock: Optional[asyncio.Lock] = None
 _metrics: Optional[MetricsCollector] = None
 _classifier: Optional[TaskClassifier] = None
+_quota: Optional[QuotaTracker] = None
 
 
 def _get_router_lock() -> asyncio.Lock:
@@ -57,6 +59,17 @@ def _get_classifier() -> TaskClassifier:
     return _classifier
 
 
+def _get_quota() -> QuotaTracker:
+    """Get or create the module-level QuotaTracker singleton.
+
+    Safe under single-threaded asyncio (GIL + no await points).
+    """
+    global _quota
+    if _quota is None:
+        _quota = QuotaTracker()
+    return _quota
+
+
 async def _get_router() -> FreeModelRouter:
     """Get or create the module-level FreeModelRouter singleton."""
     global _router
@@ -71,10 +84,11 @@ async def _get_router() -> FreeModelRouter:
 
 def reset_handler_state() -> None:
     """Reset all handler singletons. Called during shutdown or key rotation."""
-    global _router, _metrics, _classifier
+    global _router, _metrics, _classifier, _quota
     _router = None
     _metrics = None
     _classifier = None
+    _quota = None
 
 
 # Keep backward-compatible alias
@@ -119,6 +133,10 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
     client = await get_openrouter_client()
     metrics = _get_metrics()
     classifier = _get_classifier()
+    quota = _get_quota()
+
+    # Check quota before proceeding
+    await quota.reserve_and_record()
 
     # Classify task type
     task_type = classifier.classify(request.message, request.system_prompt)
@@ -171,7 +189,12 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
         except RateLimitError as e:
             logger.warning(f"Rate limit hit for {model_id}, trying next model")
             metrics.record_failure(model_id, "RateLimitError")
-            router.report_rate_limit(model_id)
+            cooldown = (
+                e.retry_after
+                if e.retry_after is not None
+                else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+            )
+            router.report_rate_limit(model_id, cooldown_seconds=cooldown)
             last_error = e
             continue
 
@@ -192,7 +215,7 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
 async def list_free_models() -> Dict[str, Any]:
     """List all available free models with quality scores and availability status."""
     router = await _get_router()
-    models_info = router.list_models_with_status()
+    models_info = await router.list_models_with_status()
     return {
         "models": models_info,
         "total_count": len(models_info),
@@ -222,4 +245,5 @@ async def get_free_model_metrics() -> Dict[str, Any]:
     return {
         "models": models,
         "total_models_tracked": len(models),
+        "quota": _get_quota().get_quota_status(),
     }
