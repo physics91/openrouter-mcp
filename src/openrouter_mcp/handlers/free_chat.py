@@ -240,7 +240,7 @@ async def _try_native_fallback(
     global _native_fallback_disabled
 
     model_ids = await router.select_models(
-        count=FreeChatConfig.MAX_RETRY_COUNT + 1,
+        count=FreeChatConfig.NATIVE_FALLBACK_MODEL_LIMIT,
         preferred_models=request.preferred_models or None,
         task_type=task_type,
         required_capabilities=required_caps,
@@ -258,7 +258,9 @@ async def _try_native_fallback(
 
     except InvalidRequestError as e:
         err_msg = str(e).lower()
-        if "models" in err_msg and ("parameter" in err_msg or "unknown" in err_msg):
+        if "models" in err_msg and (
+            "parameter" in err_msg or "unknown" in err_msg or "array" in err_msg
+        ):
             _native_fallback_disabled = True
             logger.info("Native fallback disabled: 'models' parameter not supported")
             return None

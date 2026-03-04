@@ -207,6 +207,41 @@ class TestNativeFallbackDisablement:
             assert result["model_used"] == "google/gemma:free"
 
     @pytest.mark.asyncio
+    async def test_models_array_limit_400_disables_native_fallback(self):
+        """400 with 'models array must have N items' disables native fallback."""
+        import src.openrouter_mcp.handlers.free_chat as handler_module
+
+        success_response = _make_response("google/gemma:free")
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.side_effect = [
+                InvalidRequestError("'models' array must have 3 items or fewer."),
+                success_response,
+            ]
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_models.return_value = [
+                "google/gemma:free",
+                "meta/llama:free",
+            ]
+            mock_router.select_model.return_value = "google/gemma:free"
+            mock_get_router.return_value = mock_router
+
+            assert handler_module._native_fallback_disabled is False
+
+            request = FreeChatRequest(message="Hi")
+            result = await free_chat(request)
+
+            assert handler_module._native_fallback_disabled is True
+            assert result["model_used"] == "google/gemma:free"
+
+    @pytest.mark.asyncio
     async def test_non_models_400_still_raises(self):
         """400 without 'models' in message should propagate normally."""
         with patch(
