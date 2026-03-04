@@ -74,3 +74,26 @@ class TestSelectModelWithCapabilities:
 
         model_id = await router.select_model(required_capabilities=None)
         assert model_id == "a:free"
+
+
+class TestUsageDecayWithCapabilities:
+    @pytest.mark.asyncio
+    async def test_decay_does_not_create_negative_counts(self):
+        """Usage decay with capability filter must not create negative counts."""
+        vision_model = _model_with_caps("vision:free", {"supports_vision": True})
+        text_model = _model_with_caps("text:free", {})
+        cache = _make_mock_cache(filter_return=[vision_model, text_model])
+        router = FreeModelRouter(cache)
+
+        # Simulate high usage on both models
+        router._usage_counts = {"vision:free": 10, "text:free": 5}
+
+        # Select with vision filter — only vision:free is a candidate
+        model_id = await router.select_model(
+            required_capabilities={"supports_vision": True}
+        )
+        assert model_id == "vision:free"
+
+        # No count should be negative
+        for count in router._usage_counts.values():
+            assert count >= 0
