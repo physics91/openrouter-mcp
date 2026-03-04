@@ -262,6 +262,8 @@ async def _try_native_fallback(
         raise
 
     except RateLimitError as e:
+        # OpenRouter does not report which model in the array was rate-limited,
+        # so we attribute the failure to the primary model.
         metrics.record_failure(model_ids[0], "RateLimitError")
         cooldown = (
             e.retry_after
@@ -338,6 +340,11 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
 
     # Infer required capabilities from messages
     required_caps = _infer_required_capabilities(messages)
+
+    # Reset native fallback flag when cache expires (retry opportunity)
+    global _native_fallback_disabled
+    if _native_fallback_disabled and router.is_cache_expired() is True:
+        _native_fallback_disabled = False
 
     # Non-streaming: try OpenRouter native fallback (models array) first
     if not request.stream and not _native_fallback_disabled:

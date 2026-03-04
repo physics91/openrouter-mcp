@@ -100,6 +100,10 @@ class FreeModelRouter:
         result.sort(key=lambda m: -m["quality_score"])
         return result
 
+    def is_cache_expired(self) -> bool:
+        """Check if the underlying model cache is expired."""
+        return self._cache.is_expired()
+
     def _is_available(self, model_id: str) -> bool:
         """Check if a model is not in cooldown."""
         cooldown_until = self._cooldowns.get(model_id)
