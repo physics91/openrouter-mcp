@@ -125,6 +125,17 @@ async def shutdown_handler():
         logger.error(f"Error cleaning up shared client: {e}", exc_info=True)
 
     try:
+        # Persist free model metrics before shutdown
+        from .handlers.free_chat import _get_metrics_for_shutdown
+
+        metrics = _get_metrics_for_shutdown()
+        if metrics is not None:
+            metrics.save()
+            logger.info("Free model metrics saved successfully")
+    except Exception as e:
+        logger.error(f"Error saving free model metrics: {e}", exc_info=True)
+
+    try:
         # Shutdown lifecycle manager
         await shutdown_lifecycle_manager()
         logger.info("Collective intelligence components shutdown successfully")
