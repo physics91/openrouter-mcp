@@ -35,12 +35,17 @@ def mock_chat_response():
 
 @pytest.fixture(autouse=True)
 def _disable_native_fallback():
-    """Disable native fallback for tests that validate local retry loop."""
-    import src.openrouter_mcp.handlers.free_chat as handler_module
+    """Disable native fallback for tests that validate local retry loop.
 
-    handler_module._native_fallback_disabled = True
-    yield
-    handler_module._native_fallback_disabled = False
+    Patches _try_native_fallback to return None (skip) rather than manipulating
+    the module-level flag, which avoids cache-expiry check side effects on mocks.
+    """
+    with patch(
+        "src.openrouter_mcp.handlers.free_chat._try_native_fallback",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        yield
 
 
 class TestFreeChatHandler:

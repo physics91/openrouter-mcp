@@ -224,9 +224,14 @@ class TestNativeFallbackDisablement:
             mock_router.select_models.return_value = ["google/gemma:free"]
             mock_get_router.return_value = mock_router
 
+            import src.openrouter_mcp.handlers.free_chat as handler_module
+
             request = FreeChatRequest(message="Hi")
             with pytest.raises(InvalidRequestError, match="invalid temperature"):
                 await free_chat(request)
+
+            # Flag must remain False
+            assert handler_module._native_fallback_disabled is False
 
     @pytest.mark.asyncio
     async def test_rate_limit_falls_through_to_local_retry(self):
@@ -263,6 +268,38 @@ class TestNativeFallbackDisablement:
             )
             # Local retry succeeded
             assert result["model_used"] == "meta/llama:free"
+
+
+    @pytest.mark.asyncio
+    async def test_cache_expiry_resets_disabled_flag(self):
+        """When cache expires, the disabled flag is reset for retry."""
+        import src.openrouter_mcp.handlers.free_chat as handler_module
+
+        handler_module._native_fallback_disabled = True
+        response = _make_response("google/gemma:free")
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.return_value = response
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_models.return_value = ["google/gemma:free"]
+            # is_cache_expired is sync — use MagicMock to avoid coroutine
+            mock_router.is_cache_expired = MagicMock(return_value=True)
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hi")
+            result = await free_chat(request)
+
+            # Flag should have been reset and native fallback used
+            assert handler_module._native_fallback_disabled is False
+            mock_router.select_models.assert_called_once()
+            assert result["model_used"] == "google/gemma:free"
 
 
 class TestSelectModels:
