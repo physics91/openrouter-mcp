@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List
 
-from .pricing import normalize_pricing
+from .pricing import normalize_pricing, parse_price
 
 logger = logging.getLogger(__name__)
 
@@ -461,7 +461,7 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
 def _pricing_per_1k(model_data: Dict[str, Any]) -> Dict[str, float]:
     """Normalize prompt/completion pricing into per-1k token units for tiering."""
     normalized = normalize_pricing(
-        model_data.get("pricing", {}),
+        model_data.get("pricing") or {},
         default_price=0.0,
         normalize_units=True,
         fill_missing=False,
@@ -555,6 +555,18 @@ def determine_performance_tier(model_data: Dict[str, Any]) -> str:
         return "economy"
 
 
+_ALL_PRICING_FIELDS = (
+    "prompt", "completion", "request",
+    "image", "web_search", "internal_reasoning",
+)
+
+
+def _has_any_cost(model_data: Dict[str, Any]) -> bool:
+    """Check if model has any non-zero cost across all pricing fields."""
+    pricing = model_data.get("pricing") or {}
+    return any(parse_price(pricing.get(field)) > 0 for field in _ALL_PRICING_FIELDS)
+
+
 def determine_cost_tier(model_data: Dict[str, Any]) -> str:
     """
     Determine cost tier based on pricing.
@@ -566,15 +578,19 @@ def determine_cost_tier(model_data: Dict[str, Any]) -> str:
         Cost tier string: "free", "low", "medium", or "high". Pricing thresholds
         assume per-1k tokens.
     """
+    if not _has_any_cost(model_data):
+        return "free"
+
+    # NOTE: tiering below uses only prompt+completion. Non-token costs
+    # (image, request, web_search) affect the free/non-free boundary above
+    # but not the low/medium/high bucketing — acceptable per plan Step 2 scope.
     pricing = _pricing_per_1k(model_data)
     prompt_price = pricing["prompt"]
     completion_price = pricing["completion"]
 
     total_price = prompt_price + completion_price
 
-    if total_price == 0:
-        return "free"
-    elif total_price < 0.002:
+    if total_price < 0.002:
         return "low"
     elif total_price < 0.02:
         return "medium"
