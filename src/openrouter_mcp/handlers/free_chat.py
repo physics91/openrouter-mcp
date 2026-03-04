@@ -134,7 +134,9 @@ def _extract_text_for_classification(
     if isinstance(message, str):
         return message
     return " ".join(
-        part.get("text", "") for part in message if part.get("type") == "text"
+        str(part.get("text", ""))
+        for part in message
+        if isinstance(part, dict) and part.get("type") == "text"
     )
 
 
@@ -146,7 +148,7 @@ def _infer_required_capabilities(
         content = msg.get("content")
         if isinstance(content, list):
             for part in content:
-                if part.get("type") == "image_url":
+                if isinstance(part, dict) and part.get("type") == "image_url":
                     return {"supports_vision": True}
     return None
 
@@ -255,7 +257,8 @@ async def _try_native_fallback(
         return _build_result(model_ids[0], exec_result, task_type, metrics, elapsed_ms)
 
     except InvalidRequestError as e:
-        if "models" in str(e).lower():
+        err_msg = str(e).lower()
+        if "models" in err_msg and ("parameter" in err_msg or "unknown" in err_msg):
             _native_fallback_disabled = True
             logger.info("Native fallback disabled: 'models' parameter not supported")
             return None

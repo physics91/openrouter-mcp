@@ -96,9 +96,12 @@ class MetricsCollector:
         try:
             with open(self._persistence_path) as f:
                 data = json.load(f)
+            if not isinstance(data, dict):
+                raise TypeError("metrics root must be a JSON object")
             for model_id, model_data in data.items():
-                self._metrics[model_id] = ModelMetrics.from_dict(model_data)
-        except (json.JSONDecodeError, OSError, TypeError, KeyError) as e:
+                if isinstance(model_data, dict):
+                    self._metrics[model_id] = ModelMetrics.from_dict(model_data)
+        except (json.JSONDecodeError, OSError, TypeError, KeyError, AttributeError) as e:
             logger.warning(
                 "메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e
             )

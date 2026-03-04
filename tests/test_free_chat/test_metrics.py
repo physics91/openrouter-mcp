@@ -175,6 +175,23 @@ class TestMetricsPersistence:
         collector = MetricsCollector(persistence_path=path)
         assert collector.get_all_metrics() == {}
 
+    def test_schema_mismatch_list_root_starts_empty(self, tmp_path):
+        """Valid JSON but root is a list instead of dict."""
+        path = str(tmp_path / "list_root.json")
+        with open(path, "w") as f:
+            json.dump([{"bad": 1}], f)
+        collector = MetricsCollector(persistence_path=path)
+        assert collector.get_all_metrics() == {}
+
+    def test_schema_mismatch_non_dict_values_skipped(self, tmp_path):
+        """Root is dict but values are not dicts — non-dict entries are skipped."""
+        path = str(tmp_path / "bad_values.json")
+        with open(path, "w") as f:
+            json.dump({"model-a": "not-a-dict", "model-b": {"total_requests": 5}}, f)
+        collector = MetricsCollector(persistence_path=path)
+        assert "model-a" not in collector.get_all_metrics()
+        assert collector.get_metrics("model-b") is not None
+
     def test_auto_save_interval(self, tmp_path):
         path = str(tmp_path / "auto.json")
         collector = MetricsCollector(persistence_path=path)

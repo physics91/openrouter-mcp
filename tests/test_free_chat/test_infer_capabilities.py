@@ -68,3 +68,23 @@ class TestInferRequiredCapabilities:
             }
         ]
         assert _infer_required_capabilities(messages) is None
+
+
+class TestMalformedMultimodalInput:
+    """Verify graceful handling of malformed multimodal parts."""
+
+    def test_extract_skips_non_dict_parts(self):
+        parts = [
+            "not a dict",
+            42,
+            {"type": "text", "text": "valid"},
+        ]
+        assert _extract_text_for_classification(parts) == "valid"
+
+    def test_extract_coerces_non_string_text(self):
+        parts = [{"type": "text", "text": 123}]
+        assert _extract_text_for_classification(parts) == "123"
+
+    def test_infer_skips_non_dict_parts(self):
+        messages = [{"role": "user", "content": ["just a string", 42]}]
+        assert _infer_required_capabilities(messages) is None
