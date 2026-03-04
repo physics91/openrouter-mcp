@@ -28,6 +28,7 @@ _router_lock: Optional[asyncio.Lock] = None
 _metrics: Optional[MetricsCollector] = None
 _classifier: Optional[TaskClassifier] = None
 _quota: Optional[QuotaTracker] = None
+_native_fallback_disabled: bool = False
 
 
 def _get_router_lock() -> asyncio.Lock:
@@ -92,11 +93,12 @@ async def _get_router() -> FreeModelRouter:
 
 def reset_handler_state() -> None:
     """Reset all handler singletons. Called during shutdown or key rotation."""
-    global _router, _metrics, _classifier, _quota
+    global _router, _metrics, _classifier, _quota, _native_fallback_disabled
     _router = None
     _metrics = None
     _classifier = None
     _quota = None
+    _native_fallback_disabled = False
 
 
 # Keep backward-compatible alias
@@ -156,15 +158,26 @@ async def _execute_chat(
     temperature: float,
     max_tokens: int,
     stream: bool,
+    fallback_models: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Execute a chat completion (streaming or non-streaming) and return unified result."""
+    """Execute a chat completion (streaming or non-streaming) and return unified result.
+
+    When *fallback_models* is provided (non-streaming only), OpenRouter's native
+    fallback is used: the API picks the first available model from the list.
+    The ``actual_model`` key in the result holds the model that was actually used
+    (may differ from *model_id* when fallback occurred).
+    """
     if not stream:
+        kwargs: Dict[str, Any] = {}
+        if fallback_models:
+            kwargs["models"] = fallback_models
         response = await client.chat_completion(
             model=model_id,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
+            **kwargs,
         )
         content = ""
         choices = response.get("choices") or []
@@ -174,9 +187,10 @@ async def _execute_chat(
             "content": content,
             "usage": response.get("usage", {}),
             "streamed": False,
+            "actual_model": response.get("model"),
         }
 
-    # Streaming: buffer chunks then return complete result
+    # Streaming: buffer chunks then return complete result (no native fallback)
     chunks = await collect_async_iterable(
         client.stream_chat_completion(
             model=model_id,
@@ -202,7 +216,68 @@ async def _execute_chat(
         "content": "".join(parts),
         "usage": usage,
         "streamed": True,
+        "actual_model": None,
     }
+
+
+async def _try_native_fallback(
+    router: FreeModelRouter,
+    client: Any,
+    metrics: MetricsCollector,
+    task_type: FreeTaskType,
+    messages: List[Dict[str, Any]],
+    request: "FreeChatRequest",
+    required_caps: Optional[Dict[str, bool]],
+) -> Optional[Dict[str, Any]]:
+    """Attempt OpenRouter native fallback with ``models`` array.
+
+    Returns the result dict on success, or ``None`` to fall through to the
+    local retry loop.  Disables native fallback for the process lifetime
+    if the API returns 400 for the ``models`` parameter.
+    """
+    global _native_fallback_disabled
+
+    model_ids = await router.select_models(
+        count=FreeChatConfig.MAX_RETRY_COUNT + 1,
+        preferred_models=request.preferred_models or None,
+        task_type=task_type,
+        required_capabilities=required_caps,
+    )
+
+    start_time = time.monotonic()
+    try:
+        exec_result = await _execute_chat(
+            client, model_ids[0], messages,
+            request.temperature, request.max_tokens, False,
+            fallback_models=model_ids,
+        )
+        elapsed_ms = (time.monotonic() - start_time) * 1000
+        return _build_result(model_ids[0], exec_result, task_type, metrics, elapsed_ms)
+
+    except InvalidRequestError as e:
+        if "models" in str(e).lower():
+            _native_fallback_disabled = True
+            logger.info("Native fallback disabled: 'models' parameter not supported")
+            return None
+        raise
+
+    except RateLimitError as e:
+        metrics.record_failure(model_ids[0], "RateLimitError")
+        cooldown = (
+            e.retry_after
+            if e.retry_after is not None
+            else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+        )
+        router.report_rate_limit(model_ids[0], cooldown_seconds=cooldown)
+        return None
+
+    except (AuthenticationError,):
+        raise
+
+    except OpenRouterError as e:
+        metrics.record_failure(model_ids[0], type(e).__name__)
+        router.report_rate_limit(model_ids[0])
+        return None
 
 
 def _build_result(
@@ -213,11 +288,12 @@ def _build_result(
     elapsed_ms: float,
 ) -> Dict[str, Any]:
     """Record metrics and build the final response dictionary."""
+    actual_model = exec_result.get("actual_model") or model_id
     usage = exec_result["usage"]
     total_tokens = usage.get("total_tokens", 0)
-    metrics.record_success(model_id, elapsed_ms, total_tokens)
+    metrics.record_success(actual_model, elapsed_ms, total_tokens)
     return {
-        "model_used": model_id,
+        "model_used": actual_model,
         "response": exec_result["content"],
         "usage": usage,
         "task_type": task_type.value,
@@ -263,6 +339,15 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
     # Infer required capabilities from messages
     required_caps = _infer_required_capabilities(messages)
 
+    # Non-streaming: try OpenRouter native fallback (models array) first
+    if not request.stream and not _native_fallback_disabled:
+        result = await _try_native_fallback(
+            router, client, metrics, task_type, messages, request, required_caps,
+        )
+        if result is not None:
+            return result
+
+    # Streaming or native fallback unavailable: local retry loop
     last_error: Optional[Exception] = None
 
     for _attempt in range(FreeChatConfig.MAX_RETRY_COUNT + 1):
