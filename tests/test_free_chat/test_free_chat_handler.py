@@ -432,3 +432,137 @@ class TestFreeChatHandler:
             mock_router.report_rate_limit.assert_called_once_with(
                 "google/gemma-3-27b:free", cooldown_seconds=0.0
             )
+
+    @pytest.mark.unit
+    def test_stream_default_false(self):
+        request = FreeChatRequest(message="Hello")
+        assert request.stream is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_non_streaming_includes_streamed_false(self, mock_chat_response):
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.return_value = mock_chat_response
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello")
+            result = await free_chat(request)
+
+            assert result["streamed"] is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_streaming_collects_chunks(self):
+        async def _fake_stream(**kwargs):
+            chunks = [
+                {"choices": [{"delta": {"content": "Hello"}}]},
+                {"choices": [{"delta": {"content": " world"}}]},
+                {"choices": [{"delta": {}}], "usage": {"total_tokens": 5}},
+            ]
+            for c in chunks:
+                yield c
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.stream_chat_completion = _fake_stream
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello", stream=True)
+            result = await free_chat(request)
+
+            assert result["response"] == "Hello world"
+            assert result["streamed"] is True
+            assert result["usage"]["total_tokens"] == 5
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_streaming_empty_choices_no_crash(self):
+        """Chunks with choices=[] or missing choices should not crash."""
+        async def _fake_stream(**kwargs):
+            chunks = [
+                {},
+                {"choices": []},
+                {"choices": [{"delta": {"content": "ok"}}]},
+                {"choices": [{}]},
+            ]
+            for c in chunks:
+                yield c
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.stream_chat_completion = _fake_stream
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello", stream=True)
+            result = await free_chat(request)
+
+            assert result["response"] == "ok"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_streaming_rate_limit_fallback(self):
+        call_count = 0
+
+        async def _fake_stream_fail(**kwargs):
+            raise RateLimitError("rate limited")
+            yield  # unreachable; makes this an async generator
+
+        async def _fake_stream_ok(**kwargs):
+            for c in [
+                {"choices": [{"delta": {"content": "hi"}}]},
+                {"usage": {"total_tokens": 2}},
+            ]:
+                yield c
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+
+            def _side_effect(**kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return _fake_stream_fail(**kwargs)
+                return _fake_stream_ok(**kwargs)
+
+            mock_client.stream_chat_completion = _side_effect
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.side_effect = ["model-a", "model-b"]
+            mock_router.report_rate_limit = MagicMock()
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(message="Hello", stream=True)
+            result = await free_chat(request)
+
+            assert result["model_used"] == "model-b"
+            assert result["response"] == "hi"

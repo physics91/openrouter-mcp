@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -14,11 +14,12 @@ from ..client.openrouter import (
     RateLimitError,
 )
 from ..config.constants import FreeChatConfig, ModelDefaults
-from ..free.classifier import TaskClassifier
+from ..free.classifier import FreeTaskType, TaskClassifier
 from ..free.metrics import MetricsCollector
 from ..free.quota import QuotaTracker
 from ..free.router import FreeModelRouter
 from ..mcp_registry import get_openrouter_client, mcp
+from ..utils.async_utils import collect_async_iterable
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,14 @@ def _get_metrics() -> MetricsCollector:
     """
     global _metrics
     if _metrics is None:
-        _metrics = MetricsCollector()
+        _metrics = MetricsCollector(
+            persistence_path=FreeChatConfig.METRICS_CACHE_FILE,
+        )
+    return _metrics
+
+
+def _get_metrics_for_shutdown() -> Optional[MetricsCollector]:
+    """Return the existing MetricsCollector singleton, or None if not initialized."""
     return _metrics
 
 
@@ -98,9 +106,11 @@ reset_router = reset_handler_state
 class FreeChatRequest(BaseModel):
     """Request for free chat completion."""
 
-    message: str = Field(..., description="User message to send")
+    message: Union[str, List[Dict[str, Any]]] = Field(
+        ..., description="User message (string or multimodal content parts)"
+    )
     system_prompt: str = Field("", description="System prompt (optional)")
-    conversation_history: List[Dict[str, str]] = Field(
+    conversation_history: List[Dict[str, Any]] = Field(
         default_factory=list, description="Previous conversation messages"
     )
     max_tokens: int = Field(
@@ -112,6 +122,107 @@ class FreeChatRequest(BaseModel):
     preferred_models: List[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )
+    stream: bool = Field(False, description="Buffer streamed response (still returns complete result)")
+
+
+def _extract_text_for_classification(
+    message: Union[str, List[Dict[str, Any]]],
+) -> str:
+    """Extract text content from a message for classifier input."""
+    if isinstance(message, str):
+        return message
+    return " ".join(
+        part.get("text", "") for part in message if part.get("type") == "text"
+    )
+
+
+def _infer_required_capabilities(
+    messages: List[Dict[str, Any]],
+) -> Optional[Dict[str, bool]]:
+    """Infer required model capabilities from message content."""
+    for msg in messages:
+        content = msg.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if part.get("type") == "image_url":
+                    return {"supports_vision": True}
+    return None
+
+
+async def _execute_chat(
+    client: Any,
+    model_id: str,
+    messages: List[Dict[str, Any]],
+    temperature: float,
+    max_tokens: int,
+    stream: bool,
+) -> Dict[str, Any]:
+    """Execute a chat completion (streaming or non-streaming) and return unified result."""
+    if not stream:
+        response = await client.chat_completion(
+            model=model_id,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False,
+        )
+        content = ""
+        choices = response.get("choices") or []
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+        return {
+            "content": content,
+            "usage": response.get("usage", {}),
+            "streamed": False,
+        }
+
+    # Streaming: buffer chunks then return complete result
+    chunks = await collect_async_iterable(
+        client.stream_chat_completion(
+            model=model_id,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    )
+    parts: List[str] = []
+    usage: Dict[str, Any] = {}
+    for chunk in chunks:
+        choices = chunk.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            text = delta.get("content")
+            if text:
+                parts.append(text)
+        chunk_usage = chunk.get("usage")
+        if chunk_usage:
+            usage = chunk_usage
+
+    return {
+        "content": "".join(parts),
+        "usage": usage,
+        "streamed": True,
+    }
+
+
+def _build_result(
+    model_id: str,
+    exec_result: Dict[str, Any],
+    task_type: FreeTaskType,
+    metrics: MetricsCollector,
+    elapsed_ms: float,
+) -> Dict[str, Any]:
+    """Record metrics and build the final response dictionary."""
+    usage = exec_result["usage"]
+    total_tokens = usage.get("total_tokens", 0)
+    metrics.record_success(model_id, elapsed_ms, total_tokens)
+    return {
+        "model_used": model_id,
+        "response": exec_result["content"],
+        "usage": usage,
+        "task_type": task_type.value,
+        "streamed": exec_result["streamed"],
+    }
 
 
 @mcp.tool()
@@ -138,15 +249,19 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
     # Check quota before proceeding
     await quota.reserve_and_record()
 
-    # Classify task type
-    task_type = classifier.classify(request.message, request.system_prompt)
+    # Classify task type (extract text from multimodal messages)
+    text_for_classify = _extract_text_for_classification(request.message)
+    task_type = classifier.classify(text_for_classify, request.system_prompt)
 
     # Build messages
-    messages: List[Dict[str, str]] = []
+    messages: List[Dict[str, Any]] = []
     if request.system_prompt:
         messages.append({"role": "system", "content": request.system_prompt})
     messages.extend(request.conversation_history)
     messages.append({"role": "user", "content": request.message})
+
+    # Infer required capabilities from messages
+    required_caps = _infer_required_capabilities(messages)
 
     last_error: Optional[Exception] = None
 
@@ -155,36 +270,19 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
             model_id = await router.select_model(
                 preferred_models=request.preferred_models or None,
                 task_type=task_type,
+                required_capabilities=required_caps,
             )
         except RuntimeError:
             raise
 
         start_time = time.monotonic()
         try:
-            response = await client.chat_completion(
-                model=model_id,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                stream=False,
+            exec_result = await _execute_chat(
+                client, model_id, messages,
+                request.temperature, request.max_tokens, request.stream,
             )
-
             elapsed_ms = (time.monotonic() - start_time) * 1000
-            usage = response.get("usage", {})
-            total_tokens = usage.get("total_tokens", 0)
-            metrics.record_success(model_id, elapsed_ms, total_tokens)
-
-            content = ""
-            choices = response.get("choices", [])
-            if choices:
-                content = choices[0].get("message", {}).get("content", "")
-
-            return {
-                "model_used": model_id,
-                "response": content,
-                "usage": usage,
-                "task_type": task_type.value,
-            }
+            return _build_result(model_id, exec_result, task_type, metrics, elapsed_ms)
 
         except RateLimitError as e:
             logger.warning(f"Rate limit hit for {model_id}, trying next model")

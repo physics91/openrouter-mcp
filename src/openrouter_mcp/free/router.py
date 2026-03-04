@@ -123,16 +123,43 @@ class FreeModelRouter:
             mid: until for mid, until in self._cooldowns.items() if until > now
         }
 
+    @staticmethod
+    def _filter_by_capabilities(
+        models: List[Dict[str, Any]],
+        required_capabilities: Optional[Dict[str, bool]],
+    ) -> List[Dict[str, Any]]:
+        """Filter models by required capabilities. Returns empty list if none match."""
+        if not required_capabilities:
+            return models
+        matched = [
+            m
+            for m in models
+            if all(
+                m.get("capabilities", {}).get(cap) == val
+                for cap, val in required_capabilities.items()
+            )
+        ]
+        return matched
+
     async def select_model(
         self,
         preferred_models: Optional[List[str]] = None,
         task_type: Optional[FreeTaskType] = None,
+        required_capabilities: Optional[Dict[str, bool]] = None,
     ) -> str:
         """Select the best available free model."""
         await self._cache.ensure_cache_ready()
         self._cleanup_expired_cooldowns()
 
         free_models = self._cache.filter_models(free_only=True)
+
+        # Apply capability filter
+        if required_capabilities:
+            free_models = self._filter_by_capabilities(free_models, required_capabilities)
+            if not free_models:
+                raise RuntimeError(
+                    "요청에 필요한 capability를 지원하는 free 모델이 없습니다."
+                )
 
         if not free_models:
             raise RuntimeError(
