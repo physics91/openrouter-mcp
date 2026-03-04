@@ -139,6 +139,7 @@ class FreeChatConfig:
     MAX_CONTEXT_LENGTH: int = 262144
     DEFAULT_COOLDOWN_SECONDS: float = 60.0
     MAX_RETRY_COUNT: int = 3
+    NATIVE_FALLBACK_MODEL_LIMIT: int = 3
     MAX_TOKENS: int = 4096
     CONTEXT_LENGTH_WEIGHT: float = 0.4
     REPUTATION_WEIGHT: float = 0.4
