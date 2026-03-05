@@ -1,10 +1,7 @@
 name: Collective Intelligence CI/CD
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
   schedule:
     # Run tests daily at 2 AM UTC
     - cron: '0 2 * * *'
@@ -182,7 +179,7 @@ jobs:
 
   benchmark:
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[benchmark]')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
     - uses: actions/checkout@v4
 

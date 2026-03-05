@@ -8,13 +8,18 @@ for the repository.
 ### PR Required Gates
 - `Required Assurance Gate` workflow
 - `Required Static Checks` workflow
+- Trigger: `pull_request` targeting `main` or `develop`
 
 ### Advisory Gates
 - `Assurance Extended` workflow (`advisory-static-analysis`, `advisory-performance`)
+- Default trigger: `workflow_dispatch`
+- PR opt-in trigger: add label `ci:extended` on PR targeting `main` or `develop`
 
 ### Scheduled Gates
 - Nightly live API canary (`0 18 * * *` UTC, excludes `performance/stress/quality`)
 - Weekly mutation sample (`0 19 * * 0` UTC)
+- Legacy CI daily schedule (`ci.yml`: `0 2 * * *` UTC)
+- Legacy coverage weekly schedule (`test-coverage.yml`: `0 3 * * 0` UTC)
 
 ## Test Markers (Pytest)
 
