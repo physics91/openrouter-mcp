@@ -158,7 +158,9 @@ class FreeModelRouter:
         free_models = self._cache.filter_models(free_only=True)
 
         if required_capabilities:
-            free_models = self._filter_by_capabilities(free_models, required_capabilities)
+            free_models = self._filter_by_capabilities(
+                free_models, required_capabilities
+            )
             if not free_models:
                 raise RuntimeError(
                     "요청에 필요한 capability를 지원하는 free 모델이 없습니다."
