@@ -124,7 +124,9 @@ class FreeChatRequest(BaseModel):
     preferred_models: List[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )
-    stream: bool = Field(False, description="Buffer streamed response (still returns complete result)")
+    stream: bool = Field(
+        False, description="Buffer streamed response (still returns complete result)"
+    )
 
 
 def _extract_text_for_classification(
@@ -249,8 +251,12 @@ async def _try_native_fallback(
     start_time = time.monotonic()
     try:
         exec_result = await _execute_chat(
-            client, model_ids[0], messages,
-            request.temperature, request.max_tokens, False,
+            client,
+            model_ids[0],
+            messages,
+            request.temperature,
+            request.max_tokens,
+            False,
             fallback_models=model_ids,
         )
         elapsed_ms = (time.monotonic() - start_time) * 1000
@@ -354,7 +360,13 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
     # Non-streaming: try OpenRouter native fallback (models array) first
     if not request.stream and not _native_fallback_disabled:
         result = await _try_native_fallback(
-            router, client, metrics, task_type, messages, request, required_caps,
+            router,
+            client,
+            metrics,
+            task_type,
+            messages,
+            request,
+            required_caps,
         )
         if result is not None:
             return result
@@ -375,8 +387,12 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
         start_time = time.monotonic()
         try:
             exec_result = await _execute_chat(
-                client, model_id, messages,
-                request.temperature, request.max_tokens, request.stream,
+                client,
+                model_id,
+                messages,
+                request.temperature,
+                request.max_tokens,
+                request.stream,
             )
             elapsed_ms = (time.monotonic() - start_time) * 1000
             return _build_result(model_id, exec_result, task_type, metrics, elapsed_ms)

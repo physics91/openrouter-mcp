@@ -101,7 +101,13 @@ class MetricsCollector:
             for model_id, model_data in data.items():
                 if isinstance(model_data, dict):
                     self._metrics[model_id] = ModelMetrics.from_dict(model_data)
-        except (json.JSONDecodeError, OSError, TypeError, KeyError, AttributeError) as e:
+        except (
+            json.JSONDecodeError,
+            OSError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as e:
             logger.warning(
                 "메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e
             )
@@ -116,9 +122,7 @@ class MetricsCollector:
 
         data = {mid: m.to_dict() for mid, m in self._metrics.items()}
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=dir_path or ".", suffix=".tmp"
-            )
+            fd, tmp_path = tempfile.mkstemp(dir=dir_path or ".", suffix=".tmp")
             try:
                 with os.fdopen(fd, "w") as f:
                     json.dump(data, f)

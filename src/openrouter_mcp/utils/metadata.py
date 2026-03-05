@@ -556,8 +556,12 @@ def determine_performance_tier(model_data: Dict[str, Any]) -> str:
 
 
 _ALL_PRICING_FIELDS = (
-    "prompt", "completion", "request",
-    "image", "web_search", "internal_reasoning",
+    "prompt",
+    "completion",
+    "request",
+    "image",
+    "web_search",
+    "internal_reasoning",
 )
 
 

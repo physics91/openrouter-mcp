@@ -140,7 +140,10 @@ class TestNativeFallbackActualModel:
         response = {
             "id": "gen-001",
             "choices": [
-                {"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                {
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop",
+                }
             ],
             "usage": {"total_tokens": 3},
         }
@@ -303,7 +306,6 @@ class TestNativeFallbackDisablement:
             )
             # Local retry succeeded
             assert result["model_used"] == "meta/llama:free"
-
 
     @pytest.mark.asyncio
     async def test_cache_expiry_resets_disabled_flag(self):

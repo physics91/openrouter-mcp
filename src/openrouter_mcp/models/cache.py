@@ -676,10 +676,7 @@ class ModelCache:
                 model_id = model.get("id", "")
 
                 # Apply filters (use model dict directly — already enriched by batch_enhance_models)
-                if (
-                    provider
-                    and model.get("provider", "").lower() != provider.lower()
-                ):
+                if provider and model.get("provider", "").lower() != provider.lower():
                     continue
 
                 if vision_capable is not None:

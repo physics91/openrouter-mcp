@@ -515,6 +515,7 @@ class TestFreeChatHandler:
     @pytest.mark.asyncio
     async def test_streaming_empty_choices_no_crash(self):
         """Chunks with choices=[] or missing choices should not crash."""
+
         async def _fake_stream(**kwargs):
             chunks = [
                 {},
