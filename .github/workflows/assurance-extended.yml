@@ -1,19 +1,22 @@
 name: Assurance Extended
 
 on:
-  push:
-    branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "0 18 * * *"
     - cron: "0 19 * * 0"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   advisory-static-analysis:
     name: Advisory Static Analysis
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:extended')) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     continue-on-error: true
 
@@ -38,7 +41,7 @@ jobs:
 
   advisory-performance:
     name: Advisory Performance and Replay
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:extended')) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     continue-on-error: true
 
