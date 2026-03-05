@@ -114,5 +114,17 @@ See:
 ## Contributing
 See `CONTRIBUTING.md`.
 
+Quick setup for local hook enforcement:
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install
+```
+
+The installed hooks enforce:
+- `pre-commit` fast checks before commit
+- `commit-msg` Conventional Commit format in English
+- `pre-push` smoke tests
+
 ## License
 MIT

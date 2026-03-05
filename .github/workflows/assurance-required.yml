@@ -9,6 +9,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  commit-message-validation:
+    name: Commit Message Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Validate commit messages in PR range
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_REF="origin/${{ github.base_ref }}"
+          git fetch --no-tags --prune origin "${{ github.base_ref }}"
+
+          mapfile -t COMMIT_SUBJECTS < <(git log --format=%s "${BASE_REF}..HEAD")
+          if [ ${#COMMIT_SUBJECTS[@]} -eq 0 ]; then
+            echo "No commits found in PR range."
+            exit 0
+          fi
+
+          status=0
+          for subject in "${COMMIT_SUBJECTS[@]}"; do
+            [ -z "${subject}" ] && continue
+            tmp_file="$(mktemp)"
+            printf '%s\n' "${subject}" > "${tmp_file}"
+
+            if ! python scripts/validate_commit_msg.py "${tmp_file}"; then
+              echo "Invalid commit message: ${subject}"
+              status=1
+            fi
+
+            rm -f "${tmp_file}"
+          done
+
+          exit "${status}"
+
   required-assurance:
     name: Required Assurance Gate
     runs-on: ubuntu-latest
