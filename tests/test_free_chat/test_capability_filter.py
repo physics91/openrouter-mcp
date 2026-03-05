@@ -2,8 +2,8 @@
 
 import pytest
 
-from tests.test_free_chat.conftest import _make_mock_cache, make_free_model
 from src.openrouter_mcp.free.router import FreeModelRouter
+from tests.test_free_chat.conftest import _make_mock_cache, make_free_model
 
 pytestmark = pytest.mark.unit
 
@@ -62,9 +62,7 @@ class TestSelectModelWithCapabilities:
         router = FreeModelRouter(cache)
 
         with pytest.raises(RuntimeError, match="capability"):
-            await router.select_model(
-                required_capabilities={"supports_vision": True}
-            )
+            await router.select_model(required_capabilities={"supports_vision": True})
 
     @pytest.mark.asyncio
     async def test_no_capability_requirement_selects_normally(self):

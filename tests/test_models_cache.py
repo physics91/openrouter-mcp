@@ -410,10 +410,20 @@ class TestFilterModelsPerformance:
         from src.openrouter_mcp.utils.metadata import batch_enhance_models
 
         models_raw = [
-            {"id": "google/gemma:free", "name": "Gemma", "context_length": 131072,
-             "architecture": {"modality": "text"}, "pricing": {"prompt": "0", "completion": "0"}},
-            {"id": "openai/gpt-5", "name": "GPT-5", "context_length": 200000,
-             "architecture": {"modality": "text"}, "pricing": {"prompt": "0.01", "completion": "0.03"}},
+            {
+                "id": "google/gemma:free",
+                "name": "Gemma",
+                "context_length": 131072,
+                "architecture": {"modality": "text"},
+                "pricing": {"prompt": "0", "completion": "0"},
+            },
+            {
+                "id": "openai/gpt-5",
+                "name": "GPT-5",
+                "context_length": 200000,
+                "architecture": {"modality": "text"},
+                "pricing": {"prompt": "0.01", "completion": "0.03"},
+            },
         ]
         cache = ModelCache(ttl_hours=1)
         cache._memory_cache = batch_enhance_models(models_raw)
@@ -422,13 +432,21 @@ class TestFilterModelsPerformance:
 
     def test_filter_models_no_metadata_lookup(self, populated_cache):
         """filter_models must NOT call get_model_metadata (O(n²) avoidance)."""
-        with patch.object(populated_cache, "get_model_metadata", wraps=populated_cache.get_model_metadata) as spy:
+        with patch.object(
+            populated_cache,
+            "get_model_metadata",
+            wraps=populated_cache.get_model_metadata,
+        ) as spy:
             populated_cache.filter_models(free_only=True)
             spy.assert_not_called()
 
     def test_get_cache_stats_no_metadata_lookup(self, populated_cache):
         """get_cache_stats must NOT call get_model_metadata (O(n²) avoidance)."""
-        with patch.object(populated_cache, "get_model_metadata", wraps=populated_cache.get_model_metadata) as spy:
+        with patch.object(
+            populated_cache,
+            "get_model_metadata",
+            wraps=populated_cache.get_model_metadata,
+        ) as spy:
             populated_cache.get_cache_stats()
             spy.assert_not_called()
 
@@ -443,10 +461,22 @@ class TestFallbackCacheHydration:
     @pytest.fixture
     def sample_models(self):
         return [
-            {"id": "google/gemma:free", "name": "Gemma", "context_length": 131072,
-             "provider": "google", "cost_tier": "free", "capabilities": {}},
-            {"id": "deepseek/chat:free", "name": "DeepSeek", "context_length": 131072,
-             "provider": "deepseek", "cost_tier": "free", "capabilities": {}},
+            {
+                "id": "google/gemma:free",
+                "name": "Gemma",
+                "context_length": 131072,
+                "provider": "google",
+                "cost_tier": "free",
+                "capabilities": {},
+            },
+            {
+                "id": "deepseek/chat:free",
+                "name": "DeepSeek",
+                "context_length": 131072,
+                "provider": "deepseek",
+                "cost_tier": "free",
+                "capabilities": {},
+            },
         ]
 
     @pytest.mark.asyncio
@@ -471,7 +501,9 @@ class TestFallbackCacheHydration:
         assert cache._last_update == file_update
 
     @pytest.mark.asyncio
-    async def test_fallback_hydrates_with_none_last_update(self, cache_config, sample_models):
+    async def test_fallback_hydrates_with_none_last_update(
+        self, cache_config, sample_models
+    ):
         """File cache returns None for last_update → _last_update set to ~now."""
         from src.openrouter_mcp.models.cache import ModelCache
 
@@ -498,9 +530,7 @@ class TestFallbackCacheHydration:
 
         with patch.object(
             cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
-        ), patch.object(
-            cache, "_load_from_file_cache", return_value=([], None)
-        ):
+        ), patch.object(cache, "_load_from_file_cache", return_value=([], None)):
             models = await cache.get_models()
 
         assert models == []
