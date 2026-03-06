@@ -516,14 +516,19 @@ class OpenRouterClient:
         self._validate_model(model)
         return await self._make_request("GET", f"/models/{model}")
 
-    async def get_model_pricing(self, model: str) -> Dict[str, float]:
+    async def get_model_pricing(self, model: str) -> Dict[str, Any]:
         """Get normalized pricing for a specific model.
 
         Pricing values are normalized to per-token dollars to ensure consistent
-        cost calculations across the codebase.
+        cost calculations across the codebase. The return value preserves the
+        numeric ``prompt``/``completion`` fields and adds ``_meta`` to expose
+        whether pricing data was available or a fallback was used.
         """
         self._validate_model(model)
         pricing: Dict[str, Any] = {}
+        pricing_available = False
+        fallback_used = False
+        source = "cache" if self._model_cache else "api"
 
         try:
             if self._model_cache:
@@ -532,15 +537,34 @@ class OpenRouterClient:
                 model_info = await self.get_model_info(model)
 
             pricing_data = model_info.get("pricing") if model_info else None
-            if isinstance(pricing_data, dict):
+            if isinstance(pricing_data, dict) and (
+                "prompt" in pricing_data or "completion" in pricing_data
+            ):
                 pricing = pricing_data
+                pricing_available = True
         except Exception as e:
             self.logger.warning(f"Failed to fetch pricing for model {model}: {e}")
+            fallback_used = True
 
-        normalized = normalize_pricing(pricing)
+        if pricing_available:
+            normalized = normalize_pricing(pricing, fill_missing=False)
+            if "prompt" not in pricing and "completion" in pricing:
+                normalized["prompt"] = normalized["completion"]
+            if "completion" not in pricing and "prompt" in pricing:
+                normalized["completion"] = normalized["prompt"]
+        else:
+            fallback_used = True
+            source = "fallback"
+            normalized = normalize_pricing(pricing)
+
         return {
             "prompt": float(normalized.get("prompt", 0.0)),
             "completion": float(normalized.get("completion", 0.0)),
+            "_meta": {
+                "pricing_available": pricing_available,
+                "fallback_used": fallback_used,
+                "source": source,
+            },
         }
 
     async def chat_completion(

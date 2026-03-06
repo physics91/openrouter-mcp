@@ -1,5 +1,5 @@
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -73,9 +73,7 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_list_models_success(
-        self, mock_api_key, mock_models_response, create_response
-    ):
+    async def test_list_models_success(self, mock_api_key, mock_models_response, create_response):
         """Test successful models listing."""
         client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
 
@@ -102,9 +100,7 @@ class TestOpenRouterClient:
 
             await client.list_models(filter_by="openai")
 
-            mock_request.assert_called_once_with(
-                "GET", "/models", params={"filter": "openai"}
-            )
+            mock_request.assert_called_once_with("GET", "/models", params={"filter": "openai"})
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -141,8 +137,7 @@ class TestOpenRouterClient:
             )
 
             assert (
-                response["choices"][0]["message"]["content"]
-                == "Hello! How can I help you today?"
+                response["choices"][0]["message"]["content"] == "Hello! How can I help you today?"
             )
             assert response["usage"]["total_tokens"] == 18
 
@@ -153,15 +148,11 @@ class TestOpenRouterClient:
                 "max_tokens": 100,
                 "stream": False,
             }
-            mock_request.assert_called_once_with(
-                "POST", "/chat/completions", json=expected_payload
-            )
+            mock_request.assert_called_once_with("POST", "/chat/completions", json=expected_payload)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_stream_chat_completion_success(
-        self, mock_api_key, mock_stream_response
-    ):
+    async def test_stream_chat_completion_success(self, mock_api_key, mock_stream_response):
         """Test successful streaming chat completion."""
         client = OpenRouterClient(api_key=mock_api_key)
 
@@ -201,17 +192,13 @@ class TestOpenRouterClient:
         with patch.object(client, "_make_request") as mock_request:
             mock_request.return_value = usage_data
 
-            usage = await client.track_usage(
-                start_date="2024-01-01", end_date="2024-01-31"
-            )
+            usage = await client.track_usage(start_date="2024-01-01", end_date="2024-01-31")
 
             assert usage["total_cost"] == 0.00054
             assert usage["total_tokens"] == 18
 
             expected_params = {"start_date": "2024-01-01", "end_date": "2024-01-31"}
-            mock_request.assert_called_once_with(
-                "GET", "/generation", params=expected_params
-            )
+            mock_request.assert_called_once_with("GET", "/generation", params=expected_params)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -342,3 +329,42 @@ class TestOpenRouterClient:
         # Invalid model - None
         with pytest.raises(ValueError, match="Model cannot be empty"):
             client._validate_model(None)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_model_pricing_marks_fallback_metadata_on_cache_failure(self, mock_api_key):
+        """Test pricing metadata when cache fetch fails."""
+        client = OpenRouterClient(api_key=mock_api_key)
+        assert client._model_cache is not None
+
+        with patch.object(
+            client._model_cache,
+            "get_model_info",
+            new=AsyncMock(side_effect=Exception("cache unavailable")),
+        ):
+            pricing = await client.get_model_pricing("openai/gpt-4")
+
+        assert pricing["prompt"] == 0.00002
+        assert pricing["completion"] == 0.00002
+        assert pricing["_meta"]["fallback_used"] is True
+        assert pricing["_meta"]["pricing_available"] is False
+        assert pricing["_meta"]["source"] == "fallback"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_model_pricing_preserves_zero_price_with_api_metadata(self, mock_api_key):
+        """Test zero pricing is preserved when pricing data exists."""
+        client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
+
+        with patch.object(
+            client,
+            "get_model_info",
+            new=AsyncMock(return_value={"pricing": {"prompt": 0.0, "completion": 0.0}}),
+        ):
+            pricing = await client.get_model_pricing("openai/gpt-4")
+
+        assert pricing["prompt"] == 0.0
+        assert pricing["completion"] == 0.0
+        assert pricing["_meta"]["fallback_used"] is False
+        assert pricing["_meta"]["pricing_available"] is True
+        assert pricing["_meta"]["source"] == "api"

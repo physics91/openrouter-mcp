@@ -21,9 +21,70 @@ from .mcp_manager import (
     MCPServerNotFoundError,
 )
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(message)s")  # Simple format for CLI output
 logger = logging.getLogger(__name__)
+
+
+def configure_cli_logging() -> None:
+    """Configure lightweight CLI logging at execution time."""
+    if getattr(configure_cli_logging, "_configured", False):
+        return
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    configure_cli_logging._configured = True
+
+
+def _print_openrouter_next_steps() -> None:
+    """Print post-install instructions for the OpenRouter preset."""
+    click.echo("\n📝 Next steps:")
+    click.echo("1. Restart Claude Code CLI")
+    click.echo("2. The OpenRouter MCP tools will be available")
+    click.echo("\nExample commands:")
+    click.echo("  - 'list available models'")
+    click.echo("  - 'compare gpt-4 and claude-3'")
+
+
+def _add_preset_server(
+    manager: MCPManager,
+    server_name: str,
+    *,
+    api_key: Optional[str],
+    force: bool,
+    options: Dict[str, Any],
+) -> bool:
+    """Add a server from a preset definition."""
+    success = manager.add_server_from_preset(server_name, api_key=api_key, force=force, **options)
+    if not success:
+        return False
+
+    click.echo(f"✅ Successfully added MCP server: {server_name}")
+    if server_name == "openrouter":
+        _print_openrouter_next_steps()
+    return True
+
+
+def _add_custom_server(
+    manager: MCPManager,
+    server_name: str,
+    *,
+    command: Any,
+    force: bool,
+    options: Dict[str, Any],
+) -> bool:
+    """Add a custom server configuration."""
+    if not isinstance(command, str) or not command.strip():
+        click.echo("❌ Error: Custom servers require a non-empty string command.")
+        return False
+
+    config = MCPServerConfig(
+        name=server_name,
+        command=command,
+        args=options.get("args", []),
+        cwd=options.get("cwd"),
+        env=options.get("env", {}),
+    )
+    manager.add_server(config, force=force)
+    click.echo(f"✅ Successfully added MCP server: {server_name}")
+    return True
 
 
 def add_mcp_server(
@@ -45,52 +106,30 @@ def add_mcp_server(
     """
     try:
         manager = MCPManager()
+        command = kwargs.get("command")
 
-        # Check if it's a preset
-        if server_name in MCPManager.PRESETS or not kwargs.get("command"):
-            # Try as preset first
-            if server_name in MCPManager.PRESETS:
-                success = manager.add_server_from_preset(
-                    server_name, api_key=api_key, force=force, **kwargs
-                )
-                if success:
-                    click.echo(f"✅ Successfully added MCP server: {server_name}")
-
-                    # Show post-installation instructions
-                    if server_name == "openrouter":
-                        click.echo("\n📝 Next steps:")
-                        click.echo("1. Restart Claude Code CLI")
-                        click.echo("2. The OpenRouter MCP tools will be available")
-                        click.echo("\nExample commands:")
-                        click.echo("  - 'list available models'")
-                        click.echo("  - 'compare gpt-4 and claude-3'")
-
-                    return True
-            else:
-                # Not a preset and no command provided
-                click.echo(
-                    f"❌ Error: '{server_name}' is not a known preset. Custom servers require a 'command' parameter."
-                )
-                click.echo(f"Available presets: {', '.join(MCPManager.PRESETS.keys())}")
-                return False
-        else:
-            # Custom server configuration with command provided
-            command = kwargs.get("command")
-            if not isinstance(command, str) or not command.strip():
-                click.echo("❌ Error: Custom servers require a non-empty string command.")
-                return False
-            config = MCPServerConfig(
-                name=server_name,
-                command=command,
-                args=kwargs.get("args", []),
-                cwd=kwargs.get("cwd"),
-                env=kwargs.get("env", {}),
+        if server_name in MCPManager.PRESETS:
+            return _add_preset_server(
+                manager,
+                server_name,
+                api_key=api_key,
+                force=force,
+                options=kwargs,
             )
 
-            manager.add_server(config, force=force)
-            click.echo(f"✅ Successfully added MCP server: {server_name}")
-            return True
+        if command is not None:
+            return _add_custom_server(
+                manager,
+                server_name,
+                command=command,
+                force=force,
+                options=kwargs,
+            )
 
+        click.echo(
+            f"❌ Error: '{server_name}' is not a known preset. Custom servers require a 'command' parameter."
+        )
+        click.echo(f"Available presets: {', '.join(MCPManager.PRESETS.keys())}")
         return False
 
     except MCPServerAlreadyExistsError:
@@ -269,7 +308,7 @@ def configure_mcp_server(
 @click.group()
 def mcp() -> None:
     """Manage MCP servers for Claude Code CLI."""
-    pass
+    configure_cli_logging()
 
 
 @mcp.command()
@@ -358,4 +397,5 @@ def config(
 if __name__ == "__main__":
     # For testing: Allow running as a module
     if len(sys.argv) > 1:
+        configure_cli_logging()
         mcp()
