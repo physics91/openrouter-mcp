@@ -10,6 +10,8 @@ These tests verify that the semantic similarity implementation correctly:
 5. Performs efficiently on realistic data
 """
 
+from unittest.mock import Mock
+
 import pytest
 
 from openrouter_mcp.collective_intelligence.semantic_similarity import (
@@ -105,6 +107,30 @@ class TestSemanticSimilarityCalculator:
         # Should be identical after normalization
         assert score.hybrid == pytest.approx(1.0, abs=0.01)
 
+    def test_identical_after_normalization_short_circuits_expensive_metrics(self):
+        """Identical normalized texts should skip the expensive metric pipeline."""
+        calculator = SemanticSimilarityCalculator()
+        calculator._jaccard_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._normalized_levenshtein = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._cosine_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._ngram_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+
+        score = calculator.calculate_similarity("HELLO   WORLD", "hello world")
+
+        assert score.hybrid == 1.0
+        assert score.jaccard == 1.0
+        assert score.levenshtein == 1.0
+        assert score.cosine == 1.0
+        assert score.ngram == 1.0
+
     def test_empty_strings(self, calculator):
         """Empty strings should be handled correctly."""
         score1 = calculator.calculate_similarity("", "")
@@ -175,6 +201,25 @@ class TestResponseGrouper:
             "Renewable energy reduces carbon emissions.",
             "Renewable energy reduces carbon emissions.",
         ]
+        groups = grouper.group_responses(responses)
+
+        assert len(groups) == 1
+        assert set(groups[0]) == {0, 1, 2}
+
+    def test_normalized_duplicate_responses_skip_similarity_checks(self):
+        """Normalized duplicates should group without calling the similarity engine."""
+        calculator = SemanticSimilarityCalculator()
+        calculator.are_similar = Mock(
+            side_effect=AssertionError("normalized duplicates should short-circuit")
+        )
+        grouper = ResponseGrouper(similarity_threshold=0.7, calculator=calculator)
+
+        responses = [
+            "Renewable energy reduces carbon emissions.",
+            " renewable   energy reduces carbon emissions. ",
+            "RENEWABLE ENERGY REDUCES CARBON EMISSIONS.",
+        ]
+
         groups = grouper.group_responses(responses)
 
         assert len(groups) == 1
@@ -349,9 +394,7 @@ class TestPerformance:
         grouper = ResponseGrouper(similarity_threshold=0.7)
 
         # Create many responses
-        responses = [
-            f"This is response number {i} about renewable energy." for i in range(50)
-        ]
+        responses = [f"This is response number {i} about renewable energy." for i in range(50)]
 
         # Add some duplicates
         responses.extend(

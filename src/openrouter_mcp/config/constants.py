@@ -118,6 +118,7 @@ class BenchmarkDefaults:
     DEFAULT_DELAY_SECONDS: float = 1.0
     DEFAULT_RUNS_PER_MODEL: int = 1
     DEFAULT_MCP_RUNS: int = 3
+    DEFAULT_MAX_CONCURRENT_MODELS: int = 3
     DEFAULT_RESULTS_DIR: str = ".cache/benchmarks"
     DEFAULT_TIMEOUT_SECONDS: float = 60.0
     CATEGORY_COMPARE_RUNS: int = 2

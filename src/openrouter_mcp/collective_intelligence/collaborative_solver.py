@@ -383,6 +383,9 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         current_content = ""
         iteration = 0
         max_iterations = 3
+        previous_content: Optional[str] = None
+        iterations_completed = 0
+        stop_reason = "max_iterations"
 
         while iteration < max_iterations:
             # Get current best solution
@@ -411,12 +414,24 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
             validation_result = await self.cross_validator.process(dummy_result, task)
             self._record_component(session, f"cross_validator_iter_{iteration}", validation_result)
+            iterations_completed += 1
+            normalized_content = current_content.strip()
 
             # Check if solution is good enough
             if validation_result.is_valid and validation_result.validation_confidence > 0.8:
+                stop_reason = "validated"
                 break
 
+            if previous_content is not None and normalized_content == previous_content:
+                stop_reason = "stalled_progress"
+                break
+
+            previous_content = normalized_content
+
             iteration += 1
+
+        session.session_metadata["iterative_iterations_completed"] = iterations_completed
+        session.session_metadata["iterative_stop_reason"] = stop_reason
 
         return self._create_solving_result(session, current_content)
 

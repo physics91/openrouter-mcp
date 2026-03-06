@@ -72,6 +72,15 @@ class SemanticSimilarityCalculator:
         norm1 = self._normalize_text(text1)
         norm2 = self._normalize_text(text2)
 
+        if norm1 == norm2:
+            return SimilarityScore(
+                jaccard=1.0,
+                levenshtein=1.0,
+                cosine=1.0,
+                ngram=1.0,
+                hybrid=1.0,
+            )
+
         # Calculate individual metrics
         jaccard = self._jaccard_similarity(norm1, norm2)
         levenshtein = self._normalized_levenshtein(norm1, norm2)
@@ -403,30 +412,49 @@ class ResponseGrouper:
         if len(texts) == 1:
             return [[0]]
 
-        groups: List[List[int]] = []
-        assigned = set()
+        normalized_to_representative = {}
+        representative_indices: List[int] = []
+        duplicate_members = {}
 
-        for i, text1 in enumerate(texts):
-            if i in assigned:
+        for idx, text in enumerate(texts):
+            normalized = self.calculator._normalize_text(text)
+            representative_idx = normalized_to_representative.get(normalized)
+            if representative_idx is None:
+                normalized_to_representative[normalized] = idx
+                representative_indices.append(idx)
+                duplicate_members[idx] = [idx]
+                continue
+
+            duplicate_members[representative_idx].append(idx)
+
+        groups: List[List[int]] = []
+        assigned_representatives = set()
+
+        for i in representative_indices:
+            if i in assigned_representatives:
                 continue
 
             # Start a new group with this text
-            current_group = [i]
-            assigned.add(i)
+            current_group = list(duplicate_members[i])
+            current_representatives = [i]
+            assigned_representatives.add(i)
 
             # Find all similar texts
-            for j, text2 in enumerate(texts):
-                if j <= i or j in assigned:
+            for j in representative_indices:
+                if j <= i or j in assigned_representatives:
                     continue
+
+                text2 = texts[j]
 
                 # Check if similar to any text in current group
                 # (transitive grouping)
-                for group_idx in current_group:
+                for group_idx in current_representatives:
                     if self.calculator.are_similar(
                         texts[group_idx], text2, self.similarity_threshold
                     ):
-                        current_group.append(j)
-                        assigned.add(j)
+                        current_representatives.append(j)
+                        current_group.extend(duplicate_members[j])
+                        assigned_representatives.add(j)
                         break
 
             groups.append(current_group)

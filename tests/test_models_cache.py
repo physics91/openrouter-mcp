@@ -6,6 +6,7 @@ This test suite follows TDD principles to implement model caching system
 that keeps the latest AI models from OpenRouter API.
 """
 
+import asyncio
 import json
 import tempfile
 from datetime import datetime, timedelta
@@ -296,6 +297,33 @@ class TestModelCache:
                     assert "provider" in cache._memory_cache[0]
                     assert "category" in cache._memory_cache[0]
 
+    @pytest.mark.asyncio
+    async def test_get_models_coalesces_concurrent_refreshes(
+        self, mock_openrouter_models, cache_config
+    ):
+        """Concurrent cache misses should share a single in-flight refresh."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        cache._memory_cache = []
+        cache._last_update = None
+
+        fetch_count = 0
+
+        async def fake_fetch():
+            nonlocal fetch_count
+            fetch_count += 1
+            await asyncio.sleep(0.01)
+            return mock_openrouter_models["data"]
+
+        with patch.object(cache, "_fetch_models_from_api", side_effect=fake_fetch):
+            with patch.object(cache, "_save_to_file_cache") as mock_save:
+                results = await asyncio.gather(*[cache.get_models() for _ in range(5)])
+
+        assert fetch_count == 1
+        assert mock_save.call_count == 1
+        assert all(len(models) == 5 for models in results)
+
     def test_get_model_metadata(self, mock_openrouter_models, cache_config):
         """Test extracting enhanced model metadata."""
         from src.openrouter_mcp.models.cache import ModelCache
@@ -491,9 +519,7 @@ class TestFallbackCacheHydration:
 
         with patch.object(
             cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
-        ), patch.object(
-            cache, "_load_from_file_cache", return_value=(sample_models, file_update)
-        ):
+        ), patch.object(cache, "_load_from_file_cache", return_value=(sample_models, file_update)):
             models = await cache.get_models()
 
         assert len(models) == 2
@@ -501,9 +527,7 @@ class TestFallbackCacheHydration:
         assert cache._last_update == file_update
 
     @pytest.mark.asyncio
-    async def test_fallback_hydrates_with_none_last_update(
-        self, cache_config, sample_models
-    ):
+    async def test_fallback_hydrates_with_none_last_update(self, cache_config, sample_models):
         """File cache returns None for last_update → _last_update set to ~now."""
         from src.openrouter_mcp.models.cache import ModelCache
 
@@ -511,9 +535,7 @@ class TestFallbackCacheHydration:
 
         with patch.object(
             cache, "_fetch_models_from_api", side_effect=RuntimeError("API down")
-        ), patch.object(
-            cache, "_load_from_file_cache", return_value=(sample_models, None)
-        ):
+        ), patch.object(cache, "_load_from_file_cache", return_value=(sample_models, None)):
             await cache.get_models()
 
         assert cache._memory_cache == sample_models

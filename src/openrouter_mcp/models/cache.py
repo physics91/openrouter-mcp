@@ -176,6 +176,8 @@ class ModelCache:
         self._memory_cache: List[Dict[str, Any]] = []
         self._last_update: Optional[datetime] = None
         self._cache_lock = threading.RLock()  # Reentrant lock for thread safety
+        self._refresh_lock = asyncio.Lock()
+        self._inflight_refresh: Optional[asyncio.Task[List[Dict[str, Any]]]] = None
 
         # Thread pool executor for blocking I/O operations
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cache-io")
@@ -471,7 +473,35 @@ class ModelCache:
                     # Return copy or reference based on parameter
                     return list(self._memory_cache) if copy else self._memory_cache
 
-        # Cache miss - fetch from API
+        refresh_task = await self._get_or_create_refresh_task(force_refresh=force_refresh)
+        models = await refresh_task
+        return list(models) if copy else models
+
+    async def _get_or_create_refresh_task(
+        self, *, force_refresh: bool
+    ) -> "asyncio.Task[List[Dict[str, Any]]]":
+        """Share a single in-flight refresh across concurrent callers."""
+        async with self._refresh_lock:
+            if not force_refresh and not self.is_expired():
+                with self._cache_lock:
+                    if self._memory_cache:
+                        completed = asyncio.get_running_loop().create_future()
+                        completed.set_result(self._memory_cache)
+                        return completed
+
+            if self._inflight_refresh is None:
+                self._inflight_refresh = asyncio.create_task(self._refresh_models())
+                self._inflight_refresh.add_done_callback(self._clear_inflight_refresh)
+
+            return self._inflight_refresh
+
+    def _clear_inflight_refresh(self, task: "asyncio.Task[List[Dict[str, Any]]]") -> None:
+        """Reset refresh tracking once the shared refresh finishes."""
+        if self._inflight_refresh is task:
+            self._inflight_refresh = None
+
+    async def _refresh_models(self) -> List[Dict[str, Any]]:
+        """Refresh model metadata from API or fallback file cache."""
         try:
             models = await self._fetch_models_from_api()
 
@@ -502,9 +532,9 @@ class ModelCache:
                     self._last_update = last_update or datetime.now()
                 logger.info(f"Using {len(models)} models from file cache fallback")
                 return models
-            else:
-                logger.error("No cached models available and API failed")
-                return []
+
+            logger.error("No cached models available and API failed")
+            return []
 
     async def refresh_cache(self, force: bool = False) -> None:
         """

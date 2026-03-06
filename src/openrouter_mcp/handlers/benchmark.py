@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, TypedDict, Union
 
 from ..client.openrouter import OpenRouterClient
 from ..config.constants import BenchmarkDefaults, EnvVars, ModelDefaults, PricingDefaults
@@ -596,6 +596,42 @@ class BenchmarkHandler:
         """Build a single-message chat payload for benchmarking."""
         return [{"role": "user", "content": prompt}]
 
+    @staticmethod
+    def _resolve_max_concurrent_models(model_count: int, limit: Optional[int] = None) -> int:
+        """Resolve a conservative concurrency limit for benchmarking fan-out."""
+        requested_limit = (
+            BenchmarkDefaults.DEFAULT_MAX_CONCURRENT_MODELS if limit is None else limit
+        )
+        return max(1, min(requested_limit, max(1, model_count)))
+
+    async def _run_models_with_concurrency(
+        self,
+        model_ids: List[str],
+        run_for_model: Callable[[str], Awaitable[Any]],
+        build_error_result: Callable[[str, BaseException], Any],
+        *,
+        max_concurrent: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Run independent per-model benchmark jobs with bounded concurrency."""
+        if not model_ids:
+            return {}
+
+        semaphore = asyncio.Semaphore(
+            self._resolve_max_concurrent_models(len(model_ids), max_concurrent)
+        )
+
+        async def run_with_limit(model_id: str) -> Any:
+            async with semaphore:
+                try:
+                    return await run_for_model(model_id)
+                except BaseException as exc:
+                    logger.error(f"Benchmark execution error for {model_id}: {exc}")
+                    return build_error_result(model_id, exc)
+
+        tasks = [asyncio.create_task(run_with_limit(model_id)) for model_id in model_ids]
+        results_list = await asyncio.gather(*tasks)
+        return {model_id: result for model_id, result in zip(model_ids, results_list)}
+
     async def benchmark_model(
         self,
         model_id: str,
@@ -660,9 +696,7 @@ class BenchmarkHandler:
         """Benchmark multiple models with the same prompt."""
         logger.info(f"Starting benchmark for {len(models)} models with {runs_per_model} runs each")
 
-        results = {}
-
-        for model_id in models:
+        async def run_model_series(model_id: str) -> List[BenchmarkResult]:
             model_results = []
 
             for run in range(runs_per_model):
@@ -681,10 +715,19 @@ class BenchmarkHandler:
                 if run < runs_per_model - 1:
                     await asyncio.sleep(0.5)
 
-            results[model_id] = model_results
+            return model_results
 
-            # Delay between different models
-            await asyncio.sleep(1)
+        results = await self._run_models_with_concurrency(
+            models,
+            run_model_series,
+            lambda model_id, exc: [
+                self._build_error_result(
+                    model_id=model_id,
+                    prompt=prompt,
+                    error=str(exc),
+                )
+            ],
+        )
 
         comparison = ModelComparison(
             prompt=prompt,
@@ -895,34 +938,28 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         self, models: List[str], prompt: str, max_concurrent: int = 3
     ) -> ModelComparison:
         """Benchmark multiple models in parallel for better performance."""
-        semaphore = asyncio.Semaphore(max_concurrent)
-
-        async def benchmark_with_limit(model_id: str) -> BenchmarkResult:
-            async with semaphore:
-                return await self.benchmark_model(model_id, prompt)
-
-        # Run benchmarks in parallel
-        tasks = [benchmark_with_limit(model_id) for model_id in models]
-        results_list = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process results
-        results: Dict[str, List[BenchmarkResult]] = {}
-        for model_id, result in zip(models, results_list):
-            if isinstance(result, BaseException):
-                # Create error result
-                error_result = self._build_error_result(
+        results = await self._run_models_with_concurrency(
+            models,
+            lambda model_id: self.benchmark_model(model_id, prompt),
+            lambda model_id, exc: [
+                self._build_error_result(
                     model_id=model_id,
                     prompt=prompt,
-                    error=str(result),
+                    error=str(exc),
                 )
-                results[model_id] = [error_result]
-            else:
-                results[model_id] = [result]
+            ],
+            max_concurrent=max_concurrent,
+        )
+
+        comparison_results = {
+            model_id: result if isinstance(result, list) else [result]
+            for model_id, result in results.items()
+        }
 
         return ModelComparison(
             prompt=prompt,
             models=models,
-            results=results,
+            results=comparison_results,
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -1163,9 +1200,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             f"Starting enhanced benchmark for {len(model_ids)} models with {runs} runs each"
         )
 
-        results: Dict[str, "EnhancedBenchmarkResult"] = {}
-
-        for model_id in model_ids:
+        async def run_model_series(model_id: str) -> "EnhancedBenchmarkResult":
             model_results: List[BenchmarkResult] = []
 
             for run in range(runs):
@@ -1180,15 +1215,26 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
 
                 model_results.append(result)
 
-                if run < runs - 1:
+                if run < runs - 1 and delay_between_requests > 0:
                     await asyncio.sleep(delay_between_requests / 2)
 
-            enhanced_result = self._create_enhanced_result(model_id, model_results, prompt)
-            results[model_id] = enhanced_result
+            return self._create_enhanced_result(model_id, model_results, prompt)
 
-            await asyncio.sleep(delay_between_requests)
-
-        return results
+        return await self._run_models_with_concurrency(
+            model_ids,
+            run_model_series,
+            lambda model_id, exc: self._create_enhanced_result(
+                model_id,
+                [
+                    self._build_error_result(
+                        model_id=model_id,
+                        prompt=prompt,
+                        error=str(exc),
+                    )
+                ],
+                prompt,
+            ),
+        )
 
     def shutdown(self) -> None:
         """Shutdown the benchmark handler and cleanup resources."""

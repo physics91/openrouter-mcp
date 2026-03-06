@@ -162,8 +162,17 @@ class ConcurrencyLimiter:
     async def acquire_model_slot(self) -> bool:
         """Acquire a slot for model API call."""
         try:
-            await self.model_semaphore.acquire()
+            await asyncio.wait_for(
+                self.model_semaphore.acquire(),
+                timeout=self.config.queue_timeout_seconds,
+            )
             return True
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Model slot acquisition timed out after %.2fs",
+                self.config.queue_timeout_seconds,
+            )
+            return False
         except Exception as e:
             logger.error(f"Failed to acquire model slot: {e}")
             return False
