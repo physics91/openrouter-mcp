@@ -73,6 +73,24 @@ class TestConcurrencyAwareProtocol:
         assert limiter.get_active_count() == 1
         assert not limiter.is_at_capacity()
 
+    @pytest.mark.asyncio
+    async def test_model_slot_acquisition_times_out(self):
+        """Model slots should return False instead of waiting forever."""
+        config = ConcurrencyConfig(max_concurrent_models=1, queue_timeout_seconds=0.01)
+        limiter = ConcurrencyLimiter(config)
+
+        assert await limiter.acquire_model_slot()
+
+        try:
+            try:
+                acquired = await asyncio.wait_for(limiter.acquire_model_slot(), timeout=0.05)
+            except asyncio.TimeoutError as exc:
+                pytest.fail(f"acquire_model_slot should time out internally: {exc}")
+
+            assert acquired is False
+        finally:
+            limiter.release_model_slot()
+
 
 class TestQuotaAwareProtocol:
     """Tests for QuotaAware protocol implementation."""
@@ -106,9 +124,7 @@ class TestQuotaAwareProtocol:
         tracker = QuotaTracker(config)
 
         # Test check_and_increment
-        can_proceed, reason = await tracker.check_and_increment(
-            "req-1", tokens=100, cost=0.1
-        )
+        can_proceed, reason = await tracker.check_and_increment("req-1", tokens=100, cost=0.1)
         assert can_proceed
         assert reason == ""
 

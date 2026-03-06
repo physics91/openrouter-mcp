@@ -5,6 +5,7 @@ This module tests the benchmark handler that allows comparing multiple AI models
 by sending the same prompt and analyzing their responses.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -409,6 +410,42 @@ class TestBenchmarkHandler:
         assert comparison.results["anthropic/claude-3-opus"][0].response is None
 
     @pytest.mark.asyncio
+    async def test_benchmark_multiple_models_runs_concurrently(self, handler):
+        """Multiple models should be benchmarked concurrently on the main path."""
+        models = ["openai/gpt-4", "anthropic/claude-3-opus", "google/gemini-pro"]
+        active_calls = 0
+        max_active_calls = 0
+
+        async def tracked_benchmark(model_id, prompt, temperature=0.7, max_tokens=1000):
+            nonlocal active_calls, max_active_calls
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+            try:
+                await asyncio.sleep(0.01)
+                return BenchmarkResult(
+                    model_id=model_id,
+                    prompt=prompt,
+                    response=f"{model_id} response",
+                    response_time_ms=10,
+                    tokens_used=20,
+                    cost=0.001,
+                    timestamp=datetime.now(timezone.utc),
+                )
+            finally:
+                active_calls -= 1
+
+        with patch.object(handler, "benchmark_model", side_effect=tracked_benchmark):
+            with patch.object(handler, "save_comparison"):
+                comparison = await handler.benchmark_models(
+                    models=models,
+                    prompt="Run concurrently",
+                    runs_per_model=1,
+                )
+
+        assert max_active_calls > 1
+        assert set(comparison.results) == set(models)
+
+    @pytest.mark.asyncio
     async def test_save_and_load_comparison(self, handler, tmp_path):
         """Test saving and loading benchmark comparisons."""
         # Create a comparison
@@ -668,6 +705,42 @@ class TestAdvancedBenchmarkHandler:
             # Should have been called for all models
             assert mock_benchmark.call_count == len(models)
             assert len(comparison.models) == len(models)
+
+    @pytest.mark.asyncio
+    async def test_enhanced_benchmark_models_runs_concurrently(self, enhanced_handler):
+        """Enhanced benchmark path should also fan out models concurrently."""
+        model_ids = ["openai/gpt-4", "anthropic/claude-3-opus", "google/gemini-pro"]
+        active_calls = 0
+        max_active_calls = 0
+
+        async def tracked_benchmark(model_id, prompt, temperature=0.7, max_tokens=1000):
+            nonlocal active_calls, max_active_calls
+            active_calls += 1
+            max_active_calls = max(max_active_calls, active_calls)
+            try:
+                await asyncio.sleep(0.01)
+                return BenchmarkResult(
+                    model_id=model_id,
+                    prompt=prompt,
+                    response=f"{model_id} response",
+                    response_time_ms=10,
+                    tokens_used=20,
+                    cost=0.001,
+                    timestamp=datetime.now(timezone.utc),
+                )
+            finally:
+                active_calls -= 1
+
+        with patch.object(enhanced_handler, "benchmark_model", side_effect=tracked_benchmark):
+            results = await enhanced_handler.benchmark_models_enhanced(
+                model_ids=model_ids,
+                prompt="Run enhanced concurrently",
+                runs=1,
+                delay_between_requests=0,
+            )
+
+        assert max_active_calls > 1
+        assert set(results) == set(model_ids)
 
 
 class TestNewBenchmarkTools:

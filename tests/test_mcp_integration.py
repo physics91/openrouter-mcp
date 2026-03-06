@@ -25,6 +25,12 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
 
+async def _get_tools_dict(mcp_instance):
+    """Build a stable name->tool mapping via the FastMCP public API."""
+    tools = await mcp_instance.list_tools()
+    return {tool.name: tool for tool in tools}
+
+
 class TestMCPServerToolRegistration:
     """Test FastMCP tool registration without making API calls."""
 
@@ -80,7 +86,7 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.chat import mcp
 
         # Get registered tools (async)
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         # Expected chat tools
         expected_tools = ["chat_with_model", "list_available_models", "get_usage_stats"]
@@ -103,7 +109,7 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.mcp_benchmark import mcp
 
         # Get registered tools (async)
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         # Expected benchmark tools
         expected_tools = [
@@ -132,7 +138,7 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.collective_intelligence import mcp
 
         # Get registered tools (async)
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         # Expected collective intelligence tools
         expected_tools = [
@@ -161,7 +167,7 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.multimodal import mcp
 
         # Get registered tools (async)
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         # Expected multimodal tools (updated to match actual implementation)
         expected_tools = ["chat_with_vision", "list_vision_models"]
@@ -185,13 +191,13 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
 
         # Check chat tools (async)
-        chat_tools_dict = await chat_mcp.get_tools()
+        chat_tools_dict = await _get_tools_dict(chat_mcp)
         for tool_name, tool in chat_tools_dict.items():
             assert tool.name, "Tool name is empty"
             assert tool.description, "Tool description is empty"
 
         # Check benchmark tools (async)
-        benchmark_tools_dict = await benchmark_mcp.get_tools()
+        benchmark_tools_dict = await _get_tools_dict(benchmark_mcp)
         for tool_name, tool in benchmark_tools_dict.items():
             assert tool.name, "Tool name is empty"
             assert tool.description, "Tool description is empty"
@@ -203,9 +209,9 @@ class TestMCPServerToolRegistration:
         from openrouter_mcp.handlers.collective_intelligence import mcp as ci_mcp
         from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
 
-        chat_tools_dict = await chat_mcp.get_tools()
-        benchmark_tools_dict = await benchmark_mcp.get_tools()
-        ci_tools_dict = await ci_mcp.get_tools()
+        chat_tools_dict = await _get_tools_dict(chat_mcp)
+        benchmark_tools_dict = await _get_tools_dict(benchmark_mcp)
+        ci_tools_dict = await _get_tools_dict(ci_mcp)
 
         chat_tools = len(chat_tools_dict)
         benchmark_tools = len(benchmark_tools_dict)
@@ -308,7 +314,8 @@ class TestToolInputValidation:
     @pytest.mark.asyncio
     async def test_chat_with_model_validates_input(self):
         """Test that chat_with_model validates its input schema."""
-        from openrouter_mcp.handlers.chat import ChatCompletionRequest, ChatMessage
+        from openrouter_mcp.handlers.chat import ChatCompletionRequest
+        from openrouter_mcp.models.requests import ChatMessage
 
         # Valid request should have proper structure
         request = ChatCompletionRequest(
@@ -325,7 +332,8 @@ class TestToolInputValidation:
 
     def test_chat_request_requires_model(self):
         """Test that ChatCompletionRequest requires a model."""
-        from openrouter_mcp.handlers.chat import ChatCompletionRequest, ChatMessage
+        from openrouter_mcp.handlers.chat import ChatCompletionRequest
+        from openrouter_mcp.models.requests import ChatMessage
 
         # Missing model should raise validation error
         with pytest.raises(Exception):  # Pydantic ValidationError
@@ -345,7 +353,7 @@ class TestToolInputValidation:
         from openrouter_mcp.handlers.mcp_benchmark import mcp
 
         # Get the benchmark_models tool from the registry
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
         assert "benchmark_models" in tools_dict, "benchmark_models tool not registered"
 
         # Verify the tool has a callable function
@@ -362,7 +370,7 @@ class TestMCPServerDocumentation:
         """Verify chat tools have descriptions."""
         from openrouter_mcp.handlers.chat import mcp
 
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         for tool_name, tool in tools_dict.items():
             assert tool.description, f"Tool '{tool.name}' missing description"
@@ -375,7 +383,7 @@ class TestMCPServerDocumentation:
         """Verify benchmark tools have descriptions."""
         from openrouter_mcp.handlers.mcp_benchmark import mcp
 
-        tools_dict = await mcp.get_tools()
+        tools_dict = await _get_tools_dict(mcp)
 
         for tool_name, tool in tools_dict.items():
             assert tool.description, f"Tool '{tool.name}' missing description"
