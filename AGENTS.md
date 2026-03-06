@@ -13,9 +13,13 @@
 
 ## 로컬 스킬 트리거
 - `build`: 코드 품질 게이트(ruff/black/isort 점검 또는 자동 수정)가 필요할 때 사용한다.
-- `test`: 테스트 스위트 실행, 실패 분석, 커버리지 점검이 필요할 때 사용한다.
-- `deploy`: npm 배포 준비/실행, 릴리스 확인 작업이 필요할 때 사용한다.
-- 상세 절차는 각 스킬 문서(`.agents/skills/{build,test,deploy}/SKILL.md`)를 단일 기준으로 따른다.
+- `test`: 테스트 스위트 실행, assurance 게이트 재현, 실패 분석, 커버리지 점검이 필요할 때 사용한다.
+- `deploy`: npm 배포 준비/실행, 릴리스 확인, 패키지 메타데이터/placeholder 검증이 필요할 때 사용한다.
+- `git-worktree`: 병렬 작업용 worktree 생성/정리/복구가 필요할 때 사용한다.
+- `security-ops`: API key 저장/회전/삭제, `security-audit`, 보안 문서 placeholder 점검이 필요할 때 사용한다.
+- `mcp-config-ops`: Claude Desktop/Code 설치, MCP 설정 백업/복원, config drift 점검이 필요할 때 사용한다.
+- `resilience-policy`: 집단지성 계층의 동시성/쿼터/회로차단/cleanup 정책 변경이나 검증이 필요할 때 사용한다.
+- 상세 절차는 각 스킬 문서(`.agents/skills/{build,test,deploy,git-worktree,security-ops,mcp-config-ops,resilience-policy}/SKILL.md`)를 단일 기준으로 따른다.
 
 ## 멀티에이전트 운영 지침
 - 기본 원칙: 단일 에이전트+도구 구성을 먼저 극대화한다. 복잡도/성능 이득이 명확할 때만 멀티에이전트로 확장한다.
