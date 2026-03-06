@@ -22,12 +22,19 @@ Usage:
 import asyncio
 import inspect
 import logging
-import os
 import signal
+from typing import Any
 
 from dotenv import load_dotenv
 
+from .collective_intelligence import shutdown_lifecycle_manager
 from .config.constants import EnvVars, LoggingConfig
+from .handlers import chat  # noqa: F401
+from .handlers import collective_intelligence  # noqa: F401
+from .handlers import free_chat  # noqa: F401
+from .handlers import mcp_benchmark  # noqa: F401
+from .handlers import multimodal  # noqa: F401
+from .mcp_registry import cleanup_shared_client, mcp
 from .utils.env import get_env_value
 
 # Load environment variables
@@ -42,44 +49,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# Import shared MCP instance from registry
-# This must be imported before handlers to ensure proper registration
-try:
-    from .mcp_registry import cleanup_shared_client, mcp
-except ImportError:
-    # Fallback for direct execution
-    import sys
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.mcp_registry import cleanup_shared_client, mcp
-
-# Import handlers to register MCP tools
-# These imports trigger the @mcp.tool() decorators which register tools with the shared instance
-try:
-    from .handlers import chat  # noqa: F401
-    from .handlers import collective_intelligence  # noqa: F401
-    from .handlers import free_chat  # noqa: F401
-    from .handlers import mcp_benchmark  # noqa: F401
-    from .handlers import multimodal  # noqa: F401
-except ImportError:
-    # Fallback for direct execution
-    import sys
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.handlers import chat  # noqa: F401
-    from openrouter_mcp.handlers import collective_intelligence  # noqa: F401
-    from openrouter_mcp.handlers import free_chat  # noqa: F401
-    from openrouter_mcp.handlers import mcp_benchmark  # noqa: F401
-    from openrouter_mcp.handlers import multimodal  # noqa: F401
-
-# Import lifecycle shutdown at module level for patching in tests
-try:
-    from .collective_intelligence import shutdown_lifecycle_manager
-except ImportError:
-    import sys
-
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
+# Import handlers to register MCP tools.
+# These imports trigger the @mcp.tool() decorators on module import.
 
 
 def validate_environment() -> None:
@@ -92,16 +63,14 @@ def validate_environment() -> None:
             missing_vars.append(var)
 
     if missing_vars:
-        logger.error(
-            f"Missing required environment variables: {', '.join(missing_vars)}"
-        )
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
         logger.error("Please set these variables in your .env file or environment")
         raise ValueError(f"Missing required environment variables: {missing_vars}")
 
     logger.info("Environment validation successful")
 
 
-def create_app():
+def create_app() -> Any:
     """Create and configure the FastMCP application."""
     logger.info("Initializing OpenRouter MCP Server...")
 
@@ -113,7 +82,7 @@ def create_app():
     return mcp
 
 
-async def shutdown_handler():
+async def shutdown_handler() -> None:
     """Cleanup handler for server shutdown."""
     logger.info("Server shutdown initiated, cleaning up resources...")
 
@@ -143,7 +112,7 @@ async def shutdown_handler():
         logger.error(f"Error during lifecycle manager shutdown: {e}", exc_info=True)
 
 
-def _run_shutdown():
+def _run_shutdown() -> None:
     """Run shutdown handler safely, avoiding un-awaited coroutine warnings."""
     try:
         loop = asyncio.get_running_loop()
@@ -161,7 +130,7 @@ def _run_shutdown():
                 coro.close()
 
 
-def main():
+def main() -> None:
     """Main entry point for the server."""
     try:
         app = create_app()
@@ -169,7 +138,7 @@ def main():
         logger.info("Starting OpenRouter MCP Server via stdio")
 
         # Register shutdown handler for graceful cleanup
-        def signal_handler(sig, frame):
+        def signal_handler(sig: int, frame: object) -> None:
             logger.info(f"Received signal {sig}, shutting down...")
             raise KeyboardInterrupt()
 

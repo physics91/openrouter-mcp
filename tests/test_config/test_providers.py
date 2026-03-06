@@ -11,6 +11,7 @@ from unittest.mock import mock_open, patch
 import pytest
 
 from openrouter_mcp.config.providers import (
+    ProviderConfigError,
     get_provider_info,
     get_quality_tier_info,
     load_provider_config,
@@ -96,18 +97,14 @@ class TestLoadProviderConfig:
         invalid_json = "{invalid json content"
 
         with patch("builtins.open", mock_open(read_data=invalid_json)):
-            result = load_provider_config()
-
-        # Should return default empty configuration
-        assert result == {"providers": {}, "aliases": {}, "quality_tiers": {}}
+            with pytest.raises(ProviderConfigError):
+                load_provider_config()
 
     def test_load_config_general_exception(self):
         """Test handling of unexpected errors during load."""
         with patch("builtins.open", side_effect=Exception("Unexpected error")):
-            result = load_provider_config()
-
-        # Should return default empty configuration
-        assert result == {"providers": {}, "aliases": {}, "quality_tiers": {}}
+            with pytest.raises(ProviderConfigError):
+                load_provider_config()
 
 
 class TestResolveProviderAlias:
@@ -232,9 +229,7 @@ class TestGetProviderInfo:
     def test_get_provider_info_via_alias(self):
         """Test getting info using an alias."""
         mock_config = {
-            "providers": {
-                "openai": {"display_name": "OpenAI", "website": "https://openai.com"}
-            },
+            "providers": {"openai": {"display_name": "OpenAI", "website": "https://openai.com"}},
             "aliases": {"oai": "openai"},
         }
 
@@ -278,11 +273,7 @@ class TestGetProviderInfo:
             result3 = get_provider_info("openai")
 
             # All should resolve to the same provider
-            assert (
-                result1["display_name"]
-                == result2["display_name"]
-                == result3["display_name"]
-            )
+            assert result1["display_name"] == result2["display_name"] == result3["display_name"]
 
 
 class TestGetQualityTierInfo:

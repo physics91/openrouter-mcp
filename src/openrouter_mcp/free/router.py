@@ -28,53 +28,57 @@ class FreeModelRouter:
 
     def _get_blended_reputation(self, provider: str, model_id: str) -> float:
         """Blend static reputation with real performance data when available."""
-        static = FreeChatConfig.MODEL_REPUTATION.get(
+        static_raw = FreeChatConfig.MODEL_REPUTATION.get(
             provider.lower(), FreeChatConfig.DEFAULT_REPUTATION
         )
+        static = float(static_raw)
         if self._metrics is None:
             return static
         m = self._metrics.get_metrics(model_id)
         if m is None or m.total_requests < FreeChatConfig.ADAPTIVE_MIN_REQUESTS:
             return static
-        alpha = min(
-            m.total_requests / FreeChatConfig.ADAPTIVE_RAMP_REQUESTS,
-            FreeChatConfig.ADAPTIVE_MAX_ALPHA,
+        alpha = float(
+            min(
+                m.total_requests / float(FreeChatConfig.ADAPTIVE_RAMP_REQUESTS),
+                float(FreeChatConfig.ADAPTIVE_MAX_ALPHA),
+            )
         )
-        perf_score = self._metrics.get_performance_score(model_id)
+        perf_score = float(self._metrics.get_performance_score(model_id))
         return alpha * perf_score + (1 - alpha) * static
 
     def _score_model(
-        self, model: dict, task_type: Optional[FreeTaskType] = None
+        self, model: Dict[str, Any], task_type: Optional[FreeTaskType] = None
     ) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
-        context_length = model.get("context_length", 0)
-        context_score = min(context_length / FreeChatConfig.MAX_CONTEXT_LENGTH, 1.0)
+        context_length = float(model.get("context_length", 0))
+        context_score = min(context_length / float(FreeChatConfig.MAX_CONTEXT_LENGTH), 1.0)
 
-        provider = model.get("provider", "")
+        provider = str(model.get("provider", ""))
         if not provider or provider == "unknown":
-            provider = extract_provider_from_id(model.get("id", "")).value
-        reputation = self._get_blended_reputation(provider, model.get("id", ""))
+            provider = extract_provider_from_id(str(model.get("id", ""))).value
+        reputation = self._get_blended_reputation(provider, str(model.get("id", "")))
 
-        caps = model.get("capabilities", {})
+        caps_raw = model.get("capabilities", {})
+        caps: Dict[str, Any] = caps_raw if isinstance(caps_raw, dict) else {}
         feature_score = 0.0
         if caps.get("supports_vision", False):
             feature_score += 0.5
         if caps.get("supports_function_calling", False):
             feature_score += 0.5
 
-        base_score = (
-            FreeChatConfig.CONTEXT_LENGTH_WEIGHT * context_score
-            + FreeChatConfig.REPUTATION_WEIGHT * reputation
-            + FreeChatConfig.FEATURES_WEIGHT * feature_score
+        base_score = float(
+            float(FreeChatConfig.CONTEXT_LENGTH_WEIGHT) * context_score
+            + float(FreeChatConfig.REPUTATION_WEIGHT) * reputation
+            + float(FreeChatConfig.FEATURES_WEIGHT) * feature_score
         )
 
         # Apply task-type affinity bonus
         if task_type is not None:
             affinity = TASK_MODEL_AFFINITY.get(task_type, {})
-            bonus = affinity.get(provider.lower(), 0.0)
+            bonus = float(affinity.get(provider.lower(), 0.0))
             base_score += bonus
 
-        return min(1.0, base_score)
+        return float(min(1.0, base_score))
 
     async def list_models_with_status(self) -> List[Dict[str, Any]]:
         """Return all free models with quality scores and availability.
@@ -102,7 +106,7 @@ class FreeModelRouter:
 
     def is_cache_expired(self) -> bool:
         """Check if the underlying model cache is expired."""
-        return self._cache.is_expired()
+        return bool(self._cache.is_expired())
 
     def _is_available(self, model_id: str) -> bool:
         """Check if a model is not in cooldown."""
@@ -123,9 +127,7 @@ class FreeModelRouter:
     def _cleanup_expired_cooldowns(self) -> None:
         """Remove expired cooldown entries."""
         now = time.time()
-        self._cooldowns = {
-            mid: until for mid, until in self._cooldowns.items() if until > now
-        }
+        self._cooldowns = {mid: until for mid, until in self._cooldowns.items() if until > now}
 
     @staticmethod
     def _filter_by_capabilities(
@@ -158,18 +160,12 @@ class FreeModelRouter:
         free_models = self._cache.filter_models(free_only=True)
 
         if required_capabilities:
-            free_models = self._filter_by_capabilities(
-                free_models, required_capabilities
-            )
+            free_models = self._filter_by_capabilities(free_models, required_capabilities)
             if not free_models:
-                raise RuntimeError(
-                    "요청에 필요한 capability를 지원하는 free 모델이 없습니다."
-                )
+                raise RuntimeError("요청에 필요한 capability를 지원하는 free 모델이 없습니다.")
 
         if not free_models:
-            raise RuntimeError(
-                "사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요."
-            )
+            raise RuntimeError("사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요.")
 
         # Decay usage counts when all current candidates have been used at least once
         active_ids = {m["id"] for m in free_models}
@@ -177,9 +173,7 @@ class FreeModelRouter:
             min_count = min(self._usage_counts.get(mid, 0) for mid in active_ids)
             if min_count > 0:
                 for mid in active_ids:
-                    self._usage_counts[mid] = max(
-                        0, self._usage_counts.get(mid, 0) - min_count
-                    )
+                    self._usage_counts[mid] = max(0, self._usage_counts.get(mid, 0) - min_count)
 
         # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
@@ -197,12 +191,8 @@ class FreeModelRouter:
         ]
 
         if not candidates:
-            soonest = (
-                min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
-            )
-            raise RuntimeError(
-                f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요."
-            )
+            soonest = min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
+            raise RuntimeError(f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요.")
 
         candidates.sort(key=lambda x: -x[1])
         return candidates
@@ -221,9 +211,7 @@ class FreeModelRouter:
         if preferred_models:
             free_models = self._cache.filter_models(free_only=True)
             if required_capabilities:
-                free_models = self._filter_by_capabilities(
-                    free_models, required_capabilities
-                )
+                free_models = self._filter_by_capabilities(free_models, required_capabilities)
             free_model_ids = {m["id"] for m in free_models}
             for pref_id in preferred_models:
                 if pref_id in free_model_ids and self._is_available(pref_id):
@@ -235,7 +223,7 @@ class FreeModelRouter:
         )
 
         selected = candidates[0][0]
-        model_id = selected["id"]
+        model_id = str(selected.get("id", ""))
         self._usage_counts[model_id] = self._usage_counts.get(model_id, 0) + 1
 
         logger.info(f"Selected free model: {model_id} (score={candidates[0][1]:.3f})")

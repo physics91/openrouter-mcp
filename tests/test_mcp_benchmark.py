@@ -13,6 +13,7 @@ import pytest
 
 from src.openrouter_mcp.handlers import mcp_benchmark
 from src.openrouter_mcp.handlers.benchmark import (
+    BenchmarkError,
     BenchmarkMetrics,
     BenchmarkResult,
     EnhancedBenchmarkMetrics,
@@ -79,9 +80,7 @@ class TestMCPBenchmarkTools:
         with patch(
             "src.openrouter_mcp.handlers.mcp_benchmark.EnhancedBenchmarkHandler"
         ) as mock_handler_class:
-            with patch(
-                "src.openrouter_mcp.handlers.mcp_benchmark.ModelCache"
-            ) as mock_cache_class:
+            with patch("src.openrouter_mcp.handlers.mcp_benchmark.ModelCache") as mock_cache_class:
                 mock_handler = Mock()
                 mock_handler_class.return_value = mock_handler
                 mock_cache_class.return_value = Mock()
@@ -283,6 +282,83 @@ class TestMCPBenchmarkTools:
                 assert "chat" in result["category_info"]
 
     @pytest.mark.asyncio
+    async def test_compare_model_categories_speed_prefers_lower_latency(self, mock_env):
+        """speed 메트릭은 더 낮은 지연 시간을 우선 선택해야 함"""
+        mock_models = [
+            {
+                "id": "quality-high-but-slow",
+                "category": "chat",
+                "quality_score": 9.8,
+                "avg_response_time": 3.0,
+            },
+            {
+                "id": "quality-lower-but-fast",
+                "category": "chat",
+                "quality_score": 7.0,
+                "avg_response_time": 0.4,
+            },
+        ]
+
+        def _make_result(model_id: str) -> BenchmarkResult:
+            return BenchmarkResult(
+                model_id=model_id,
+                success=True,
+                response="ok",
+                error_message=None,
+                metrics=BenchmarkMetrics(
+                    avg_response_time_ms=500.0,
+                    avg_tokens_used=100.0,
+                    avg_cost=0.001,
+                    total_cost=0.001,
+                    success_rate=1.0,
+                    sample_count=1,
+                    avg_quality_score=0.8,
+                    avg_throughput=100.0,
+                ),
+            )
+
+        with patch(
+            "src.openrouter_mcp.handlers.mcp_benchmark.get_benchmark_handler"
+        ) as mock_get_handler:
+            mock_handler = AsyncMock()
+            mock_cache = Mock()
+            mock_cache.get_models.return_value = mock_models
+            mock_handler.model_cache = mock_cache
+
+            async def _benchmark_models_side_effect(
+                model_ids, prompt, runs, delay_between_requests
+            ):
+                return {model_id: _make_result(model_id) for model_id in model_ids}
+
+            mock_handler.benchmark_models.side_effect = _benchmark_models_side_effect
+            mock_get_handler.return_value = mock_handler
+
+            with patch(
+                "src.openrouter_mcp.handlers.mcp_benchmark.ModelPerformanceAnalyzer"
+            ) as mock_analyzer_class:
+                mock_analyzer = Mock()
+                mock_analyzer.rank_models.return_value = []
+                mock_analyzer_class.return_value = mock_analyzer
+
+                result = await compare_model_categories(
+                    categories=["chat"],
+                    top_n=1,
+                    metric="speed",
+                )
+
+                assert result["category_info"]["chat"]["selected_models"] == [
+                    "quality-lower-but-fast"
+                ]
+
+    @pytest.mark.asyncio
+    async def test_compare_model_categories_rejects_invalid_metric(self, mock_env):
+        """지원하지 않는 metric 값은 명시적으로 오류를 반환해야 함"""
+        with pytest.raises(BenchmarkError) as exc_info:
+            await compare_model_categories(metric="not-a-metric")
+
+        assert "지원하지 않는 metric" in str(exc_info.value)
+
+    @pytest.mark.asyncio
     async def test_export_benchmark_report_not_found(self, mock_env, temp_dir):
         """존재하지 않는 벤치마크 파일 내보내기 테스트"""
         with patch(
@@ -334,9 +410,7 @@ class TestMCPBenchmarkTools:
                 mock_exporter = AsyncMock()
                 mock_exporter_class.return_value = mock_exporter
 
-                result = await export_benchmark_report(
-                    benchmark_file=input_file, format="markdown"
-                )
+                result = await export_benchmark_report(benchmark_file=input_file, format="markdown")
 
                 assert result["format"] == "markdown"
                 assert result["input_file"] == input_file
@@ -388,9 +462,7 @@ class TestMCPBenchmarkTools:
                 assert abs(total_weight - 1.0) < 0.001  # 부동소수점 오차 고려
 
     @pytest.mark.asyncio
-    async def test_compare_model_performance_no_weights(
-        self, mock_env, mock_benchmark_result
-    ):
+    async def test_compare_model_performance_no_weights(self, mock_env, mock_benchmark_result):
         """가중치 없는 모델 성능 비교 테스트"""
         models = ["gpt-4"]
 

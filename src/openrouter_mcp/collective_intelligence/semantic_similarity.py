@@ -17,7 +17,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Set
+from typing import List, Optional, Set
 
 from ..utils.text import EXTENDED_ENGLISH_STOPWORDS
 
@@ -196,8 +196,7 @@ class SemanticSimilarityCalculator:
         return [
             token
             for token in tokens
-            if len(token) >= self.min_token_length
-            and token not in EXTENDED_ENGLISH_STOPWORDS
+            if len(token) >= self.min_token_length and token not in EXTENDED_ENGLISH_STOPWORDS
         ]
 
     def _jaccard_similarity(self, text1: str, text2: str) -> float:
@@ -376,8 +375,8 @@ class ResponseGrouper:
     def __init__(
         self,
         similarity_threshold: float = 0.7,
-        calculator: SemanticSimilarityCalculator = None,
-    ):
+        calculator: Optional[SemanticSimilarityCalculator] = None,
+    ) -> None:
         """
         Initialize the response grouper.
 
@@ -434,9 +433,7 @@ class ResponseGrouper:
 
         return groups
 
-    def get_group_representatives(
-        self, texts: List[str], groups: List[List[int]]
-    ) -> List[int]:
+    def get_group_representatives(self, texts: List[str], groups: List[List[int]]) -> List[int]:
         """
         Get the most representative text from each group.
 
@@ -464,9 +461,7 @@ class ResponseGrouper:
             for idx in group:
                 # Calculate average similarity to all other texts in group
                 similarities = [
-                    self.calculator.calculate_similarity(
-                        texts[idx], texts[other_idx]
-                    ).hybrid
+                    self.calculator.calculate_similarity(texts[idx], texts[other_idx]).hybrid
                     for other_idx in group
                     if other_idx != idx
                 ]

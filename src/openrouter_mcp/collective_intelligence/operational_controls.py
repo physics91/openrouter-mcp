@@ -94,9 +94,7 @@ class OperationalConfig:
                 max_tokens_per_request=50000,
                 max_cost_per_request=0.5,
             ),
-            failure=FailureConfig(
-                cancel_on_critical_failure=True, max_failures_before_cancel=2
-            ),
+            failure=FailureConfig(cancel_on_critical_failure=True, max_failures_before_cancel=2),
         )
 
     @classmethod
@@ -113,9 +111,7 @@ class OperationalConfig:
                 max_tokens_per_request=200000,
                 max_cost_per_request=5.0,
             ),
-            failure=FailureConfig(
-                cancel_on_first_failure=False, max_failures_before_cancel=5
-            ),
+            failure=FailureConfig(cancel_on_first_failure=False, max_failures_before_cancel=5),
         )
 
     def limits_snapshot(self) -> Dict[str, Any]:
@@ -315,21 +311,15 @@ class FailureController:
 
             # Check cancellation conditions
             if is_critical and self.config.cancel_on_critical_failure:
-                logger.error(
-                    f"Critical failure for {request_id}, cancelling: {error_msg}"
-                )
+                logger.error(f"Critical failure for {request_id}, cancelling: {error_msg}")
                 return True
 
             if self.config.cancel_on_first_failure:
-                logger.warning(
-                    f"First failure for {request_id}, cancelling: {error_msg}"
-                )
+                logger.warning(f"First failure for {request_id}, cancelling: {error_msg}")
                 return True
 
             if failure_count >= self.config.max_failures_before_cancel:
-                logger.error(
-                    f"Max failures ({failure_count}) reached for {request_id}, cancelling"
-                )
+                logger.error(f"Max failures ({failure_count}) reached for {request_id}, cancelling")
                 return True
 
             return False
@@ -346,7 +336,7 @@ class FailureController:
         if not self.config.exponential_backoff:
             return 1.0
 
-        return min(30.0, 2**attempt)  # Max 30 seconds
+        return min(30.0, float(2**attempt))  # Max 30 seconds
 
     async def check_circuit_breaker(self, component: str) -> bool:
         """Check if circuit breaker is open for a component."""
@@ -369,9 +359,7 @@ class FailureController:
             if failures >= self.config.circuit_breaker_threshold:
                 # Open circuit breaker
                 self.circuit_breaker_opened[component] = datetime.now()
-                logger.error(
-                    f"Circuit breaker opened for {component} after {failures} failures"
-                )
+                logger.error(f"Circuit breaker opened for {component} after {failures} failures")
                 return False
 
             return True
@@ -396,10 +384,10 @@ class StorageManager:
 
     def __init__(self, config: StorageConfig):
         self.config = config
-        self.items: deque = deque(maxlen=config.max_history_size)
+        self.items: deque[tuple[str, Any]] = deque(maxlen=config.max_history_size)
         self.item_timestamps: Dict[str, datetime] = {}
         self._lock = asyncio.Lock()
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task[None]] = None
         self._cleanup_started = False
         # Start cleanup if we already have a running loop
         self._ensure_cleanup_task()
@@ -422,7 +410,7 @@ class StorageManager:
     def _start_cleanup_task(self) -> None:
         """Start background cleanup task."""
 
-        async def cleanup_loop():
+        async def cleanup_loop() -> None:
             while True:
                 try:
                     await asyncio.sleep(self.config.cleanup_interval_minutes * 60)
@@ -450,9 +438,7 @@ class StorageManager:
     async def cleanup_expired(self) -> int:
         """Remove expired items based on TTL and enforce size limits."""
         async with self._lock:
-            cutoff_time = datetime.now() - timedelta(
-                hours=self.config.history_ttl_hours
-            )
+            cutoff_time = datetime.now() - timedelta(hours=self.config.history_ttl_hours)
             expired_ids = [
                 item_id
                 for item_id, timestamp in self.item_timestamps.items()
@@ -465,7 +451,7 @@ class StorageManager:
 
             # Rebuild deque with only non-expired items, respecting maxlen
             # This properly enforces the size limit
-            new_items = deque(maxlen=self.config.max_history_size)
+            new_items: deque[tuple[str, Any]] = deque(maxlen=self.config.max_history_size)
             for item_id, item in self.items:
                 if item_id not in expired_ids:
                     new_items.append((item_id, item))
@@ -515,20 +501,18 @@ class StorageManager:
 class TaskCancellationManager:
     """Manages cancellation of pending tasks."""
 
-    def __init__(self):
-        self.pending_tasks: Dict[str, Set[asyncio.Task]] = {}
+    def __init__(self) -> None:
+        self.pending_tasks: Dict[str, Set[asyncio.Task[Any]]] = {}
         self._lock = asyncio.Lock()
 
-    async def register_task(self, request_id: str, task: asyncio.Task) -> None:
+    async def register_task(self, request_id: str, task: asyncio.Task[Any]) -> None:
         """Register a task for potential cancellation."""
         async with self._lock:
             if request_id not in self.pending_tasks:
                 self.pending_tasks[request_id] = set()
             self.pending_tasks[request_id].add(task)
 
-    async def cancel_all_tasks(
-        self, request_id: str, reason: str = "Request cancelled"
-    ) -> int:
+    async def cancel_all_tasks(self, request_id: str, reason: str = "Request cancelled") -> int:
         """Cancel all pending tasks for a request."""
         async with self._lock:
             tasks = self.pending_tasks.get(request_id, set())
@@ -540,14 +524,12 @@ class TaskCancellationManager:
                     cancelled_count += 1
 
             if cancelled_count > 0:
-                logger.warning(
-                    f"Cancelled {cancelled_count} tasks for {request_id}: {reason}"
-                )
+                logger.warning(f"Cancelled {cancelled_count} tasks for {request_id}: {reason}")
 
             self.pending_tasks.pop(request_id, None)
             return cancelled_count
 
-    async def unregister_task(self, request_id: str, task: asyncio.Task) -> None:
+    async def unregister_task(self, request_id: str, task: asyncio.Task[Any]) -> None:
         """Unregister a completed task."""
         async with self._lock:
             if request_id in self.pending_tasks:

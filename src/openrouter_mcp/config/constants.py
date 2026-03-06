@@ -34,6 +34,17 @@ class CacheConfig:
     DEFAULT_TTL_HOURS: float = 1.0
     MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
     BENCHMARK_CACHE_TTL_HOURS: float = 6.0
+    # Pattern list used to heuristically identify "latest" model families.
+    # This is intentionally centralized for easier updates.
+    LATEST_MODEL_PATTERNS: tuple[str, ...] = (
+        r"gpt-5",
+        r"claude-4",
+        r"gemini-2\.5",
+        r"deepseek-v3",
+        r"o1",
+        r"grok-3",
+        r"llama.*4",
+    )
 
 
 class ModelDefaults:
