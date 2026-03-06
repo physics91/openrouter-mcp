@@ -55,6 +55,7 @@ venv.bak/
 *.swo
 *~
 .worktree/
+.worktrees/
 
 # Node.js
 node_modules/
