@@ -81,8 +81,8 @@
     "prettier": "^3.0.3"
   },
   "optionalDependencies": {
-    "keytar": "^7.9.0",
-    "argon2": "^0.31.0"
+    "argon2": "^0.31.0",
+    "keytar": "^7.9.0"
   },
   "preferGlobal": true,
   "os": [

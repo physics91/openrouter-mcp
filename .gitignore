@@ -54,6 +54,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+.worktree/
 
 # Node.js
 node_modules/
