@@ -17,7 +17,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 
 from ..utils.text import EXTENDED_ENGLISH_STOPWORDS
 
@@ -412,9 +412,9 @@ class ResponseGrouper:
         if len(texts) == 1:
             return [[0]]
 
-        normalized_to_representative = {}
+        normalized_to_representative: Dict[str, int] = {}
         representative_indices: List[int] = []
-        duplicate_members = {}
+        duplicate_members: Dict[int, List[int]] = {}
 
         for idx, text in enumerate(texts):
             normalized = self.calculator._normalize_text(text)
@@ -428,7 +428,7 @@ class ResponseGrouper:
             duplicate_members[representative_idx].append(idx)
 
         groups: List[List[int]] = []
-        assigned_representatives = set()
+        assigned_representatives: Set[int] = set()
 
         for i in representative_indices:
             if i in assigned_representatives:

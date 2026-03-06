@@ -4,10 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.openrouter_mcp.client.openrouter import (
-    InvalidRequestError,
-    RateLimitError,
-)
+from src.openrouter_mcp.client.openrouter import InvalidRequestError, RateLimitError
 from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
 
 
@@ -361,9 +358,7 @@ class TestSelectModels:
         mock_cache.filter_models.return_value = free_models
         router = FreeModelRouter(mock_cache)
 
-        result = await router.select_models(
-            count=3, preferred_models=["deepseek/chat:free"]
-        )
+        result = await router.select_models(count=3, preferred_models=["deepseek/chat:free"])
 
         assert result[0] == "deepseek/chat:free"
         assert len(result) == 3

@@ -41,9 +41,7 @@ async def test_mcp_tools():
         )
 
         if "error" in result:
-            print(
-                f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}..."
-            )
+            print(f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}...")
             test_results["basic_benchmarking"] = "API 연결 필요"
         else:
             print(f"  [OK] 벤치마킹 완료: {len(result.get('results', {}))} 모델")
@@ -70,14 +68,10 @@ async def test_mcp_tools():
         )
 
         if "error" in result:
-            print(
-                f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}..."
-            )
+            print(f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}...")
             test_results["category_comparison"] = "API 연결 필요"
         else:
-            print(
-                f"  [OK] 카테고리 비교 완료: {result.get('config', {}).get('categories', [])} 카테고리"
-            )
+            print(f"  [OK] 카테고리 비교 완료: {result.get('config', {}).get('categories', [])} 카테고리")
             test_results["category_comparison"] = "성공"
     except Exception as e:
         print(f"  [ERROR] 오류: {e}")
@@ -93,9 +87,7 @@ async def test_mcp_tools():
         )
 
         if "error" in result:
-            print(
-                f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}..."
-            )
+            print(f"  [WARN] 예상된 오류 (API 키 없음): {result.get('error', 'Unknown')[:50]}...")
             test_results["performance_analysis"] = "API 연결 필요"
         else:
             print(f"  [OK] 성능 분석 완료: {len(result.get('ranking', []))} 모델 분석")
@@ -118,12 +110,8 @@ async def test_mcp_tools():
 
             if benchmark_files:
                 test_file = benchmark_files[0]
-                result = await export_benchmark_report(
-                    benchmark_file=test_file, format="markdown"
-                )
-                print(
-                    f"  [OK] 보고서 내보내기 완료: {result.get('output_file', 'N/A')}"
-                )
+                result = await export_benchmark_report(benchmark_file=test_file, format="markdown")
+                print(f"  [OK] 보고서 내보내기 완료: {result.get('output_file', 'N/A')}")
                 test_results["report_export"] = "성공"
             else:
                 print("  [INFO] 테스트할 벤치마크 파일이 없습니다.")
@@ -150,15 +138,11 @@ async def test_mcp_tools():
 
     # 성공한 테스트 수 계산
     successful = sum(
-        1
-        for result in test_results.values()
-        if result == "성공" or "API" in result or "없음" in result
+        1 for result in test_results.values() if result == "성공" or "API" in result or "없음" in result
     )
     total = len(test_results)
 
-    print(
-        f"\n[STATS] {total}개 테스트 중 {successful}개 정상 ({successful/total*100:.1f}%)"
-    )
+    print(f"\n[STATS] {total}개 테스트 중 {successful}개 정상 ({successful/total*100:.1f}%)")
 
     if successful == total:
         print("\n[SUCCESS] 모든 MCP 벤치마킹 도구가 정상적으로 작동합니다!")

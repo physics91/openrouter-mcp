@@ -86,7 +86,7 @@ Commands:
 - `security-audit` Audit credential storage and permissions
 - `migrate-encryption` Migrate encrypted credentials to v2.0
 
-Global options: `--verbose`, `--debug`  
+Global options: `--verbose`, `--debug`
 `start` options: `--host`, `--port`
 
 ## Integrations
@@ -125,6 +125,9 @@ The installed hooks enforce:
 - `pre-commit` fast checks before commit
 - `commit-msg` Conventional Commit format in English
 - `pre-push` smoke tests
+
+Deeper static analysis remains available as advisory/manual checks rather than push blockers.
+Use `pre-commit run --hook-stage manual mypy-advisory --all-files` (and the other `*-advisory` hooks) when you want the broader reports locally.
 
 ## License
 MIT

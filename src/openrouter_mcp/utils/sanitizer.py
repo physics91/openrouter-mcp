@@ -60,9 +60,7 @@ class SensitiveDataSanitizer:
             if key.lower() in sensitive_headers:
                 if sanitized[key].lower().startswith("bearer "):
                     api_key = sanitized[key][7:]  # Remove "Bearer " prefix
-                    sanitized[key] = (
-                        f"Bearer {SensitiveDataSanitizer.mask_api_key(api_key)}"
-                    )
+                    sanitized[key] = f"Bearer {SensitiveDataSanitizer.mask_api_key(api_key)}"
                 else:
                     sanitized[key] = SensitiveDataSanitizer.mask_api_key(sanitized[key])
 
@@ -126,9 +124,7 @@ class SensitiveDataSanitizer:
 
             if mode == "hash":
                 if isinstance(content, str):
-                    sanitized_msg["content_hash"] = SensitiveDataSanitizer.hash_content(
-                        content
-                    )
+                    sanitized_msg["content_hash"] = SensitiveDataSanitizer.hash_content(content)
                     sanitized_msg["content_length"] = len(content)
                 elif isinstance(content, list):
                     # Multimodal content
@@ -136,9 +132,7 @@ class SensitiveDataSanitizer:
                     sanitized_msg["content_parts"] = len(content)
             elif mode == "truncate":
                 if isinstance(content, str):
-                    sanitized_msg["content"] = SensitiveDataSanitizer.truncate_content(
-                        content, 50
-                    )
+                    sanitized_msg["content"] = SensitiveDataSanitizer.truncate_content(content, 50)
                 elif isinstance(content, list):
                     sanitized_msg["content_type"] = "multimodal"
                     sanitized_msg["content_parts"] = len(content)
@@ -155,9 +149,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_payload(
-        payload: Dict[str, Any], enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+    def sanitize_payload(payload: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
         """Sanitize request payload for logging.
 
         Args:
@@ -194,9 +186,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_response(
-        response: Dict[str, Any], enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+    def sanitize_response(response: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
         """Sanitize API response for logging.
 
         Args:
@@ -237,9 +227,7 @@ class SensitiveDataSanitizer:
 
                     sanitized["first_choice_metadata"] = {
                         "role": message.get("role", "unknown"),
-                        "content_length": (
-                            len(content) if isinstance(content, str) else 0
-                        ),
+                        "content_length": (len(content) if isinstance(content, str) else 0),
                         "finish_reason": first_choice.get("finish_reason"),
                     }
 

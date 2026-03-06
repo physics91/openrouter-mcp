@@ -479,7 +479,7 @@ class ModelCache:
 
     async def _get_or_create_refresh_task(
         self, *, force_refresh: bool
-    ) -> "asyncio.Task[List[Dict[str, Any]]]":
+    ) -> "asyncio.Future[List[Dict[str, Any]]]":
         """Share a single in-flight refresh across concurrent callers."""
         async with self._refresh_lock:
             if not force_refresh and not self.is_expired():

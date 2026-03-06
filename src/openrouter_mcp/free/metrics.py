@@ -108,9 +108,7 @@ class MetricsCollector:
             KeyError,
             AttributeError,
         ) as e:
-            logger.warning(
-                "메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e
-            )
+            logger.warning("메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e)
 
     def save(self) -> None:
         """Persist metrics to disk using atomic write (tmp → rename)."""
@@ -143,9 +141,7 @@ class MetricsCollector:
             self.save()
             self._record_count_since_save = 0
 
-    def record_success(
-        self, model_id: str, latency_ms: float, tokens_used: int
-    ) -> None:
+    def record_success(self, model_id: str, latency_ms: float, tokens_used: int) -> None:
         """Record a successful request for *model_id*."""
         m = self._metrics.setdefault(model_id, ModelMetrics())
         m.total_requests += 1
@@ -184,9 +180,7 @@ class MetricsCollector:
             return 0.0
 
         latency_score = 1.0 - min(m.avg_latency_ms / FreeChatConfig.MAX_LATENCY_MS, 1.0)
-        throughput_score = min(
-            m.tokens_per_second / FreeChatConfig.MAX_TOKENS_PER_SECOND, 1.0
-        )
+        throughput_score = min(m.tokens_per_second / FreeChatConfig.MAX_TOKENS_PER_SECOND, 1.0)
 
         return (
             FreeChatConfig.PERFORMANCE_SUCCESS_WEIGHT * m.success_rate

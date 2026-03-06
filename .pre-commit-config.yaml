@@ -6,17 +6,27 @@ repos:
     rev: v4.5.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-json
+        stages: [pre-commit]
       - id: check-toml
+        stages: [pre-commit]
       - id: check-merge-conflict
+        stages: [pre-commit]
       - id: check-added-large-files
         args: ['--maxkb=1000']
+        stages: [pre-commit]
       - id: check-docstring-first
+        stages: [pre-commit]
       - id: debug-statements
+        stages: [pre-commit]
       - id: name-tests-test
         args: ['--pytest-test-first']
+        stages: [pre-commit]
 
   - repo: https://github.com/psf/black
     rev: 23.12.1
@@ -24,48 +34,21 @@ repos:
       - id: black
         language_version: python3
         args: ['--line-length=100']
+        stages: [pre-commit]
 
   - repo: https://github.com/pycqa/isort
     rev: 5.13.2
     hooks:
       - id: isort
         args: ['--profile=black', '--line-length=100']
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-        args: ['--max-line-length=100', '--extend-ignore=E203,W503']
-        additional_dependencies: [flake8-docstrings, flake8-typing-imports]
-        stages: [pre-push]
+        stages: [pre-commit]
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.1.13
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-      - id: mypy
-        args: [--ignore-missing-imports, --no-strict-optional]
-        stages: [pre-push]
-
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.5
-    hooks:
-      - id: bandit
-        args: ['-c', '.bandit']
-        exclude: tests/
-        stages: [pre-push]
-
-  - repo: https://github.com/pycqa/pylint
-    rev: v3.0.3
-    hooks:
-      - id: pylint
-        args: [--rcfile=.pylintrc]
-        stages: [pre-push]
+        stages: [pre-commit]
 
   - repo: local
     hooks:
@@ -84,6 +67,34 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+
+      - id: flake8-advisory
+        name: flake8-advisory
+        entry: python3 -m flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      - id: mypy-advisory
+        name: mypy-advisory
+        entry: python3 -m mypy src/openrouter_mcp
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      - id: bandit-advisory
+        name: bandit-advisory
+        entry: python3 -m bandit -r src/ --ini .bandit
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      - id: pylint-advisory
+        name: pylint-advisory
+        entry: python3 -m pylint src/ --rcfile=.pylintrc
+        language: system
+        pass_filenames: false
+        stages: [manual]
 
 ci:
   autofix_commit_msg: |

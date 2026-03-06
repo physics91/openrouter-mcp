@@ -34,11 +34,14 @@ from .mcp_registry import cleanup_shared_client, mcp
 from .utils.env import get_env_value
 
 logger = logging.getLogger(__name__)
+_LOGGING_CONFIGURED = False
 
 
 def configure_logging() -> None:
     """Configure server logging when the executable entrypoint runs."""
-    if getattr(configure_logging, "_configured", False):
+    global _LOGGING_CONFIGURED
+
+    if _LOGGING_CONFIGURED:
         return
 
     logging.basicConfig(
@@ -46,7 +49,7 @@ def configure_logging() -> None:
         format=LoggingConfig.FORMAT,
         datefmt=LoggingConfig.DATE_FORMAT,
     )
-    configure_logging._configured = True
+    _LOGGING_CONFIGURED = True
 
 
 def validate_environment() -> None:
