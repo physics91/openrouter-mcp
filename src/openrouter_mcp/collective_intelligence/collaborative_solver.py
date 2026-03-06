@@ -146,8 +146,8 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             try:
                 strategy = SolvingStrategy(strategy_input.lower())
             except ValueError:
-                logger.warning(f"Unknown strategy '{strategy_input}', using ADAPTIVE")
-                strategy = SolvingStrategy.ADAPTIVE
+                valid = ", ".join(sorted(e.value for e in SolvingStrategy))
+                raise ValueError(f"Invalid strategy '{strategy_input}'. Valid: {valid}")
         else:
             strategy = strategy_input
 
@@ -382,7 +382,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         task = session.original_task
         current_content = ""
         iteration = 0
-        max_iterations = 3
+        max_iterations = task.requirements.get("max_iterations", 3)
         previous_content: Optional[str] = None
         iterations_completed = 0
         stop_reason = "max_iterations"

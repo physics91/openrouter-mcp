@@ -12,7 +12,9 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
+
+from pydantic import Field
 
 from ..config.constants import BenchmarkDefaults, CacheConfig, EnvVars
 
@@ -169,27 +171,30 @@ async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
 
 
 async def benchmark_models(
-    models: List[str],
-    prompt: str = BenchmarkDefaults.DEFAULT_PROMPT,
-    runs: int = BenchmarkDefaults.DEFAULT_MCP_RUNS,
-    delay_seconds: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
-    save_results: bool = True,
-    include_prompts_in_logs: bool = False,
+    models: Annotated[
+        List[str],
+        Field(
+            description="List of model IDs to benchmark (e.g. ['openai/gpt-4', 'anthropic/claude-3-opus'])"
+        ),
+    ],
+    prompt: Annotated[
+        str, Field(description="Test prompt for benchmarking")
+    ] = BenchmarkDefaults.DEFAULT_PROMPT,
+    runs: Annotated[
+        int, Field(description="Number of runs per model for statistical accuracy")
+    ] = BenchmarkDefaults.DEFAULT_MCP_RUNS,
+    delay_seconds: Annotated[
+        float, Field(description="Delay between API calls in seconds")
+    ] = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
+    save_results: Annotated[bool, Field(description="Whether to save results to a file")] = True,
+    include_prompts_in_logs: Annotated[
+        bool, Field(description="PRIVACY WARNING: enables logging of prompt content")
+    ] = False,
 ) -> Dict[str, Any]:
-    """
-    여러 모델의 성능을 벤치마킹합니다.
+    """Run performance benchmarks across multiple models.
 
-    Args:
-        models: 벤치마킹할 모델 ID 목록
-        prompt: 테스트에 사용할 프롬프트
-        runs: 각 모델당 실행 횟수 (통계적 정확도를 위해)
-        delay_seconds: API 호출 간 지연 시간
-        save_results: 결과를 파일로 저장할지 여부
-        include_prompts_in_logs: PRIVACY WARNING - If True, logs will include actual prompt content.
-                                 Only enable for debugging. Prompts may contain sensitive data.
-
-    Returns:
-        벤치마크 결과와 통계
+    Executes the same prompt against each model multiple times, collecting
+    response time, cost, quality, and throughput metrics with statistical ranking.
     """
     try:
         handler = await get_benchmark_handler()
@@ -281,18 +286,16 @@ async def benchmark_models(
 
 
 async def get_benchmark_history(
-    limit: int = 10, days_back: int = 30, model_filter: Optional[str] = None
+    limit: Annotated[int, Field(description="Maximum number of results to return")] = 10,
+    days_back: Annotated[int, Field(description="Number of days to look back")] = 30,
+    model_filter: Annotated[
+        Optional[str], Field(description="Filter results by model ID substring match")
+    ] = None,
 ) -> Dict[str, Any]:
-    """
-    벤치마크 기록을 조회합니다.
+    """Retrieve past benchmark results from the results directory.
 
-    Args:
-        limit: 반환할 최대 결과 수
-        days_back: 조회할 기간 (일 단위)
-        model_filter: 특정 모델만 필터링 (부분 문자열 매치)
-
-    Returns:
-        벤치마크 기록 목록
+    Returns a chronologically sorted list of benchmark runs with summary
+    statistics including models tested, success rates, and best performers.
     """
     try:
         handler = await get_benchmark_handler()
@@ -334,19 +337,20 @@ async def get_benchmark_history(
 
 
 async def compare_model_categories(
-    categories: Optional[List[str]] = None, top_n: int = 3, metric: str = "overall"
+    categories: Annotated[
+        Optional[List[str]], Field(description="Categories to compare (None for all categories)")
+    ] = None,
+    top_n: Annotated[int, Field(description="Number of top models to select per category")] = 3,
+    metric: Annotated[
+        Literal["overall", "speed", "cost", "quality"], Field(description="Comparison metric")
+    ] = "overall",
 ) -> Dict[str, Any]:
-    """
-    모델 카테고리별 최고 성능 모델들을 비교합니다.
+    """Compare top-performing models across categories.
 
-    Args:
-        categories: 비교할 카테고리 목록 (None이면 모든 카테고리)
-        top_n: 각 카테고리에서 선택할 상위 모델 수
-        metric: 비교 기준 메트릭 (overall, speed, cost, quality)
-
-    Returns:
-        카테고리별 최고 모델들의 비교 결과
+    Selects the best models from each category based on the chosen metric,
+    runs benchmarks on all of them, and returns a cross-category ranking.
     """
+    # Defensive: also validates when called directly outside MCP schema validation
     normalized_metric = metric.lower().strip()
     if normalized_metric not in SUPPORTED_CATEGORY_METRICS:
         supported = ", ".join(sorted(SUPPORTED_CATEGORY_METRICS))
@@ -499,18 +503,18 @@ async def compare_model_categories(
 
 
 async def export_benchmark_report(
-    benchmark_file: str, format: str = "markdown", output_file: Optional[str] = None
+    benchmark_file: Annotated[str, Field(description="Benchmark result filename to export")],
+    format: Annotated[
+        Literal["markdown", "csv", "json"], Field(description="Export format")
+    ] = "markdown",
+    output_file: Annotated[
+        Optional[str], Field(description="Output filename (auto-generated if omitted)")
+    ] = None,
 ) -> Dict[str, Any]:
-    """
-    벤치마크 결과를 다양한 형식으로 내보냅니다.
+    """Export benchmark results to markdown, CSV, or JSON format.
 
-    Args:
-        benchmark_file: 내보낼 벤치마크 결과 파일명
-        format: 출력 형식 (markdown, csv, json)
-        output_file: 출력 파일명 (None이면 자동 생성)
-
-    Returns:
-        내보내기 결과 정보
+    Reads a previously saved benchmark result file and converts it into
+    a human-readable report in the specified format.
     """
     try:
         handler = await get_benchmark_handler()
@@ -565,7 +569,8 @@ async def export_benchmark_report(
         elif format == "json":
             await exporter.export_json(results, output_path)
         else:
-            raise BenchmarkError(f"지원하지 않는 형식: {format}. markdown, csv, json 중 선택하세요.")
+            # Defensive: also validates when called directly outside MCP schema validation
+            raise BenchmarkError(f"Unsupported format: {format}. Use markdown, csv, or json.")
 
         return {
             "message": f"{format.upper()} 보고서가 성공적으로 생성되었습니다.",
@@ -582,20 +587,22 @@ async def export_benchmark_report(
 
 
 async def compare_model_performance(
-    models: List[str],
-    weights: Optional[Dict[str, float]] = None,
-    include_cost_analysis: bool = True,
+    models: Annotated[List[str], Field(description="List of model IDs to compare")],
+    weights: Annotated[
+        Optional[Dict[str, float]],
+        Field(
+            description="Metric weights, e.g. {'speed': 0.2, 'cost': 0.3, 'quality': 0.4, 'throughput': 0.1}"
+        ),
+    ] = None,
+    include_cost_analysis: Annotated[
+        bool, Field(description="Whether to include detailed cost efficiency analysis")
+    ] = True,
 ) -> Dict[str, Any]:
-    """
-    고급 가중치 기반 모델 성능 비교를 수행합니다.
+    """Run weighted performance comparison across models.
 
-    Args:
-        models: 비교할 모델 ID 목록
-        weights: 메트릭별 가중치 (speed, cost, quality, throughput)
-        include_cost_analysis: 상세한 비용 분석 포함 여부
-
-    Returns:
-        고급 성능 비교 결과
+    Benchmarks the given models and ranks them using custom metric weights,
+    providing detailed per-model metrics, cost efficiency analysis, and
+    actionable recommendations.
     """
     try:
         handler = await get_benchmark_handler()

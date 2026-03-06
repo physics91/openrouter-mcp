@@ -462,7 +462,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
             # Calculate overall validation metrics
             validation_confidence = self._calculate_validation_confidence(validation_report)
-            is_valid = self._determine_validity(validation_report)
+            is_valid = self._determine_validity(validation_report, task_context)
             improvement_suggestions = self._generate_improvement_suggestions(validation_report)
             quality_metrics = self._calculate_validation_quality_metrics(validation_report)
 
@@ -1147,7 +1147,11 @@ class CrossValidator(CollectiveIntelligenceComponent):
         confidence = base_confidence * consensus_factor * validator_factor
         return min(1.0, confidence)
 
-    def _determine_validity(self, validation_report: ValidationReport) -> bool:
+    def _determine_validity(
+        self,
+        validation_report: ValidationReport,
+        task_context: Optional[TaskContext] = None,
+    ) -> bool:
         """Determine if the result is valid based on validation report."""
         # Check for critical issues
         critical_issues = [
@@ -1159,8 +1163,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
         if critical_issues:
             return False
 
+        # Use task-level threshold if provided, otherwise fall back to config
+        threshold = self.config.confidence_threshold
+        if task_context and task_context.requirements.get("validation_threshold") is not None:
+            threshold = task_context.requirements["validation_threshold"]
+
         # Check overall score against threshold
-        if validation_report.overall_score < self.config.confidence_threshold:
+        if validation_report.overall_score < threshold:
             return False
 
         # Check consensus requirement

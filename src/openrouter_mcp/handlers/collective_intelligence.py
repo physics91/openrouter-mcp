@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 import httpx
 from pydantic import BaseModel, Field
@@ -83,12 +83,17 @@ class OpenRouterModelProvider:
                 )
             )
 
+            # Extract max_tokens from kwargs or task requirements
+            # Use explicit None check to preserve valid 0 values
+            kw_max = kwargs.get("max_tokens")
+            max_tokens_val = kw_max if kw_max is not None else task.requirements.get("max_tokens")
+
             # Call OpenRouter API
             response = await self.client.chat_completion(
                 model=model_id,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=kwargs.get("max_tokens"),
+                max_tokens=max_tokens_val,
                 stream=False,
             )
 
@@ -159,7 +164,10 @@ class OpenRouterModelProvider:
 
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(f"Failed to fetch models: {str(e)}")
-            return []
+            raise RuntimeError(
+                f"Unable to fetch available models from OpenRouter: {type(e).__name__}. "
+                "Check network connectivity and API key configuration."
+            ) from e
 
     def _calculate_confidence(self, response: Dict[str, Any], content: str) -> float:
         """Calculate confidence score based on response characteristics."""
@@ -300,6 +308,7 @@ def _build_requirements(
     *,
     base: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
     models: Optional[List[str]] = None,
     extras: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -311,6 +320,8 @@ def _build_requirements(
         requirements.update(extras)
     if temperature is not None:
         requirements["temperature"] = temperature
+    if max_tokens is not None:
+        requirements["max_tokens"] = max_tokens
     if models:
         requirements["preferred_models"] = models
     return requirements
@@ -323,19 +334,32 @@ class CollectiveChatRequest(BaseConsensusRequest):
     """Request for collective chat completion."""
 
     prompt: str = Field(..., description="The prompt to process collectively")
-    strategy: str = Field(
+    strategy: Literal["majority_vote", "weighted_average", "confidence_threshold"] = Field(
         "majority_vote",
         description="Consensus strategy: majority_vote, weighted_average, confidence_threshold",
     )
+
+
+_TASK_TYPE_LITERAL = Literal[
+    "reasoning",
+    "analysis",
+    "creative",
+    "factual",
+    "code_generation",
+    "summarization",
+    "translation",
+    "math",
+    "classification",
+]
 
 
 class EnsembleReasoningRequest(BaseCollectiveRequest):
     """Request for ensemble reasoning."""
 
     problem: str = Field(..., description="Problem to solve with ensemble reasoning")
-    task_type: str = Field(
+    task_type: _TASK_TYPE_LITERAL = Field(
         "reasoning",
-        description="Type of task: reasoning, analysis, creative, factual, code_generation",
+        description="Type of task: reasoning, analysis, creative, factual, code_generation, summarization, translation, math, classification",
     )
     decompose: bool = Field(True, description="Whether to decompose the problem into subtasks")
 
@@ -344,11 +368,18 @@ class AdaptiveModelRequest(BaseModel):
     """Request for adaptive model selection."""
 
     query: str = Field(..., description="Query for adaptive model selection")
-    task_type: str = Field("reasoning", description="Type of task")
-    performance_requirements: Optional[Dict[str, float]] = Field(
-        None, description="Performance requirements"
+    task_type: _TASK_TYPE_LITERAL = Field(
+        "reasoning",
+        description="Type of task: reasoning, analysis, creative, factual, code_generation, summarization, translation, math, classification",
     )
-    constraints: Optional[Dict[str, Any]] = Field(None, description="Task constraints")
+    performance_requirements: Optional[Dict[str, float]] = Field(
+        None,
+        description="Performance requirements as metric-score pairs, e.g. {'accuracy': 0.9, 'speed': 0.7}. Keys are used as routing hints.",
+    )
+    constraints: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Task constraints, e.g. {'max_cost': 0.01, 'preferred_provider': 'openai'}",
+    )
 
 
 class CrossValidationRequest(BaseCollectiveRequest):
@@ -359,7 +390,8 @@ class CrossValidationRequest(BaseCollectiveRequest):
         None, description="Specific validation criteria"
     )
     threshold: float = Field(
-        ConsensusDefaults.CONFIDENCE_THRESHOLD, description="Validation threshold"
+        ConsensusDefaults.CONFIDENCE_THRESHOLD,
+        description="Validation threshold (0.0-1.0). Content scoring below this is considered invalid",
     )
 
 
@@ -382,7 +414,8 @@ def create_task_context(
     try:
         task_type_enum = TaskType(task_type.lower())
     except ValueError:
-        task_type_enum = TaskType.REASONING
+        valid = ", ".join(sorted(e.value for e in TaskType))
+        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}")
 
     return TaskContext(
         task_type=task_type_enum,
@@ -427,17 +460,15 @@ async def _collective_chat_completion_impl(
         # Setup - use shared singleton client from registry
         lifecycle_manager = await _get_configured_lifecycle_manager()
 
-        # Configure consensus engine
-        try:
-            strategy = ConsensusStrategy(request.strategy.lower())
-        except ValueError:
-            strategy = ConsensusStrategy.MAJORITY_VOTE
+        # Configure consensus engine (Pydantic validates the Literal type)
+        strategy = ConsensusStrategy(request.strategy)
 
         config = ConsensusConfig(
             strategy=strategy,
             min_models=request.min_models,
             max_models=request.max_models,
             timeout_seconds=ConsensusDefaults.TIMEOUT_SECONDS,
+            confidence_threshold=request.confidence_threshold,
         )
 
         # Get singleton consensus engine from lifecycle manager
@@ -449,6 +480,7 @@ async def _collective_chat_completion_impl(
             extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
             extras=extras or None,
         )
@@ -487,7 +519,15 @@ async def _collective_chat_completion_impl(
 
 
 async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for collective chat completion."""
+    """Generate a chat completion using multiple AI models to reach consensus.
+
+    Queries several models in parallel and combines their responses using the chosen
+    consensus strategy, producing a single agreed-upon answer with confidence metrics.
+
+    Returns keys: consensus_response, agreement_level, confidence_score,
+    participating_models, individual_responses, strategy_used, processing_time,
+    quality_metrics.
+    """
     return await _collective_chat_completion_impl(request)
 
 
@@ -525,10 +565,15 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
         # Get singleton ensemble reasoner from lifecycle manager
         ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
 
-        # Create task context with temperature and models
+        # Create task context with temperature, max_tokens, system_prompt and models
+        extras = {}
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
+            extras=extras or None,
         )
 
         task = create_task_context(
@@ -573,7 +618,14 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
 
 
 async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for ensemble reasoning."""
+    """Decompose a complex problem and route subtasks to specialized models.
+
+    Breaks the problem into subtasks, assigns each to the best-suited model, and
+    synthesizes the partial results into a unified answer.
+
+    Returns keys: final_result, subtask_results, model_assignments,
+    reasoning_quality, processing_time, strategy_used, success_rate, total_cost.
+    """
     return await _ensemble_reasoning_impl(request)
 
 
@@ -649,7 +701,14 @@ async def _adaptive_model_selection_impl(
 
 
 async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for adaptive model selection."""
+    """Select the best model for a task using adaptive performance-based routing.
+
+    Analyzes the query and task type, then picks the most suitable model based on
+    historical performance metrics and task requirements.
+
+    Returns keys: selected_model, selection_reasoning, confidence,
+    alternative_models, routing_metrics, selection_time.
+    """
     return await _adaptive_model_selection_impl(request)
 
 
@@ -669,9 +728,12 @@ async def _cross_model_validation_impl(
         Dictionary containing:
         - validation_result: Overall validation result
         - validation_score: Numerical validation score
-        - consensus_issues: Issues found by multiple models
+        - validation_issues: Issues found by multiple models
         - model_validations: Individual validation results
         - recommendations: Suggested improvements
+        - confidence: Validation confidence score
+        - processing_time: Total processing time
+        - quality_metrics: Overall quality metrics
 
     Example:
         request = CrossValidationRequest(
@@ -702,7 +764,11 @@ async def _cross_model_validation_impl(
         extras: Dict[str, Any] = {"validation_threshold": request.threshold}
         if request.validation_criteria:
             extras["validation_criteria"] = request.validation_criteria
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
             extras=extras,
         )
@@ -777,7 +843,15 @@ async def _cross_model_validation_impl(
 
 
 async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for cross-model validation."""
+    """Validate content accuracy and quality by cross-checking with multiple models.
+
+    Multiple models independently review the content for errors, inconsistencies,
+    and biases, then aggregate findings into a validation report.
+
+    Returns keys: validation_result, validation_score, validation_issues,
+    model_validations, recommendations, confidence, processing_time,
+    quality_metrics.
+    """
     return await _cross_model_validation_impl(request)
 
 
@@ -796,10 +870,16 @@ async def _collaborative_problem_solving_impl(
     Returns:
         Dictionary containing:
         - final_solution: The collaborative solution
-        - solution_iterations: Step-by-step solution development
-        - model_contributions: Individual model contributions
-        - collaboration_quality: Quality metrics for collaboration
-        - convergence_metrics: How the solution evolved
+        - solution_path: Step-by-step solution development
+        - alternative_solutions: Alternative approaches discovered
+        - quality_assessment: Quality metrics for the solution
+        - component_contributions: Individual component contributions
+        - confidence: Confidence score
+        - improvement_suggestions: Suggested improvements
+        - processing_time: Total processing time
+        - session_id: Collaboration session identifier
+        - strategy_used: Strategy used for solving
+        - components_used: Components involved in solving
 
     Example:
         request = CollaborativeSolvingRequest(
@@ -818,11 +898,16 @@ async def _collaborative_problem_solving_impl(
         # Get singleton collaborative solver from lifecycle manager
         collaborative_solver = await lifecycle_manager.get_collaborative_solver()
 
-        # Create task context with max_iterations and models
+        # Create task context with max_iterations, system_prompt and models
+        extras: Dict[str, Any] = {"max_iterations": request.max_iterations}
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             base=request.requirements,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
-            extras={"max_iterations": request.max_iterations},
+            extras=extras,
         )
 
         task = create_task_context(
@@ -861,7 +946,16 @@ async def _collaborative_problem_solving_impl(
 async def collaborative_problem_solving(
     request: CollaborativeSolvingRequest,
 ) -> Dict[str, Any]:
-    """MCP tool wrapper for collaborative problem solving."""
+    """Solve complex problems through iterative multi-model collaboration.
+
+    Orchestrates multiple models to build on each other's contributions through
+    iterative refinement rounds until the solution converges.
+
+    Returns keys: final_solution, solution_path, alternative_solutions,
+    quality_assessment, component_contributions, confidence,
+    improvement_suggestions, processing_time, session_id, strategy_used,
+    components_used.
+    """
     return await _collaborative_problem_solving_impl(request)
 
 
