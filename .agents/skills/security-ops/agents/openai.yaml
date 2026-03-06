@@ -1,0 +1,3 @@
+interface:
+  display_name: "Security Ops"
+  short_description: "API key audit, rotation, and secure-storage workflows"

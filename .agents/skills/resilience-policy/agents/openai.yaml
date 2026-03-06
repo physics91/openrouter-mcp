@@ -1,0 +1,3 @@
+interface:
+  display_name: "Resilience Policy"
+  short_description: "High-risk policy changes for concurrency, quota, and cleanup"

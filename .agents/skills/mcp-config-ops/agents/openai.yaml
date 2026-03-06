@@ -1,0 +1,3 @@
+interface:
+  display_name: "MCP Config Ops"
+  short_description: "Claude MCP install, backup, and config-drift workflows"
