@@ -20,9 +20,7 @@ class TestTaskClassifier:
 
     @pytest.mark.unit
     def test_classify_translation(self, classifier):
-        assert (
-            classifier.classify("이 문장을 영어로 번역해줘") == FreeTaskType.TRANSLATION
-        )
+        assert classifier.classify("이 문장을 영어로 번역해줘") == FreeTaskType.TRANSLATION
 
     @pytest.mark.unit
     def test_classify_creative(self, classifier):
@@ -38,9 +36,7 @@ class TestTaskClassifier:
 
     @pytest.mark.unit
     def test_classify_uses_system_prompt(self, classifier):
-        result = classifier.classify(
-            "도와줘", system_prompt="You are a python developer"
-        )
+        result = classifier.classify("도와줘", system_prompt="You are a python developer")
         assert result == FreeTaskType.CODING
 
     @pytest.mark.unit

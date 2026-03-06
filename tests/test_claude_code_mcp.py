@@ -212,9 +212,7 @@ def main():
     print(f"\n[STATS] {total}개 테스트 중 {passed}개 통과 ({passed/total*100:.1f}%)")
 
     if passed == total:
-        print(
-            "\n[SUCCESS] 모든 테스트 통과! Claude Code CLI에서 MCP 도구를 사용할 준비가 되었습니다."
-        )
+        print("\n[SUCCESS] 모든 테스트 통과! Claude Code CLI에서 MCP 도구를 사용할 준비가 되었습니다.")
         show_usage_instructions()
     elif passed > 0:
         print("\n[WARNING] 일부 테스트에서 문제가 발견되었습니다.")

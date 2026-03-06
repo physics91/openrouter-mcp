@@ -59,14 +59,10 @@ async def test_benchmark_system(monkeypatch):
         )
         print(f"   모델 ID: {enhanced_result.model_id}")
         print(f"   성공 여부: {enhanced_result.success}")
-        print(
-            f"   응답 길이: {len(enhanced_result.response) if enhanced_result.response else 0}"
-        )
+        print(f"   응답 길이: {len(enhanced_result.response) if enhanced_result.response else 0}")
 
         if enhanced_result.metrics:
-            print(
-                f"   평균 응답 시간: {enhanced_result.metrics.avg_response_time:.2f}초"
-            )
+            print(f"   평균 응답 시간: {enhanced_result.metrics.avg_response_time:.2f}초")
             print(f"   평균 비용: ${enhanced_result.metrics.avg_cost:.6f}")
             print(f"   품질 점수: {enhanced_result.metrics.quality_score:.1f}")
             print(f"   처리량: {enhanced_result.metrics.throughput:.1f} tokens/s")
@@ -85,16 +81,12 @@ async def test_benchmark_system(monkeypatch):
         # Markdown 보고서
         results_dir = Path(BenchmarkDefaults.DEFAULT_RESULTS_DIR)
         results_dir.mkdir(parents=True, exist_ok=True)
-        md_path = (
-            results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        )
+        md_path = results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
         await exporter.export_markdown(results, str(md_path))
         print(f"   Markdown 보고서: {md_path}")
 
         # CSV 보고서
-        csv_path = (
-            results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        )
+        csv_path = results_dir / f"test_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         await exporter.export_csv(results, str(csv_path))
         print(f"   CSV 보고서: {csv_path}")
 
@@ -108,9 +100,7 @@ async def test_benchmark_system(monkeypatch):
 
         comparison = analyzer.compare_models(results_list)
         if comparison:
-            print(
-                f"   분석 완료 - 성공한 모델: {comparison.get('successful_models', 0)}"
-            )
+            print(f"   분석 완료 - 성공한 모델: {comparison.get('successful_models', 0)}")
 
         print("\n" + "=" * 60)
         print("모든 테스트 완료! 벤치마크 시스템이 정상적으로 작동합니다.")

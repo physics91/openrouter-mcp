@@ -85,8 +85,7 @@ class QuotaTracker:
             if self._minute_count >= self._minute_limit:
                 reset = self._minute_start + timedelta(minutes=1)
                 raise QuotaExceededError(
-                    f"분당 무료 사용 한도({self._minute_limit}회)를 초과했습니다. "
-                    f"잠시 후 다시 시도해주세요.",
+                    f"분당 무료 사용 한도({self._minute_limit}회)를 초과했습니다. " f"잠시 후 다시 시도해주세요.",
                     reset_time=reset,
                 )
 

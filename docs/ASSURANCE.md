@@ -42,3 +42,12 @@ The command runs:
 1. Python assurance slices (`unit/contract/property/replay`)
 2. Node security tests (`npm run test:security`)
 3. Coverage gate (requires `pytest-cov`; missing dependency fails fast)
+
+## Local Hooks
+
+- Installed `pre-push` hooks are intentionally limited to smoke coverage.
+- Advisory static analysis stays opt-in, matching the non-required CI posture:
+  - `pre-commit run --hook-stage manual flake8-advisory --all-files`
+  - `pre-commit run --hook-stage manual mypy-advisory --all-files`
+  - `pre-commit run --hook-stage manual bandit-advisory --all-files`
+  - `pre-commit run --hook-stage manual pylint-advisory --all-files`

@@ -22,15 +22,18 @@ from .mcp_manager import (
 )
 
 logger = logging.getLogger(__name__)
+_CLI_LOGGING_CONFIGURED = False
 
 
 def configure_cli_logging() -> None:
     """Configure lightweight CLI logging at execution time."""
-    if getattr(configure_cli_logging, "_configured", False):
+    global _CLI_LOGGING_CONFIGURED
+
+    if _CLI_LOGGING_CONFIGURED:
         return
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    configure_cli_logging._configured = True
+    _CLI_LOGGING_CONFIGURED = True
 
 
 def _print_openrouter_next_steps() -> None:
