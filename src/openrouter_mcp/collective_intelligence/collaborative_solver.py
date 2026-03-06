@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from .adaptive_router import AdaptiveRouter
 from .base import (
@@ -22,7 +22,7 @@ from .base import (
     QualityMetrics,
     TaskContext,
 )
-from .consensus_engine import ConsensusEngine
+from .consensus_engine import ConsensusEngine, ConsensusResult
 from .cross_validator import CrossValidator
 from .ensemble_reasoning import EnsembleReasoner, EnsembleResult
 from .operational_controls import OperationalConfig, init_operational_controls
@@ -107,7 +107,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
     @property
     def completed_sessions(self) -> List[SolvingSession]:
         """Get completed sessions as a list for backward compatibility."""
-        return self.storage_manager.get_items()
+        return cast(List[SolvingSession], self.storage_manager.get_items())
 
     @completed_sessions.setter
     def completed_sessions(self, value: List[SolvingSession]) -> None:
@@ -116,9 +116,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         from datetime import datetime
 
         # Clear existing items
-        self.storage_manager.items = deque(
-            maxlen=self.storage_manager.config.max_history_size
-        )
+        self.storage_manager.items = deque(maxlen=self.storage_manager.config.max_history_size)
         self.storage_manager.item_timestamps = {}
         # Add new items with generated IDs
         for i, item in enumerate(value):
@@ -126,7 +124,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             self.storage_manager.items.append((item_id, item))
             self.storage_manager.item_timestamps[item_id] = datetime.now()
 
-    async def process(self, task: TaskContext, **kwargs) -> SolvingResult:
+    async def process(self, task: TaskContext, **kwargs: Any) -> SolvingResult:
         """
         Solve a complex problem using collaborative AI components.
 
@@ -175,9 +173,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         try:
             # Check circuit breaker
-            if not await self.failure_controller.check_circuit_breaker(
-                "collaborative_solver"
-            ):
+            if not await self.failure_controller.check_circuit_breaker("collaborative_solver"):
                 raise RuntimeError(
                     "Circuit breaker open for CollaborativeSolver - too many recent failures"
                 )
@@ -209,9 +205,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             await self.storage_manager.add_item(session_id, session)
 
             # Record success for circuit breaker
-            self.failure_controller.record_circuit_breaker_success(
-                "collaborative_solver"
-            )
+            self.failure_controller.record_circuit_breaker_success("collaborative_solver")
 
             logger.info(f"Collaborative solving completed for session {session_id}")
 
@@ -219,9 +213,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         except asyncio.CancelledError:
             logger.warning(f"Collaborative solving cancelled for {session_id}")
-            self.failure_controller.record_circuit_breaker_failure(
-                "collaborative_solver"
-            )
+            self.failure_controller.record_circuit_breaker_failure("collaborative_solver")
             raise
 
         except Exception as e:
@@ -241,9 +233,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 )
                 logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
 
-            self.failure_controller.record_circuit_breaker_failure(
-                "collaborative_solver"
-            )
+            self.failure_controller.record_circuit_breaker_failure("collaborative_solver")
 
             if session_id in self.active_sessions:
                 del self.active_sessions[session_id]
@@ -275,9 +265,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         )
         return best_subtask.result
 
-    async def _solve_sequential(
-        self, session: SolvingSession, request_id: str
-    ) -> SolvingResult:
+    async def _solve_sequential(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using sequential component workflow."""
         task = session.original_task
 
@@ -315,9 +303,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         return self._create_solving_result(session, final_content)
 
-    async def _solve_parallel(
-        self, session: SolvingSession, request_id: str
-    ) -> SolvingResult:
+    async def _solve_parallel(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using parallel component workflow."""
         task = session.original_task
 
@@ -328,8 +314,20 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             return_exceptions=True,
         )
 
-        ensemble_result = results[0] if not isinstance(results[0], Exception) else None
-        consensus_result = results[1] if not isinstance(results[1], Exception) else None
+        ensemble_result: Optional[EnsembleResult]
+        consensus_result: Optional[ConsensusResult]
+
+        ensemble_raw = results[0]
+        consensus_raw = results[1]
+        if isinstance(ensemble_raw, BaseException):
+            ensemble_result = None
+        else:
+            ensemble_result = ensemble_raw
+
+        if isinstance(consensus_raw, BaseException):
+            consensus_result = None
+        else:
+            consensus_result = consensus_raw
 
         self._record_component(session, "ensemble_reasoner", ensemble_result)
         self._record_component(session, "consensus_engine", consensus_result)
@@ -350,9 +348,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         return self._create_solving_result(session, final_content)
 
-    async def _solve_hierarchical(
-        self, session: SolvingSession, request_id: str
-    ) -> SolvingResult:
+    async def _solve_hierarchical(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using hierarchical workflow."""
         task = session.original_task
 
@@ -381,9 +377,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         return self._create_solving_result(session, final_content)
 
-    async def _solve_iterative(
-        self, session: SolvingSession, request_id: str
-    ) -> SolvingResult:
+    async def _solve_iterative(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using iterative refinement."""
         task = session.original_task
         current_content = ""
@@ -416,24 +410,17 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             )
 
             validation_result = await self.cross_validator.process(dummy_result, task)
-            self._record_component(
-                session, f"cross_validator_iter_{iteration}", validation_result
-            )
+            self._record_component(session, f"cross_validator_iter_{iteration}", validation_result)
 
             # Check if solution is good enough
-            if (
-                validation_result.is_valid
-                and validation_result.validation_confidence > 0.8
-            ):
+            if validation_result.is_valid and validation_result.validation_confidence > 0.8:
                 break
 
             iteration += 1
 
         return self._create_solving_result(session, current_content)
 
-    async def _solve_adaptive(
-        self, session: SolvingSession, request_id: str
-    ) -> SolvingResult:
+    async def _solve_adaptive(self, session: SolvingSession, request_id: str) -> SolvingResult:
         """Solve problem using adaptive strategy selection."""
         task = session.original_task
 
@@ -475,9 +462,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         return min(1.0, complexity)
 
-    def _create_solving_result(
-        self, session: SolvingSession, final_content: str
-    ) -> SolvingResult:
+    def _create_solving_result(self, session: SolvingSession, final_content: str) -> SolvingResult:
         """Create the final solving result."""
 
         # Calculate quality metrics
@@ -508,9 +493,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             final_content=final_content,
             confidence_score=quality_metrics.overall_score(),
             quality_assessment=quality_metrics,
-            solution_path=[
-                f"Step {i+1}: {comp}" for i, comp in enumerate(session.components_used)
-            ],
+            solution_path=[f"Step {i+1}: {comp}" for i, comp in enumerate(session.components_used)],
             alternative_solutions=[],  # Would be populated from intermediate results
             improvement_suggestions=[],  # Would be generated from validation results
             total_processing_time=processing_time,
@@ -526,11 +509,9 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         """Get currently active solving sessions."""
         return self.active_sessions.copy()
 
-    def get_completed_sessions(
-        self, limit: Optional[int] = None
-    ) -> List[SolvingSession]:
+    def get_completed_sessions(self, limit: Optional[int] = None) -> List[SolvingSession]:
         """Get completed solving sessions with TTL enforcement."""
-        return self.storage_manager.get_items(limit)
+        return cast(List[SolvingSession], self.storage_manager.get_items(limit))
 
     def get_session_by_id(self, session_id: str) -> Optional[SolvingSession]:
         """Get a specific session by ID."""
@@ -539,8 +520,8 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         # Check storage for completed sessions
         for session in self.storage_manager.get_items():
-            if session.session_id == session_id:
-                return session
+            if getattr(session, "session_id", None) == session_id:
+                return cast(SolvingSession, session)
 
         return None
 
@@ -566,9 +547,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         # Cancel any remaining tasks
         for request_id in list(self.cancellation_manager.pending_tasks.keys()):
-            await self.cancellation_manager.cancel_all_tasks(
-                request_id, "Shutdown requested"
-            )
+            await self.cancellation_manager.cancel_all_tasks(request_id, "Shutdown requested")
 
         # Clean up active sessions
         self.active_sessions.clear()

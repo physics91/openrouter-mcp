@@ -13,6 +13,7 @@ import re
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
@@ -30,6 +31,24 @@ from ..utils.metadata import ModelCategory, ModelProvider, batch_enhance_models
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ModelFilter:
+    """Unified filter specification for model querying."""
+
+    provider: Optional[Union[str, ModelProvider]] = None
+    category: Optional[Union[str, ModelCategory]] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    performance_tier: Optional[str] = None
+    cost_tier: Optional[str] = None
+    min_quality_score: Optional[float] = None
+    tags: Optional[List[str]] = None
+    vision_capable: Optional[bool] = None
+    reasoning_model: Optional[bool] = None
+    long_context: Optional[bool] = None
+    free_only: Optional[bool] = None
+    min_context: Optional[int] = None
 
 
 class HTTPTransport:
@@ -61,9 +80,12 @@ class HTTPTransport:
 
     def _get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for requests."""
-        return build_openrouter_headers(self.api_key, fallback_to_env=True)
+        headers = build_openrouter_headers(self.api_key, fallback_to_env=True)
+        if not isinstance(headers, dict):
+            raise ValueError("Invalid headers payload type")
+        return {str(key): str(value) for key, value in headers.items()}
 
-    def _ensure_client(self):
+    def _ensure_client(self) -> Any:
         """Lazily create the shared AsyncClient."""
         if self._client is None:
             import httpx
@@ -86,15 +108,18 @@ class HTTPTransport:
         client = self._ensure_client()
         response = await client.get(url, headers=headers)
         response.raise_for_status()
-        return response.json()
+        response_json = response.json()
+        if not isinstance(response_json, dict):
+            raise ValueError("Invalid API response format: expected JSON object")
+        return {str(key): value for key, value in response_json.items()}
 
-    async def aclose(self):
+    async def aclose(self) -> None:
         """Close the underlying HTTP client."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
 
-    def close(self):
+    def close(self) -> None:
         """Close transport synchronously by closing the underlying client."""
         if self._client is not None:
             try:
@@ -153,13 +178,12 @@ class ModelCache:
         self._cache_lock = threading.RLock()  # Reentrant lock for thread safety
 
         # Thread pool executor for blocking I/O operations
-        self._executor = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="cache-io"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cache-io")
 
         # Lazy initialization of HTTP transport (created on first API call)
         self._transport: Optional[HTTPTransport] = None
         self._transport_initialized = False
+        self._metadata_filter_deprecation_logged = False
 
         # Load existing cache on initialization
         self._load_cache_on_startup()
@@ -189,7 +213,11 @@ class ModelCache:
             return
 
         api_key = self._api_key or get_env_value(EnvVars.API_KEY)
-        base_url = self._base_url or get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL)
+        base_url = (
+            self._base_url
+            or get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL)
+            or APIConfig.BASE_URL
+        )
 
         if api_key:
             self._transport = HTTPTransport(api_key=api_key, base_url=base_url)
@@ -222,9 +250,7 @@ class ModelCache:
         await self.get_models()
 
         if not self._memory_cache:
-            raise RuntimeError(
-                "모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가."
-            )
+            raise RuntimeError("모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가.")
 
     async def _fetch_models_from_api(self) -> List[Dict[str, Any]]:
         """
@@ -245,17 +271,21 @@ class ModelCache:
 
             # Use shared transport layer
             data = await self._transport.get("/models")
-            raw_models = data.get("data", [])
+            raw_models_data = data.get("data", [])
+            if not isinstance(raw_models_data, list):
+                raise ValueError("Invalid models payload: 'data' must be a list")
 
-            logger.info(f"Fetched {len(raw_models)} models from OpenRouter API (raw)")
+            logger.info(f"Fetched {len(raw_models_data)} models from OpenRouter API (raw)")
 
             # Enhance models with metadata in thread executor (CPU-bound)
             loop = asyncio.get_running_loop()
             enhanced_models = await loop.run_in_executor(
-                self._executor, batch_enhance_models, raw_models
+                self._executor, batch_enhance_models, raw_models_data
             )
             logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
 
+            if not isinstance(enhanced_models, list):
+                raise ValueError("Enhanced model payload must be a list")
             return enhanced_models
 
         except Exception as e:
@@ -358,9 +388,7 @@ class ModelCache:
             if updated_at_str:
                 updated_at = datetime.fromisoformat(updated_at_str)
 
-            logger.debug(
-                f"Loaded {len(models)} models from cache file (with shared lock)"
-            )
+            logger.debug(f"Loaded {len(models)} models from cache file (with shared lock)")
             return models, updated_at
 
         except portalocker.LockException as e:
@@ -397,9 +425,7 @@ class ModelCache:
             for model in self._memory_cache:
                 yield model
 
-    def get_models_slice(
-        self, start: int = 0, end: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    def get_models_slice(self, start: int = 0, end: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get a slice of cached models without copying the entire cache.
 
@@ -514,6 +540,87 @@ class ModelCache:
 
         return {"error": f"Model {model_id} not found in cache"}
 
+    @staticmethod
+    def _normalize_enum_or_str(value: Any) -> str:
+        """Normalize enum-like or string values for stable comparisons."""
+        if hasattr(value, "value"):
+            return str(value.value).lower()
+        return str(value).lower()
+
+    def _matches_filter(self, model: Dict[str, Any], filters: ModelFilter) -> bool:
+        """Check whether a model matches all unified filter constraints."""
+        model_id = model.get("id", "")
+
+        if filters.provider is not None:
+            model_provider = model.get("provider", "unknown")
+            if self._normalize_enum_or_str(model_provider) != self._normalize_enum_or_str(
+                filters.provider
+            ):
+                return False
+
+        if filters.category is not None:
+            model_category = model.get("category", "unknown")
+            if self._normalize_enum_or_str(model_category) != self._normalize_enum_or_str(
+                filters.category
+            ):
+                return False
+
+        if filters.capabilities:
+            model_caps = model.get("capabilities", {})
+            for key, value in filters.capabilities.items():
+                if key == "min_context_length":
+                    if model_caps.get("max_tokens", 0) < value:
+                        return False
+                elif model_caps.get(key) != value:
+                    return False
+
+        if filters.performance_tier and model.get("performance_tier") != filters.performance_tier:
+            return False
+
+        if filters.cost_tier and model.get("cost_tier") != filters.cost_tier:
+            return False
+
+        if (
+            filters.min_quality_score is not None
+            and model.get("quality_score", 0) < filters.min_quality_score
+        ):
+            return False
+
+        if filters.tags:
+            model_tags = set(model.get("tags", []))
+            if not any(tag in model_tags for tag in filters.tags):
+                return False
+
+        if filters.vision_capable is not None:
+            caps = model.get("capabilities", {})
+            if caps.get("supports_vision", False) != filters.vision_capable:
+                return False
+
+        if filters.reasoning_model is not None:
+            is_reasoning = "o1" in model_id or "reasoning" in model.get("description", "").lower()
+            if is_reasoning != filters.reasoning_model:
+                return False
+
+        if filters.long_context is not None:
+            is_long = model.get("context_length", 0) > 100000
+            if is_long != filters.long_context:
+                return False
+
+        if filters.free_only is not None:
+            is_free = model.get("cost_tier") == "free"
+            if is_free != filters.free_only:
+                return False
+
+        if filters.min_context is not None and model.get("context_length", 0) < filters.min_context:
+            return False
+
+        return True
+
+    def _filter_models_internal(self, filters: ModelFilter) -> List[Dict[str, Any]]:
+        """Apply unified filter logic against in-memory cache."""
+        with self._cache_lock:
+            return [model for model in self._memory_cache if self._matches_filter(model, filters)]
+
     def filter_models_by_metadata(
         self,
         provider: Optional[Union[str, ModelProvider]] = None,
@@ -539,89 +646,22 @@ class ModelCache:
         Returns:
             Filtered list of models
         """
-        with self._cache_lock:
-            if not isinstance(self._memory_cache, list):
-                return []
+        if not self._metadata_filter_deprecation_logged:
+            logger.warning(
+                "filter_models_by_metadata() is deprecated; use filter_models() for unified filtering."
+            )
+            self._metadata_filter_deprecation_logged = True
 
-            filtered = []
-
-            for model in self._memory_cache:
-                # Provider filter
-                if provider is not None:
-                    model_provider = model.get("provider", "unknown")
-                    # Normalize both values to strings for comparison
-                    provider_str = (
-                        provider.value
-                        if hasattr(provider, "value")
-                        else str(provider).lower()
-                    )
-                    model_provider_str = (
-                        model_provider.value
-                        if hasattr(model_provider, "value")
-                        else str(model_provider).lower()
-                    )
-
-                    if model_provider_str != provider_str:
-                        continue
-
-                # Category filter
-                if category is not None:
-                    model_category = model.get("category", "unknown")
-                    # Normalize both values to strings for comparison
-                    category_str = (
-                        category.value
-                        if hasattr(category, "value")
-                        else str(category).lower()
-                    )
-                    model_category_str = (
-                        model_category.value
-                        if hasattr(model_category, "value")
-                        else str(model_category).lower()
-                    )
-
-                    if model_category_str != category_str:
-                        continue
-
-                # Capabilities filter
-                if capabilities:
-                    model_caps = model.get("capabilities", {})
-                    match = True
-                    for key, value in capabilities.items():
-                        if key == "min_context_length":
-                            if model_caps.get("max_tokens", 0) < value:
-                                match = False
-                                break
-                        elif model_caps.get(key) != value:
-                            match = False
-                            break
-                    if not match:
-                        continue
-
-                # Performance tier filter
-                if (
-                    performance_tier
-                    and model.get("performance_tier") != performance_tier
-                ):
-                    continue
-
-                # Cost tier filter
-                if cost_tier and model.get("cost_tier") != cost_tier:
-                    continue
-
-                # Quality score filter
-                if min_quality_score is not None:
-                    if model.get("quality_score", 0) < min_quality_score:
-                        continue
-
-                # Tags filter
-                if tags:
-                    model_tags = set(model.get("tags", []))
-                    if not any(tag in model_tags for tag in tags):
-                        continue
-
-                filtered.append(model)
-
-            return filtered
+        filters = ModelFilter(
+            provider=provider,
+            category=category,
+            capabilities=capabilities,
+            performance_tier=performance_tier,
+            cost_tier=cost_tier,
+            min_quality_score=min_quality_score,
+            tags=tags,
+        )
+        return self._filter_models_internal(filters)
 
     def get_models_by_performance_tier(self) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -631,13 +671,14 @@ class ModelCache:
             Dictionary with tiers as keys and model lists as values
         """
         with self._cache_lock:
-            if not isinstance(self._memory_cache, list):
-                return {}
-
-            tiers = {"premium": [], "standard": [], "economy": []}
+            tiers: Dict[str, List[Dict[str, Any]]] = {
+                "premium": [],
+                "standard": [],
+                "economy": [],
+            }
 
             for model in self._memory_cache:
-                tier = model.get("performance_tier", "standard")
+                tier = str(model.get("performance_tier", "standard"))
                 if tier in tiers:
                     tiers[tier].append(model)
 
@@ -666,51 +707,15 @@ class ModelCache:
         Returns:
             Filtered list of models
         """
-        with self._cache_lock:
-            if not isinstance(self._memory_cache, list):
-                return []
-
-            filtered = []
-
-            for model in self._memory_cache:
-                model_id = model.get("id", "")
-
-                # Apply filters (use model dict directly — already enriched by batch_enhance_models)
-                if provider and model.get("provider", "").lower() != provider.lower():
-                    continue
-
-                if vision_capable is not None:
-                    caps = model.get("capabilities", {})
-                    if caps.get("supports_vision", False) != vision_capable:
-                        continue
-
-                if reasoning_model is not None:
-                    is_reasoning = (
-                        "o1" in model_id
-                        or "reasoning" in model.get("description", "").lower()
-                    )
-                    if is_reasoning != reasoning_model:
-                        continue
-
-                if long_context is not None:
-                    is_long = model.get("context_length", 0) > 100000
-                    if is_long != long_context:
-                        continue
-
-                if free_only is not None:
-                    is_free = model.get("cost_tier") == "free"
-                    if is_free != free_only:
-                        continue
-
-                if (
-                    min_context is not None
-                    and model.get("context_length", 0) < min_context
-                ):
-                    continue
-
-                filtered.append(model)
-
-            return filtered
+        filters = ModelFilter(
+            provider=provider,
+            vision_capable=vision_capable,
+            reasoning_model=reasoning_model,
+            long_context=long_context,
+            free_only=free_only,
+            min_context=min_context,
+        )
+        return self._filter_models_internal(filters)
 
     def get_latest_models(self) -> List[Dict[str, Any]]:
         """
@@ -720,27 +725,13 @@ class ModelCache:
             List of latest model versions
         """
         with self._cache_lock:
-            if not isinstance(self._memory_cache, list):
-                return []
-
-            # Patterns that indicate latest models
-            latest_patterns = [
-                r"gpt-5",  # GPT-5
-                r"claude-4",  # Claude 4
-                r"gemini-2\.5",  # Gemini 2.5
-                r"deepseek-v3",  # DeepSeek V3
-                r"o1",  # OpenAI o1 series
-                r"grok-3",  # Grok 3
-                r"llama.*4",  # Llama 4 series
-            ]
-
             latest_models = []
 
             for model in self._memory_cache:
                 model_id = model.get("id", "").lower()
 
                 # Check if model matches latest patterns
-                for pattern in latest_patterns:
+                for pattern in CacheConfig.LATEST_MODEL_PATTERNS:
                     if re.search(pattern, model_id):
                         latest_models.append(model)
                         break
@@ -777,11 +768,7 @@ class ModelCache:
         """
         models = await self.get_models()
 
-        return [
-            model
-            for model in models
-            if model.get("category", "").lower() == category.lower()
-        ]
+        return [model for model in models if model.get("category", "").lower() == category.lower()]
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """
@@ -791,9 +778,6 @@ class ModelCache:
             Dictionary with cache statistics
         """
         with self._cache_lock:
-            if not isinstance(self._memory_cache, list):
-                return {"total_models": 0, "error": "Cache not initialized"}
-
             # Count providers (use model dict directly — already enriched)
             providers = set()
             vision_count = 0
@@ -801,7 +785,7 @@ class ModelCache:
 
             for model in self._memory_cache:
                 provider = model.get("provider")
-                if provider and provider != "Unknown":
+                if isinstance(provider, str) and provider != "Unknown":
                     providers.add(provider)
 
                 caps = model.get("capabilities", {})
@@ -809,10 +793,7 @@ class ModelCache:
                     vision_count += 1
 
                 model_id = model.get("id", "").lower()
-                if (
-                    "o1" in model_id
-                    or "reasoning" in model.get("description", "").lower()
-                ):
+                if "o1" in model_id or "reasoning" in model.get("description", "").lower():
                     reasoning_count += 1
 
             # Calculate cache size
@@ -830,9 +811,7 @@ class ModelCache:
                 "vision_capable_count": vision_count,
                 "reasoning_model_count": reasoning_count,
                 "cache_size_mb": round(cache_size_mb, 4),
-                "last_updated": (
-                    self._last_update.isoformat() if self._last_update else None
-                ),
+                "last_updated": (self._last_update.isoformat() if self._last_update else None),
                 "is_expired": self.is_expired(),
                 "ttl_seconds": self.ttl_seconds,
             }

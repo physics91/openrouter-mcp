@@ -10,8 +10,9 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.constants import BenchmarkDefaults, CacheConfig, EnvVars
 
@@ -28,6 +29,100 @@ from .benchmark import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 지원 메트릭 정의
+SUPPORTED_CATEGORY_METRICS = {"overall", "speed", "cost", "quality"}
+
+
+@dataclass
+class ReportMetrics:
+    """BenchmarkReportExporter와 호환되는 최소 메트릭 뷰."""
+
+    avg_response_time: float = 0.0
+    avg_cost: float = 0.0
+    quality_score: float = 0.0
+    throughput: float = 0.0
+
+
+@dataclass
+class ReportResult:
+    """BenchmarkReportExporter와 호환되는 결과 뷰."""
+
+    model_id: str
+    success: bool
+    response: str
+    metrics: Optional[ReportMetrics] = None
+
+
+def _to_float(value: Any, default: float) -> float:
+    """안전한 float 변환 헬퍼."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _extract_response_time_seconds(model: Dict[str, Any]) -> Optional[float]:
+    """모델 메타데이터에서 응답시간(초)을 추출."""
+    seconds_keys = ("avg_response_time", "response_time", "latency")
+    millis_keys = ("avg_response_time_ms", "response_time_ms", "latency_ms")
+
+    for key in seconds_keys:
+        if key in model:
+            return _to_float(model.get(key), 0.0)
+
+    for key in millis_keys:
+        if key in model:
+            return _to_float(model.get(key), 0.0) / 1000.0
+
+    benchmark_meta = model.get("benchmark", {})
+    if isinstance(benchmark_meta, dict):
+        if "avg_response_time" in benchmark_meta:
+            return _to_float(benchmark_meta.get("avg_response_time"), 0.0)
+        if "avg_response_time_ms" in benchmark_meta:
+            return _to_float(benchmark_meta.get("avg_response_time_ms"), 0.0) / 1000.0
+
+    return None
+
+
+def _extract_prompt_price(model: Dict[str, Any]) -> Optional[float]:
+    """모델 메타데이터에서 프롬프트 단가를 추출."""
+    pricing = model.get("pricing", {})
+    if not isinstance(pricing, dict):
+        return None
+    if "prompt" not in pricing:
+        return None
+    return _to_float(pricing.get("prompt"), 0.0)
+
+
+def _selection_score(model: Dict[str, Any], metric: str) -> float:
+    """카테고리별 사전 모델 선택 점수 계산."""
+    quality_score = _to_float(model.get("quality_score"), 0.0)
+    response_time = _extract_response_time_seconds(model)
+    prompt_price = _extract_prompt_price(model)
+
+    if metric == "quality":
+        return quality_score
+
+    if metric == "speed":
+        if response_time is None:
+            return quality_score
+        return -response_time
+
+    if metric == "cost":
+        if prompt_price is None:
+            return quality_score
+        return quality_score / max(prompt_price, 0.0001)
+
+    # overall
+    speed_component = 0.0
+    if response_time is not None:
+        speed_component = 1.0 / (1.0 + response_time)
+    cost_component = 0.0
+    if prompt_price is not None:
+        cost_component = 1.0 / (1.0 + (prompt_price * 1000))
+    return (quality_score * 0.5) + (speed_component * 0.3) + (cost_component * 0.2)
+
 
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
@@ -59,7 +154,6 @@ async def get_benchmark_handler() -> EnhancedBenchmarkHandler:
         _benchmark_handler_factory = None
 
     if _benchmark_handler is None:
-
         # 모델 캐시 초기화
         if _model_cache is None:
             _model_cache = ModelCache(ttl_hours=CacheConfig.BENCHMARK_CACHE_TTL_HOURS)
@@ -125,7 +219,7 @@ async def benchmark_models(
         )
 
         # 결과를 딕셔너리로 변환
-        benchmark_data = {
+        benchmark_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "models": models,
@@ -166,12 +260,8 @@ async def benchmark_models(
                     "overall_score": score,
                     "speed_score": result.metrics.speed_score if result.metrics else 0,
                     "cost_score": result.metrics.cost_score if result.metrics else 0,
-                    "quality_score": (
-                        result.metrics.quality_score if result.metrics else 0
-                    ),
-                    "throughput_score": (
-                        result.metrics.throughput_score if result.metrics else 0
-                    ),
+                    "quality_score": (result.metrics.quality_score if result.metrics else 0),
+                    "throughput_score": (result.metrics.throughput_score if result.metrics else 0),
                 }
                 for result, score in ranking
             ]
@@ -257,6 +347,11 @@ async def compare_model_categories(
     Returns:
         카테고리별 최고 모델들의 비교 결과
     """
+    normalized_metric = metric.lower().strip()
+    if normalized_metric not in SUPPORTED_CATEGORY_METRICS:
+        supported = ", ".join(sorted(SUPPORTED_CATEGORY_METRICS))
+        raise BenchmarkError(f"지원하지 않는 metric: {metric}. 지원 값: {supported}")
+
     try:
         handler = await get_benchmark_handler()
         cache = handler.model_cache
@@ -265,7 +360,7 @@ async def compare_model_categories(
         models = await maybe_await(cache.get_models())
 
         # 카테고리별로 모델 그룹화
-        category_models = {}
+        category_models: Dict[str, List[Dict[str, Any]]] = {}
         for model in models:
             category = model.get("category", "unknown")
             if category not in category_models:
@@ -275,40 +370,23 @@ async def compare_model_categories(
         # 카테고리 필터링
         if categories:
             category_models = {
-                cat: models
-                for cat, models in category_models.items()
-                if cat in categories
+                cat: models for cat, models in category_models.items() if cat in categories
             }
 
         # 각 카테고리에서 상위 모델 선택
-        selected_models = []
-        category_info = {}
+        selected_models: List[Dict[str, Any]] = []
+        category_info: Dict[str, Dict[str, Any]] = {}
 
         for category, cat_models in category_models.items():
             if not cat_models:
                 continue
 
             # 메트릭에 따라 정렬
-            if metric == "speed":
-                sorted_models = sorted(
-                    cat_models, key=lambda x: x.get("quality_score", 0), reverse=True
-                )[:top_n]
-            elif metric == "cost":
-                # 비용 효율성이 높은 순 (저렴하면서 품질 좋은)
-                sorted_models = sorted(
-                    cat_models,
-                    key=lambda x: x.get("quality_score", 0)
-                    / max(float(x.get("pricing", {}).get("prompt", "1")), 0.0001),
-                    reverse=True,
-                )[:top_n]
-            elif metric == "quality":
-                sorted_models = sorted(
-                    cat_models, key=lambda x: x.get("quality_score", 0), reverse=True
-                )[:top_n]
-            else:  # overall
-                sorted_models = sorted(
-                    cat_models, key=lambda x: x.get("quality_score", 0), reverse=True
-                )[:top_n]
+            sorted_models = sorted(
+                cat_models,
+                key=lambda x: _selection_score(x, normalized_metric),
+                reverse=True,
+            )[:top_n]
 
             selected_models.extend(sorted_models)
             category_info[category] = {
@@ -345,12 +423,12 @@ async def compare_model_categories(
         # 결과 분석
         successful_results = {k: v for k, v in results.items() if v.success}
 
-        comparison_data = {
+        comparison_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "categories": categories or list(category_models.keys()),
                 "top_n": top_n,
-                "metric": metric,
+                "metric": normalized_metric,
                 "prompt": prompt,
             },
             "category_info": category_info,
@@ -407,9 +485,7 @@ async def compare_model_categories(
                     "overall_score": score,
                     "speed_score": result.metrics.speed_score if result.metrics else 0,
                     "cost_score": result.metrics.cost_score if result.metrics else 0,
-                    "quality_score": (
-                        result.metrics.quality_score if result.metrics else 0
-                    ),
+                    "quality_score": (result.metrics.quality_score if result.metrics else 0),
                 }
                 for result, score in ranking[:10]  # 상위 10개만
             ]
@@ -453,16 +529,18 @@ async def export_benchmark_report(
         results = {}
         for model_id, result_data in data.get("results", {}).items():
             if result_data.get("success") and result_data.get("metrics"):
-                # 간단한 BenchmarkResult 대체 객체 생성
-                class SimpleBenchmarkResult:
-                    def __init__(self, model_id, metrics_data, response):
-                        self.model_id = model_id
-                        self.success = True
-                        self.response = response
-                        self.metrics = type("obj", (object,), metrics_data)()
-
-                results[model_id] = SimpleBenchmarkResult(
-                    model_id, result_data["metrics"], result_data.get("response", "")
+                metrics_data = result_data.get("metrics", {})
+                report_metrics = ReportMetrics(
+                    avg_response_time=_to_float(metrics_data.get("avg_response_time"), 0.0),
+                    avg_cost=_to_float(metrics_data.get("avg_cost"), 0.0),
+                    quality_score=_to_float(metrics_data.get("quality_score"), 0.0),
+                    throughput=_to_float(metrics_data.get("throughput"), 0.0),
+                )
+                results[model_id] = ReportResult(
+                    model_id=model_id,
+                    success=True,
+                    response=result_data.get("response", ""),
+                    metrics=report_metrics,
                 )
 
         if not results:
@@ -487,9 +565,7 @@ async def export_benchmark_report(
         elif format == "json":
             await exporter.export_json(results, output_path)
         else:
-            raise BenchmarkError(
-                f"지원하지 않는 형식: {format}. markdown, csv, json 중 선택하세요."
-            )
+            raise BenchmarkError(f"지원하지 않는 형식: {format}. markdown, csv, json 중 선택하세요.")
 
         return {
             "message": f"{format.upper()} 보고서가 성공적으로 생성되었습니다.",
@@ -555,12 +631,10 @@ async def compare_model_performance(
         analyzer = ModelPerformanceAnalyzer()
 
         # 가중치 적용한 랭킹
-        ranking = analyzer.rank_models_with_weights(
-            list(successful_results.values()), weights
-        )
+        ranking = analyzer.rank_models_with_weights(list(successful_results.values()), weights)
 
         # 결과 구성
-        comparison_data = {
+        comparison_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "config": {
                 "models": models,
@@ -678,9 +752,7 @@ def _read_benchmark_files(
             # 모델 필터 적용
             if model_filter:
                 models_in_file = list(data.get("results", {}).keys())
-                if not any(
-                    model_filter.lower() in model.lower() for model in models_in_file
-                ):
+                if not any(model_filter.lower() in model.lower() for model in models_in_file):
                     continue
 
             # 요약 정보 생성
@@ -755,9 +827,7 @@ def _analyze_cost_efficiency(results: Dict[str, Any]) -> Dict[str, Any]:
 
     for model_id, result in results.items():
         if result.success and result.metrics:
-            quality_per_cost = result.metrics.quality_score / max(
-                result.metrics.avg_cost, 0.0001
-            )
+            quality_per_cost = result.metrics.quality_score / max(result.metrics.avg_cost, 0.0001)
             cost_data.append(
                 {
                     "model_id": model_id,
@@ -835,14 +905,14 @@ def _calculate_std(values: List[float]) -> float:
 
     mean = sum(values) / len(values)
     variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
-    return variance**0.5
+    return float(variance**0.5)
 
 
 def _generate_recommendations(
-    ranking: List, weights: Dict[str, float]
+    ranking: List[Tuple[Any, float]], weights: Dict[str, float]
 ) -> List[Dict[str, Any]]:
     """성능 분석 기반 추천사항 생성"""
-    recommendations = []
+    recommendations: List[Dict[str, Any]] = []
 
     if not ranking:
         return recommendations
@@ -864,9 +934,7 @@ def _generate_recommendations(
     if primary_metric[0] == "speed":
         fastest_model = min(
             ranking,
-            key=lambda x: (
-                x[0].metrics.avg_response_time if x[0].metrics else float("inf")
-            ),
+            key=lambda x: (x[0].metrics.avg_response_time if x[0].metrics else float("inf")),
         )
         recommendations.append(
             {

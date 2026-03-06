@@ -1,7 +1,9 @@
+# mypy: disable-error-code=untyped-decorator
+
 import base64
 import io
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
@@ -31,7 +33,7 @@ class ImageInput(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def validate_type(cls, v):
+    def validate_type(cls, v: str) -> str:
         if v not in ["base64", "url"]:
             raise ValueError(
                 "Type must be 'base64' or 'url'. File path access is not supported for security reasons."
@@ -48,9 +50,7 @@ class VisionChatRequest(BaseChatRequest):
 class VisionModelRequest(BaseModel):
     """Request for listing vision-capable models."""
 
-    filter_by: Optional[str] = Field(
-        None, description="Filter models by name substring"
-    )
+    filter_by: Optional[str] = Field(None, description="Filter models by name substring")
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
@@ -136,7 +136,7 @@ def process_image(
 
         # If image is already small enough, still validate it
         # Open and validate the image BEFORE returning it
-        image = Image.open(io.BytesIO(image_bytes))
+        image: Image.Image = Image.open(io.BytesIO(image_bytes))
 
         # Security: Validate image dimensions to prevent pixel bombs
         width, height = image.size
@@ -170,11 +170,14 @@ def process_image(
             if image.mode in ("RGBA", "LA", "P"):
                 # Convert to RGB for JPEG
                 background = Image.new("RGB", image.size, (255, 255, 255))
-                if image.mode == "P":
-                    image = image.convert("RGBA")
+                image_for_paste: Image.Image = image.convert("RGBA") if image.mode == "P" else image
                 background.paste(
-                    image,
-                    mask=image.split()[-1] if image.mode in ("RGBA", "LA") else None,
+                    image_for_paste,
+                    mask=(
+                        image_for_paste.split()[-1]
+                        if image_for_paste.mode in ("RGBA", "LA")
+                        else None
+                    ),
                 )
                 image = background
             original_format = "JPEG"
@@ -200,14 +203,10 @@ def process_image(
             new_width = int(width * resize_ratio)
             new_height = int(height * resize_ratio)
 
-            resized_image = image.resize(
-                (new_width, new_height), Image.Resampling.LANCZOS
-            )
+            resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
             buffer = io.BytesIO()
-            resized_image.save(
-                buffer, format=original_format, quality=75, optimize=True
-            )
+            resized_image.save(buffer, format=original_format, quality=75, optimize=True)
 
             if len(buffer.getvalue()) <= max_size_bytes:
                 processed_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -248,7 +247,7 @@ def format_vision_message(
     Returns:
         Formatted message dictionary
     """
-    content = [{"type": "text", "text": text}]
+    content: List[Dict[str, Any]] = [{"type": "text", "text": text}]
 
     # Handle single image
     if image_data and image_type:
@@ -364,9 +363,7 @@ async def chat_with_vision(
                         processed_data, was_resized = process_image(img.data)
                         if was_resized:
                             logger.info("Image was resized for API optimization")
-                        processed_images.append(
-                            {"data": processed_data, "type": "base64"}
-                        )
+                        processed_images.append({"data": processed_data, "type": "base64"})
                     else:
                         processed_images.append({"data": img.data, "type": "url"})
 
@@ -380,13 +377,16 @@ async def chat_with_vision(
 
         if request.stream:
             logger.info("Initiating streaming vision chat completion")
-            chunks = await collect_async_iterable(
-                client.stream_chat_completion(
-                    model=request.model,
-                    messages=vision_messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
-                )
+            chunks = cast(
+                List[Dict[str, Any]],
+                await collect_async_iterable(
+                    client.stream_chat_completion(
+                        model=request.model,
+                        messages=vision_messages,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
+                ),
             )
 
             logger.info(f"Streaming completed with {len(chunks)} chunks")
@@ -399,6 +399,8 @@ async def chat_with_vision(
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
             )
+            if not isinstance(response, dict):
+                raise ValueError("Invalid response format from vision chat completion")
 
             logger.info("Vision chat completion successful")
             return response

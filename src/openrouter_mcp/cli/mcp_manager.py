@@ -11,6 +11,7 @@ import logging
 import platform
 import shutil
 import sys
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -53,7 +54,7 @@ class MCPServerConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format for JSON."""
-        config = {"command": self.command, "args": self.args}
+        config: Dict[str, Any] = {"command": self.command, "args": self.args}
 
         if self.cwd:
             config["cwd"] = self.cwd
@@ -86,7 +87,7 @@ class MCPManager:
     }
 
     # Preset configurations for common MCP servers
-    PRESETS = {
+    PRESETS: Dict[str, Dict[str, Any]] = {
         "openrouter": {
             "command": "cmd" if sys.platform == "win32" else "npx",
             "args": (
@@ -129,9 +130,7 @@ class MCPManager:
         """
         if config_path is None:
             system = platform.system()
-            config_path = self.DEFAULT_CONFIG_PATHS.get(
-                system, self.DEFAULT_CONFIG_PATHS["Linux"]
-            )
+            config_path = self.DEFAULT_CONFIG_PATHS.get(system, self.DEFAULT_CONFIG_PATHS["Linux"])
 
         self.config_path = Path(config_path)
         self.config = self._load_config()
@@ -141,16 +140,19 @@ class MCPManager:
         if not self.config_path.exists():
             # Create default config if file doesn't exist
             self._ensure_config_dir()
-            default_config = {"mcpServers": {}}
+            default_config: Dict[str, Any] = {"mcpServers": {}}
             self._save_config(default_config)
             return default_config
 
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                raise MCPConfigError("Invalid configuration file: root must be object")
+            config: Dict[str, Any] = loaded
 
             # Ensure mcpServers key exists
-            if "mcpServers" not in config:
+            if "mcpServers" not in config or not isinstance(config.get("mcpServers"), dict):
                 config["mcpServers"] = {}
 
             return config
@@ -373,9 +375,7 @@ class MCPManager:
             if counter == 0:
                 backup_filename = f"{self.config_path.stem}.{timestamp}.backup"
             else:
-                backup_filename = (
-                    f"{self.config_path.stem}.{timestamp}_{counter}.backup"
-                )
+                backup_filename = f"{self.config_path.stem}.{timestamp}_{counter}.backup"
             backup_path = self.config_path.parent / backup_filename
 
             # Check if file already exists
@@ -435,7 +435,7 @@ class MCPManager:
         except Exception as e:
             raise MCPConfigError(f"Failed to restore configuration: {e}")
 
-    def add_server_from_preset(self, preset_name: str, **kwargs) -> bool:
+    def add_server_from_preset(self, preset_name: str, **kwargs: Any) -> bool:
         """Add a server using a preset configuration.
 
         Args:
@@ -450,11 +450,9 @@ class MCPManager:
         """
         if preset_name not in self.PRESETS:
             available = ", ".join(self.PRESETS.keys())
-            raise MCPConfigError(
-                f"Unknown preset '{preset_name}'. Available presets: {available}"
-            )
+            raise MCPConfigError(f"Unknown preset '{preset_name}'. Available presets: {available}")
 
-        preset = self.PRESETS[preset_name].copy()
+        preset: Dict[str, Any] = deepcopy(self.PRESETS[preset_name])
 
         # Handle special parameters for specific presets
         if preset_name == "openrouter":

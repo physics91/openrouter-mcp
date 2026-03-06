@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 
-def cleanup_benchmark_file():
+def cleanup_benchmark_file() -> None:
     """benchmark.py에서 MCP 관련 코드 제거"""
     benchmark_file = Path(__file__).resolve().parent / "benchmark.py"
 

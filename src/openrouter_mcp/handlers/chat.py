@@ -1,5 +1,7 @@
+# mypy: disable-error-code=untyped-decorator
+
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 from pydantic import BaseModel, Field
 
@@ -23,9 +25,7 @@ class ChatCompletionRequest(BaseChatRequest):
 class ModelListRequest(BaseModel):
     """Request for listing available models."""
 
-    filter_by: Optional[str] = Field(
-        None, description="Filter models by name substring"
-    )
+    filter_by: Optional[str] = Field(None, description="Filter models by name substring")
 
 
 class UsageStatsRequest(BaseModel):
@@ -34,9 +34,7 @@ class UsageStatsRequest(BaseModel):
     start_date: Optional[str] = Field(
         None, description="Start date for usage tracking (YYYY-MM-DD)"
     )
-    end_date: Optional[str] = Field(
-        None, description="End date for usage tracking (YYYY-MM-DD)"
-    )
+    end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
 
 
 @mcp.tool()
@@ -82,13 +80,16 @@ async def chat_with_model(
     try:
         if request.stream:
             logger.info("Initiating streaming chat completion")
-            chunks = await collect_async_iterable(
-                client.stream_chat_completion(
-                    model=request.model,
-                    messages=messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
-                )
+            chunks = cast(
+                List[Dict[str, Any]],
+                await collect_async_iterable(
+                    client.stream_chat_completion(
+                        model=request.model,
+                        messages=messages,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
+                ),
             )
 
             logger.info(f"Streaming completed with {len(chunks)} chunks")
@@ -102,6 +103,8 @@ async def chat_with_model(
                 max_tokens=request.max_tokens,
                 stream=False,
             )
+            if not isinstance(response, dict):
+                raise ValueError("Invalid response format from chat completion")
 
             logger.info(
                 f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
@@ -148,6 +151,7 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
 
     try:
         models = await client.list_models(filter_by=request.filter_by)
+        models = [model for model in models if isinstance(model, dict)]
         logger.info(f"Retrieved {len(models)} models")
         return models
 
@@ -193,12 +197,10 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
     client = await get_openrouter_client()
 
     try:
-        stats = await client.track_usage(
-            start_date=request.start_date, end_date=request.end_date
-        )
-        logger.info(
-            f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost"
-        )
+        stats = await client.track_usage(start_date=request.start_date, end_date=request.end_date)
+        if not isinstance(stats, dict):
+            raise ValueError("Invalid usage stats response format")
+        logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
         return stats
 
     except Exception as e:

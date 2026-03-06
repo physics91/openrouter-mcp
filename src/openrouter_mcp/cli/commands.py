@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# mypy: disable-error-code=untyped-decorator
 """
 CLI Commands for MCP Server Management.
 
@@ -8,7 +9,7 @@ MCP servers in Claude Code CLI.
 
 import logging
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 
@@ -21,14 +22,15 @@ from .mcp_manager import (
 )
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(message)s"  # Simple format for CLI output
-)
+logging.basicConfig(level=logging.INFO, format="%(message)s")  # Simple format for CLI output
 logger = logging.getLogger(__name__)
 
 
 def add_mcp_server(
-    server_name: str, api_key: Optional[str] = None, force: bool = False, **kwargs
+    server_name: str,
+    api_key: Optional[str] = None,
+    force: bool = False,
+    **kwargs: Any,
 ) -> bool:
     """Add an MCP server to Claude Code CLI.
 
@@ -73,9 +75,13 @@ def add_mcp_server(
                 return False
         else:
             # Custom server configuration with command provided
+            command = kwargs.get("command")
+            if not isinstance(command, str) or not command.strip():
+                click.echo("❌ Error: Custom servers require a non-empty string command.")
+                return False
             config = MCPServerConfig(
                 name=server_name,
-                command=kwargs.get("command"),
+                command=command,
                 args=kwargs.get("args", []),
                 cwd=kwargs.get("cwd"),
                 env=kwargs.get("env", {}),
@@ -85,10 +91,10 @@ def add_mcp_server(
             click.echo(f"✅ Successfully added MCP server: {server_name}")
             return True
 
+        return False
+
     except MCPServerAlreadyExistsError:
-        click.echo(
-            f"⚠️ Server '{server_name}' already exists. Use --force to overwrite."
-        )
+        click.echo(f"⚠️ Server '{server_name}' already exists. Use --force to overwrite.")
         return False
     except MCPConfigError as e:
         click.echo(f"❌ Configuration error: {e}")
@@ -261,7 +267,7 @@ def configure_mcp_server(
 
 # CLI Command Group
 @click.group()
-def mcp():
+def mcp() -> None:
     """Manage MCP servers for Claude Code CLI."""
     pass
 
@@ -274,16 +280,24 @@ def mcp():
 @click.option("--args", multiple=True, help="Arguments for the server command")
 @click.option("--cwd", help="Working directory for the server")
 @click.option("--env", multiple=True, help="Environment variables (KEY=VALUE format)")
-def add(server_name, api_key, force, command, args, cwd, env):
+def add(
+    server_name: str,
+    api_key: Optional[str],
+    force: bool,
+    command: Optional[str],
+    args: Tuple[str, ...],
+    cwd: Optional[str],
+    env: Tuple[str, ...],
+) -> None:
     """Add an MCP server to Claude Code CLI."""
-    env_dict = {}
+    env_dict: Dict[str, str] = {}
     if env:
         for env_var in env:
             if "=" in env_var:
                 key, value = env_var.split("=", 1)
                 env_dict[key] = value
 
-    kwargs = {}
+    kwargs: Dict[str, Any] = {}
     if command:
         kwargs["command"] = command
     if args:
@@ -298,21 +312,21 @@ def add(server_name, api_key, force, command, args, cwd, env):
 
 @mcp.command()
 @click.argument("server_name")
-def remove(server_name):
+def remove(server_name: str) -> None:
     """Remove an MCP server from Claude Code CLI."""
     remove_mcp_server(server_name)
 
 
 @mcp.command("list")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
-def list_cmd(verbose):
+def list_cmd(verbose: bool) -> None:
     """List all installed MCP servers."""
     list_mcp_servers(verbose=verbose)
 
 
 @mcp.command()
 @click.argument("server_name")
-def status(server_name):
+def status(server_name: str) -> None:
     """Get status of an MCP server."""
     get_mcp_server_status(server_name)
 
@@ -322,9 +336,14 @@ def status(server_name):
 @click.option("--env", multiple=True, help="Environment variables (KEY=VALUE format)")
 @click.option("--args", multiple=True, help="New arguments for the server")
 @click.option("--cwd", help="New working directory")
-def config(server_name, env, args, cwd):
+def config(
+    server_name: str,
+    env: Tuple[str, ...],
+    args: Tuple[str, ...],
+    cwd: Optional[str],
+) -> None:
     """Configure an existing MCP server."""
-    env_dict = {}
+    env_dict: Dict[str, str] = {}
     if env:
         for env_var in env:
             if "=" in env_var:
@@ -333,9 +352,7 @@ def config(server_name, env, args, cwd):
 
     args_list = list(args) if args else None
 
-    configure_mcp_server(
-        server_name, env=env_dict if env_dict else None, args=args_list, cwd=cwd
-    )
+    configure_mcp_server(server_name, env=env_dict if env_dict else None, args=args_list, cwd=cwd)
 
 
 if __name__ == "__main__":

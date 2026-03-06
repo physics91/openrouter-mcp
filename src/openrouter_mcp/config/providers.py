@@ -17,6 +17,26 @@ logger = logging.getLogger(__name__)
 _config_cache: Optional[Dict[str, Any]] = None
 
 
+class ProviderConfigError(RuntimeError):
+    """Provider 설정 로드 실패."""
+
+
+def _as_str_dict(value: Any) -> Dict[str, Any]:
+    """JSON 객체를 string-key dict로 정규화."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
+def _build_default_config() -> Dict[str, Any]:
+    """새 기본 설정 사본 생성."""
+    return {
+        "providers": {},
+        "aliases": {},
+        "quality_tiers": {},
+    }
+
+
 def load_provider_config() -> Dict[str, Any]:
     """
     Load provider configuration from JSON file.
@@ -38,13 +58,14 @@ def load_provider_config() -> Dict[str, Any]:
             return _config_cache
     except FileNotFoundError:
         logger.warning(f"Provider config file not found: {config_path}")
-        return {"providers": {}, "aliases": {}, "quality_tiers": {}}
+        _config_cache = _build_default_config()
+        return _config_cache
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse provider config: {e}")
-        return {"providers": {}, "aliases": {}, "quality_tiers": {}}
+        raise ProviderConfigError(f"Provider config is invalid JSON: {config_path}") from e
     except Exception as e:
         logger.error(f"Error loading provider config: {e}")
-        return {"providers": {}, "aliases": {}, "quality_tiers": {}}
+        raise ProviderConfigError(f"Provider config load failed: {config_path}") from e
 
 
 def resolve_provider_alias(provider_name: str) -> str:
@@ -62,20 +83,22 @@ def resolve_provider_alias(provider_name: str) -> str:
 
     provider_lower = provider_name.lower()
     config = load_provider_config()
-    aliases = config.get("aliases", {})
+    aliases = _as_str_dict(config.get("aliases", {}))
 
     # Check if it's an alias
     if provider_lower in aliases:
-        return aliases[provider_lower]
+        canonical = aliases.get(provider_lower)
+        if isinstance(canonical, str):
+            return canonical
 
     # Check if it's already a canonical name
-    providers = config.get("providers", {})
+    providers = _as_str_dict(config.get("providers", {}))
     if provider_lower in providers:
         return provider_lower
 
     # Check for partial matches
     for alias, canonical in aliases.items():
-        if alias in provider_lower or provider_lower in alias:
+        if isinstance(canonical, str) and (alias in provider_lower or provider_lower in alias):
             return canonical
 
     return provider_lower
@@ -93,10 +116,11 @@ def get_provider_info(provider_name: str) -> Dict[str, Any]:
     """
     canonical_name = resolve_provider_alias(provider_name)
     config = load_provider_config()
-    providers = config.get("providers", {})
+    providers = _as_str_dict(config.get("providers", {}))
 
-    if canonical_name in providers:
-        return providers[canonical_name]
+    provider_info = providers.get(canonical_name)
+    if isinstance(provider_info, dict):
+        return provider_info
 
     # Return default info for unknown providers
     return {
@@ -122,10 +146,11 @@ def get_quality_tier_info(tier_name: str) -> Dict[str, Any]:
         Quality tier information dictionary
     """
     config = load_provider_config()
-    quality_tiers = config.get("quality_tiers", {})
+    quality_tiers = _as_str_dict(config.get("quality_tiers", {}))
 
-    if tier_name in quality_tiers:
-        return quality_tiers[tier_name]
+    tier_info = quality_tiers.get(tier_name)
+    if isinstance(tier_info, dict):
+        return tier_info
 
     # Return default info for unknown tiers
     return {

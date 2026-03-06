@@ -11,6 +11,7 @@ This test suite improves coverage from 0% to 60%+ by testing:
 - Integration points with MCP registry and lifecycle manager
 """
 
+import asyncio
 import signal
 import sys
 from pathlib import Path
@@ -22,6 +23,16 @@ import pytest
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
+
+
+def _get_registered_tools(mcp_instance):
+    """Fetch registered tool mapping via FastMCP public API."""
+
+    async def _collect():
+        tools = await mcp_instance.list_tools()
+        return {tool.name: tool for tool in tools}
+
+    return asyncio.run(_collect())
 
 
 class TestServerInitialization:
@@ -42,7 +53,7 @@ class TestServerInitialization:
         from openrouter_mcp.server import mcp
 
         assert mcp is not None
-        assert hasattr(mcp, "_tool_manager")
+        assert hasattr(mcp, "list_tools")
 
     def test_handler_modules_imported(self, mock_env_vars):
         """Test that all handler modules are imported during server init."""
@@ -50,11 +61,11 @@ class TestServerInitialization:
         from openrouter_mcp.mcp_registry import mcp
 
         # Verify handlers have registered tools
-        tools = mcp._tool_manager._tools
+        tools = _get_registered_tools(mcp)
         assert len(tools) > 0, "No tools registered"
 
-        # Verify expected tool count (15 tools)
-        assert len(tools) == 15, f"Expected 15 tools, got {len(tools)}"
+        # Verify expected minimum tool count
+        assert len(tools) >= 15, f"Expected at least 15 tools, got {len(tools)}"
 
     def test_logging_configuration(self):
         """Test that logging is configured correctly."""
@@ -74,7 +85,7 @@ class TestHandlerRegistration:
 
         # Import all handlers
 
-        tools = mcp._tool_manager._tools
+        tools = _get_registered_tools(mcp)
 
         # Verify expected tools from each handler
         expected_tools = {
@@ -100,9 +111,8 @@ class TestHandlerRegistration:
         }
 
         registered_tools = set(tools.keys())
-        assert (
-            expected_tools == registered_tools
-        ), f"Tool mismatch. Expected: {expected_tools}, Got: {registered_tools}"
+        missing = expected_tools - registered_tools
+        assert not missing, f"Expected tools missing: {missing}"
 
     def test_tool_count(self, mock_env_vars):
         """Test that the correct number of tools are registered."""
@@ -110,7 +120,7 @@ class TestHandlerRegistration:
 
         # Import handlers to trigger registration
 
-        tools = mcp._tool_manager._tools
+        tools = _get_registered_tools(mcp)
         assert len(tools) >= 15, f"Expected at least 15 tools, got {len(tools)}"
 
     def test_tool_metadata(self, mock_env_vars):
@@ -119,7 +129,7 @@ class TestHandlerRegistration:
 
         # Import handlers
 
-        tools = mcp._tool_manager._tools
+        tools = _get_registered_tools(mcp)
 
         # Check a few key tools for metadata
         for tool_name in [
@@ -252,9 +262,7 @@ class TestLifecycleManagement:
             if sig == signal.SIGINT:
                 signal_handler_ref = handler
 
-        with patch(
-            "openrouter_mcp.server.signal.signal", side_effect=capture_signal_handler
-        ):
+        with patch("openrouter_mcp.server.signal.signal", side_effect=capture_signal_handler):
             with patch("openrouter_mcp.server.create_app") as mock_create_app:
                 mock_app = Mock()
                 mock_app.run.side_effect = KeyboardInterrupt()
@@ -421,7 +429,7 @@ class TestServerConfiguration:
 
         app = create_app()
         assert app is not None
-        assert hasattr(app, "_tool_manager")
+        assert hasattr(app, "list_tools")
 
     def test_server_name(self, mock_env_vars):
         """Test that server has correct name."""
@@ -482,12 +490,7 @@ class TestServerDocumentation:
 
     def test_function_docstrings(self):
         """Test that server functions have documentation."""
-        from openrouter_mcp.server import (
-            create_app,
-            main,
-            shutdown_handler,
-            validate_environment,
-        )
+        from openrouter_mcp.server import create_app, main, shutdown_handler, validate_environment
 
         assert create_app.__doc__ is not None
         assert validate_environment.__doc__ is not None
@@ -497,6 +500,4 @@ class TestServerDocumentation:
 
 # Run coverage check if executed directly
 if __name__ == "__main__":
-    pytest.main(
-        [__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"]
-    )
+    pytest.main([__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"])

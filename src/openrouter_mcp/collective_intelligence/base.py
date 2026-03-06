@@ -89,7 +89,7 @@ class ModelProvider(Protocol):
     """Protocol for model providers that can process tasks."""
 
     async def process_task(
-        self, task: TaskContext, model_id: str, **kwargs
+        self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
         """Process a task using the specified model."""
         ...
@@ -102,12 +102,12 @@ class ModelProvider(Protocol):
 class CollectiveIntelligenceComponent(ABC):
     """Base class for all collective intelligence components."""
 
-    def __init__(self, model_provider: ModelProvider):
+    def __init__(self, model_provider: ModelProvider) -> None:
         self.model_provider = model_provider
         self.metrics: Dict[str, Any] = {}
 
     @abstractmethod
-    async def process(self, task: TaskContext, **kwargs) -> Any:
+    async def process(self, *args: Any, **kwargs: Any) -> Any:
         """Process a task using this component."""
         pass
 

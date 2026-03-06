@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ..client.openrouter import OpenRouterClient
 
 from ..collective_intelligence import (
+    CollectiveIntelligenceLifecycleManager,
     ConsensusConfig,
     ConsensusStrategy,
     ModelInfo,
@@ -27,6 +28,7 @@ from ..collective_intelligence import (
     TaskType,
     get_lifecycle_manager,
 )
+from ..collective_intelligence.base import ModelCapability
 
 # Import centralized configuration constants
 from ..config.constants import ConsensusDefaults, ModelDefaults, PricingDefaults
@@ -54,7 +56,7 @@ class OpenRouterModelProvider:
         self._model_pricing_cache: Dict[str, Dict[str, float]] = {}
 
     async def process_task(
-        self, task: TaskContext, model_id: str, **kwargs
+        self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
         """Process a task using the specified model."""
         start_time = datetime.now()
@@ -77,9 +79,7 @@ class OpenRouterModelProvider:
                 temp_from_req
                 if temp_from_req is not None
                 else (
-                    temp_from_kwargs
-                    if temp_from_kwargs is not None
-                    else ModelDefaults.TEMPERATURE
+                    temp_from_kwargs if temp_from_kwargs is not None else ModelDefaults.TEMPERATURE
                 )
             )
 
@@ -166,7 +166,7 @@ class OpenRouterModelProvider:
         # This is a simplified confidence calculation
         # In practice, this could use more sophisticated methods
 
-        base_confidence = ConsensusDefaults.CONFIDENCE_THRESHOLD
+        base_confidence = float(ConsensusDefaults.CONFIDENCE_THRESHOLD)
 
         # Adjust based on response length (longer responses often more confident)
         if len(content) > 100:
@@ -181,7 +181,7 @@ class OpenRouterModelProvider:
         elif finish_reason == "length":
             base_confidence -= 0.1
 
-        return max(0.0, min(1.0, base_confidence))
+        return float(max(0.0, min(1.0, base_confidence)))
 
     async def _get_model_pricing(self, model_id: str) -> Dict[str, float]:
         """
@@ -200,10 +200,15 @@ class OpenRouterModelProvider:
             return self._model_pricing_cache[model_id]
 
         try:
-            normalized = await self.client.get_model_pricing(model_id)
+            normalized_raw = await self.client.get_model_pricing(model_id)
         except Exception as e:
             logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
-            normalized = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
+            normalized_raw = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
+
+        normalized = {
+            "prompt": float(normalized_raw.get("prompt", 0.0)),
+            "completion": float(normalized_raw.get("completion", 0.0)),
+        }
 
         self._model_pricing_cache[model_id] = normalized
         return normalized
@@ -222,10 +227,12 @@ class OpenRouterModelProvider:
         pricing = await self._get_model_pricing(model_id)
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        total_cost = estimate_cost_from_usage(
-            usage,
-            pricing,
-            PricingDefaults.DEFAULT_TOKEN_PRICE,
+        total_cost = float(
+            estimate_cost_from_usage(
+                usage,
+                pricing,
+                PricingDefaults.DEFAULT_TOKEN_PRICE,
+            )
         )
         prompt_cost = prompt_tokens * pricing["prompt"]
         completion_cost = completion_tokens * pricing["completion"]
@@ -242,45 +249,45 @@ class OpenRouterModelProvider:
     def _extract_cost(self, pricing: Dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
         normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
-        return normalized["completion"]
+        return float(normalized.get("completion", PricingDefaults.DEFAULT_TOKEN_PRICE))
 
-    def _estimate_capabilities(self, raw_model: Dict[str, Any]) -> Dict[str, float]:
+    def _estimate_capabilities(self, raw_model: Dict[str, Any]) -> Dict[ModelCapability, float]:
         """Estimate model capabilities based on model metadata."""
-        capabilities = {}
+        capabilities: Dict[ModelCapability, float] = {}
         model_id = raw_model["id"].lower()
 
         # Reasoning capability
         if any(term in model_id for term in ["gpt-4", "claude", "o1"]):
-            capabilities["reasoning"] = 0.9
+            capabilities[ModelCapability.REASONING] = 0.9
         elif any(term in model_id for term in ["gpt-3.5", "llama"]):
-            capabilities["reasoning"] = 0.7
+            capabilities[ModelCapability.REASONING] = 0.7
         else:
-            capabilities["reasoning"] = 0.5
+            capabilities[ModelCapability.REASONING] = 0.5
 
         # Creativity capability
         if any(term in model_id for term in ["claude", "gpt-4"]):
-            capabilities["creativity"] = 0.8
+            capabilities[ModelCapability.CREATIVITY] = 0.8
         else:
-            capabilities["creativity"] = 0.6
+            capabilities[ModelCapability.CREATIVITY] = 0.6
 
         # Code capability
         if any(term in model_id for term in ["code", "codestral", "deepseek"]):
-            capabilities["code"] = 0.9
+            capabilities[ModelCapability.CODE] = 0.9
         elif any(term in model_id for term in ["gpt-4", "claude"]):
-            capabilities["code"] = 0.8
+            capabilities[ModelCapability.CODE] = 0.8
         else:
-            capabilities["code"] = 0.5
+            capabilities[ModelCapability.CODE] = 0.5
 
         # Accuracy capability
         if any(term in model_id for term in ["gpt-4", "claude", "o1"]):
-            capabilities["accuracy"] = 0.9
+            capabilities[ModelCapability.ACCURACY] = 0.9
         else:
-            capabilities["accuracy"] = 0.7
+            capabilities[ModelCapability.ACCURACY] = 0.7
 
         return capabilities
 
 
-async def _get_configured_lifecycle_manager():
+async def _get_configured_lifecycle_manager() -> CollectiveIntelligenceLifecycleManager:
     """Return lifecycle manager configured with a shared OpenRouter model provider."""
     client = await maybe_await(get_openrouter_client())
     model_provider = OpenRouterModelProvider(client)
@@ -330,9 +337,7 @@ class EnsembleReasoningRequest(BaseCollectiveRequest):
         "reasoning",
         description="Type of task: reasoning, analysis, creative, factual, code_generation",
     )
-    decompose: bool = Field(
-        True, description="Whether to decompose the problem into subtasks"
-    )
+    decompose: bool = Field(True, description="Whether to decompose the problem into subtasks")
 
 
 class AdaptiveModelRequest(BaseModel):
@@ -362,12 +367,8 @@ class CollaborativeSolvingRequest(BaseCollectiveRequest):
     """Request for collaborative problem solving."""
 
     problem: str = Field(..., description="Problem to solve collaboratively")
-    requirements: Optional[Dict[str, Any]] = Field(
-        None, description="Problem requirements"
-    )
-    constraints: Optional[Dict[str, Any]] = Field(
-        None, description="Problem constraints"
-    )
+    requirements: Optional[Dict[str, Any]] = Field(None, description="Problem requirements")
+    constraints: Optional[Dict[str, Any]] = Field(None, description="Problem constraints")
     max_iterations: int = Field(3, description="Maximum number of iteration rounds")
 
 
@@ -420,9 +421,7 @@ async def _collective_chat_completion_impl(
         )
         result = await collective_chat_completion(request)
     """
-    logger.info(
-        f"Processing collective chat completion with strategy: {request.strategy}"
-    )
+    logger.info(f"Processing collective chat completion with strategy: {request.strategy}")
 
     try:
         # Setup - use shared singleton client from registry
@@ -700,7 +699,7 @@ async def _cross_model_validation_impl(
         )
 
         # Create task context for validation with criteria and models
-        extras = {"validation_threshold": request.threshold}
+        extras: Dict[str, Any] = {"validation_threshold": request.threshold}
         if request.validation_criteria:
             extras["validation_criteria"] = request.validation_criteria
         requirements = _build_requirements(
@@ -728,15 +727,9 @@ async def _cross_model_validation_impl(
 
         model_validations = []
         for model_id in validator_models:
-            model_issues = [
-                issue for issue in issues if issue.validator_model_id == model_id
-            ]
+            model_issues = [issue for issue in issues if issue.validator_model_id == model_id]
             criteria_values = {
-                (
-                    issue.criteria.value
-                    if hasattr(issue.criteria, "value")
-                    else str(issue.criteria)
-                )
+                (issue.criteria.value if hasattr(issue.criteria, "value") else str(issue.criteria))
                 for issue in model_issues
             }
             if not criteria_values:

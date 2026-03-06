@@ -46,7 +46,7 @@ class TokenCounter:
     Falls back to conservative character-based estimation when tiktoken fails.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize token counter with encoding cache."""
         self._encoding_cache: Dict[str, tiktoken.Encoding] = {}
 
@@ -138,9 +138,7 @@ class TokenCounter:
             # Token counting logic based on OpenAI's cookbook
             # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
 
-            tokens_per_message = (
-                3  # Every message follows <|start|>{role/name}\n{content}<|end|>\n
-            )
+            tokens_per_message = 3  # Every message follows <|start|>{role/name}\n{content}<|end|>\n
             tokens_per_name = 1  # If there's a name, add 1 token
 
             num_tokens = 0
@@ -167,8 +165,7 @@ class TokenCounter:
 
         except Exception as e:
             logger.warning(
-                f"Failed to count message tokens with tiktoken: {e}. "
-                f"Using fallback estimation."
+                f"Failed to count message tokens with tiktoken: {e}. " f"Using fallback estimation."
             )
             # Fallback: sum character counts and divide by 4
             total_chars = 0
@@ -241,9 +238,7 @@ def count_tokens(text: str, model_id: str = "default") -> int:
     return counter.count_tokens(text, model_id)
 
 
-def count_message_tokens(
-    messages: List[Dict[str, Any]], model_id: str = "default"
-) -> int:
+def count_message_tokens(messages: List[Dict[str, Any]], model_id: str = "default") -> int:
     """
     Convenience function to count tokens in messages.
 

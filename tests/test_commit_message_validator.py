@@ -4,7 +4,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "validate_commit_msg.py"
 
 
