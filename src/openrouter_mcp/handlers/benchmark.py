@@ -118,12 +118,10 @@ class ResponseQualityAnalyzer:
 
     def _calculate_relevance(self, prompt: str, response: str) -> float:
         """Calculate how relevant the response is to the prompt."""
-        prompt_words = set(prompt.lower().split())
-        response_words = set(response.lower().split())
-
-        # Remove common stopwords for better matching
-        prompt_words = prompt_words - CORE_ENGLISH_STOPWORDS
-        response_words = response_words - CORE_ENGLISH_STOPWORDS
+        prompt_terms = self._extract_meaningful_words(prompt)
+        response_terms = self._extract_meaningful_words(response)
+        prompt_words = set(prompt_terms)
+        response_words = set(response_terms)
 
         if not prompt_words:
             return 0.5  # Default score if no meaningful words in prompt
@@ -133,12 +131,25 @@ class ResponseQualityAnalyzer:
         relevance_score = overlap / len(prompt_words)
 
         # Bonus for addressing the main topic
-        if len(prompt_words) > 0:
-            main_words = list(prompt_words)[:3]  # Consider first 3 meaningful words
-            main_word_matches = sum(1 for word in main_words if word in response.lower())
+        if prompt_terms:
+            main_words = prompt_terms[:3]
+            main_word_matches = sum(1 for word in main_words if word in response_words)
             relevance_score += (main_word_matches / len(main_words)) * 0.3
 
         return min(relevance_score, 1.0)
+
+    def _extract_meaningful_words(self, text: str) -> List[str]:
+        """Extract unique, non-stopword tokens while preserving prompt order."""
+        seen: set[str] = set()
+        meaningful_words: List[str] = []
+
+        for word in re.findall(r"\b[\w'-]+\b", text.lower()):
+            if word in CORE_ENGLISH_STOPWORDS or word in seen:
+                continue
+            seen.add(word)
+            meaningful_words.append(word)
+
+        return meaningful_words
 
     def _calculate_coherence(self, response: str) -> float:
         """Calculate language coherence score."""
@@ -161,7 +172,7 @@ class ResponseQualityAnalyzer:
         return min(coherence_score, 1.0)
 
 
-@dataclass(init=False)
+@dataclass
 class BenchmarkResult:
     """Result from benchmarking a single model."""
 
@@ -188,93 +199,68 @@ class BenchmarkResult:
     error_message: Optional[str] = None
     metrics: Optional[Any] = None
 
-    def __init__(self, model_id: str, *args: Any, **kwargs: Any) -> None:
-        # Detect enhanced-style signature (success/response/error_message/metrics)
-        is_enhanced = "success" in kwargs or (args and isinstance(args[0], bool))
-        is_standard = (
-            "prompt" in kwargs
-            or "response_time_ms" in kwargs
-            or "tokens_used" in kwargs
-            or "cost" in kwargs
-            or "timestamp" in kwargs
-        )
-
-        if is_enhanced and not is_standard:
-            # Enhanced-style: model_id, success, response, error_message, metrics, timestamp?
-            success = kwargs.pop("success", None)
-            response = kwargs.pop("response", None)
-            error_message = kwargs.pop("error_message", None)
-            metrics = kwargs.pop("metrics", None)
-            timestamp = kwargs.pop("timestamp", None)
-
-            if args:
-                success = args[0] if len(args) > 0 else success
-                response = args[1] if len(args) > 1 else response
-                error_message = args[2] if len(args) > 2 else error_message
-                metrics = args[3] if len(args) > 3 else metrics
-                timestamp = args[4] if len(args) > 4 else timestamp
-
-            self.model_id = model_id
-            self.prompt = ""
-            self.response = response
-            self.response_time_ms = 0.0
-            self.tokens_used = 0
-            self.cost = 0.0
-            self.timestamp = timestamp or datetime.now(timezone.utc)
-            self.error = error_message
-            self.success = success if success is not None else self.error is None
-            self.error_message = error_message
-            self.metrics = metrics
-            # Initialize optional metric fields
-            self.prompt_tokens = kwargs.pop("prompt_tokens", None)
-            self.completion_tokens = kwargs.pop("completion_tokens", None)
-            self.input_cost_per_1k_tokens = kwargs.pop("input_cost_per_1k_tokens", None)
-            self.output_cost_per_1k_tokens = kwargs.pop("output_cost_per_1k_tokens", None)
-            self.quality_score = kwargs.pop("quality_score", None)
-            self.response_length = kwargs.pop("response_length", None)
-            self.contains_code_example = kwargs.pop("contains_code_example", None)
-            self.language_coherence_score = kwargs.pop("language_coherence_score", None)
-            self.throughput_tokens_per_second = kwargs.pop("throughput_tokens_per_second", None)
-            return
-
-        # Standard-style (original benchmark result)
-        if args:
-            # Positional mapping: prompt, response, response_time_ms, tokens_used, cost, timestamp, error?
-            if len(args) >= 6:
-                kwargs.setdefault("prompt", args[0])
-                kwargs.setdefault("response", args[1])
-                kwargs.setdefault("response_time_ms", args[2])
-                kwargs.setdefault("tokens_used", args[3])
-                kwargs.setdefault("cost", args[4])
-                kwargs.setdefault("timestamp", args[5])
-                if len(args) > 6:
-                    kwargs.setdefault("error", args[6])
-
-        self.model_id = model_id
-        self.prompt = kwargs.pop("prompt", "")
-        self.response = kwargs.pop("response", None)
-        self.response_time_ms = kwargs.pop("response_time_ms", 0.0)
-        self.tokens_used = kwargs.pop("tokens_used", 0)
-        self.cost = kwargs.pop("cost", 0.0)
-        self.timestamp = kwargs.pop("timestamp", datetime.now(timezone.utc))
-        self.error = kwargs.pop("error", None)
-        self.prompt_tokens = kwargs.pop("prompt_tokens", None)
-        self.completion_tokens = kwargs.pop("completion_tokens", None)
-        self.input_cost_per_1k_tokens = kwargs.pop("input_cost_per_1k_tokens", None)
-        self.output_cost_per_1k_tokens = kwargs.pop("output_cost_per_1k_tokens", None)
-        self.quality_score = kwargs.pop("quality_score", None)
-        self.response_length = kwargs.pop("response_length", None)
-        self.contains_code_example = kwargs.pop("contains_code_example", None)
-        self.language_coherence_score = kwargs.pop("language_coherence_score", None)
-        self.throughput_tokens_per_second = kwargs.pop("throughput_tokens_per_second", None)
-        self.success = kwargs.pop("success", None)
-        self.error_message = kwargs.pop("error_message", None)
-        self.metrics = kwargs.pop("metrics", None)
-
+    def __post_init__(self) -> None:
+        if self.timestamp.tzinfo is None:
+            self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
         if self.success is None:
             self.success = self.error is None
         if self.error_message is None and self.error:
             self.error_message = self.error
+
+    @classmethod
+    def from_standard_result(
+        cls,
+        *,
+        model_id: str,
+        prompt: str,
+        response: Optional[str],
+        response_time_ms: float,
+        tokens_used: int,
+        cost: float,
+        timestamp: datetime,
+        error: Optional[str] = None,
+        **extra: Any,
+    ) -> "BenchmarkResult":
+        """Build a standard benchmark result with explicit fields."""
+        return cls(
+            model_id=model_id,
+            prompt=prompt,
+            response=response,
+            response_time_ms=response_time_ms,
+            tokens_used=tokens_used,
+            cost=cost,
+            timestamp=timestamp,
+            error=error,
+            **extra,
+        )
+
+    @classmethod
+    def from_enhanced_result(
+        cls,
+        *,
+        model_id: str,
+        success: bool,
+        response: Optional[str],
+        error_message: Optional[str],
+        metrics: Optional[Any] = None,
+        timestamp: Optional[datetime] = None,
+        **extra: Any,
+    ) -> "BenchmarkResult":
+        """Build a compatibility result for enhanced benchmark consumers."""
+        return cls(
+            model_id=model_id,
+            prompt="",
+            response=response,
+            response_time_ms=0.0,
+            tokens_used=0,
+            cost=0.0,
+            timestamp=timestamp or datetime.now(timezone.utc),
+            error=error_message,
+            success=success,
+            error_message=error_message,
+            metrics=metrics,
+            **extra,
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -285,8 +271,34 @@ class BenchmarkResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BenchmarkResult":
         """Create from dictionary."""
-        data["timestamp"] = datetime.fromisoformat(data["timestamp"])
-        return cls(**data)
+        payload = dict(data)
+        payload["timestamp"] = datetime.fromisoformat(payload["timestamp"])
+
+        if {
+            "prompt",
+            "response_time_ms",
+            "tokens_used",
+            "cost",
+        }.issubset(payload):
+            return cls(**payload)
+
+        return cls.from_enhanced_result(
+            model_id=payload["model_id"],
+            success=payload.get("success", payload.get("error") is None),
+            response=payload.get("response"),
+            error_message=payload.get("error_message", payload.get("error")),
+            metrics=payload.get("metrics"),
+            timestamp=payload["timestamp"],
+            prompt_tokens=payload.get("prompt_tokens"),
+            completion_tokens=payload.get("completion_tokens"),
+            input_cost_per_1k_tokens=payload.get("input_cost_per_1k_tokens"),
+            output_cost_per_1k_tokens=payload.get("output_cost_per_1k_tokens"),
+            quality_score=payload.get("quality_score"),
+            response_length=payload.get("response_length"),
+            contains_code_example=payload.get("contains_code_example"),
+            language_coherence_score=payload.get("language_coherence_score"),
+            throughput_tokens_per_second=payload.get("throughput_tokens_per_second"),
+        )
 
 
 @dataclass
@@ -521,7 +533,7 @@ class BenchmarkHandler:
         **extra: Any,
     ) -> BenchmarkResult:
         """Build a benchmark result with standard fields and optional extras."""
-        return BenchmarkResult(
+        return BenchmarkResult.from_standard_result(
             model_id=model_id,
             prompt=prompt,
             response=response,
@@ -1048,7 +1060,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             )
 
             # Use actual token breakdown if available
-            if prompt_tokens and completion_tokens:
+            if prompt_tokens is not None and completion_tokens is not None:
                 cost = (
                     prompt_tokens * prompt_price + completion_tokens * completion_price
                 ) / 1_000_000

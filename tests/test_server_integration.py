@@ -56,9 +56,11 @@ class TestServerInitialization:
         assert hasattr(mcp, "list_tools")
 
     def test_handler_modules_imported(self, mock_env_vars):
-        """Test that all handler modules are imported during server init."""
-        # Import server which triggers handler imports
+        """Test that handlers can be registered explicitly during server init."""
+        from openrouter_mcp.handlers import register_handlers
         from openrouter_mcp.mcp_registry import mcp
+
+        register_handlers()
 
         # Verify handlers have registered tools
         tools = _get_registered_tools(mcp)
@@ -81,9 +83,10 @@ class TestHandlerRegistration:
 
     def test_all_handlers_register_tools(self, mock_env_vars):
         """Test that all handlers register their tools with the MCP instance."""
+        from openrouter_mcp.handlers import register_handlers
         from openrouter_mcp.mcp_registry import mcp
 
-        # Import all handlers
+        register_handlers()
 
         tools = _get_registered_tools(mcp)
 
@@ -116,18 +119,20 @@ class TestHandlerRegistration:
 
     def test_tool_count(self, mock_env_vars):
         """Test that the correct number of tools are registered."""
+        from openrouter_mcp.handlers import register_handlers
         from openrouter_mcp.mcp_registry import mcp
 
-        # Import handlers to trigger registration
+        register_handlers()
 
         tools = _get_registered_tools(mcp)
         assert len(tools) >= 15, f"Expected at least 15 tools, got {len(tools)}"
 
     def test_tool_metadata(self, mock_env_vars):
         """Test that registered tools have proper metadata."""
+        from openrouter_mcp.handlers import register_handlers
         from openrouter_mcp.mcp_registry import mcp
 
-        # Import handlers
+        register_handlers()
 
         tools = _get_registered_tools(mcp)
 
@@ -192,6 +197,18 @@ class TestEnvironmentValidation:
         # Should raise ValueError
         with pytest.raises(ValueError):
             create_app()
+
+    def test_create_app_registers_handlers(self, mock_env_vars):
+        """Test that create_app explicitly registers handlers before returning."""
+        from openrouter_mcp.server import create_app, mcp
+
+        with patch("openrouter_mcp.server.register_handlers", create=True) as mock_register:
+            with patch("openrouter_mcp.server.validate_environment") as mock_validate:
+                app = create_app()
+
+        assert app is mcp
+        mock_register.assert_called_once()
+        mock_validate.assert_called_once()
 
 
 class TestLifecycleManagement:
@@ -300,6 +317,22 @@ class TestServerMain:
             # Verify create_app was called
             mock_create_app.assert_called_once()
 
+    def test_main_configures_logging_before_startup(self, mock_env_vars):
+        """Test that main() configures logging at runtime."""
+        from openrouter_mcp.server import main
+
+        with patch("openrouter_mcp.server.configure_logging", create=True) as mock_configure:
+            with patch("openrouter_mcp.server.create_app") as mock_create_app:
+                mock_app = Mock()
+                mock_app.run.side_effect = KeyboardInterrupt()
+                mock_create_app.return_value = mock_app
+
+                with patch("openrouter_mcp.server.signal.signal"):
+                    with patch("openrouter_mcp.server.asyncio.run"):
+                        main()
+
+        mock_configure.assert_called_once()
+
     def test_main_starts_server(self, mock_env_vars):
         """Test that main() starts the MCP server."""
         from openrouter_mcp.server import main
@@ -397,27 +430,20 @@ class TestIntegrationPoints:
         assert hasattr(manager, "get_consensus_engine")
 
     def test_dotenv_loading(self, tmp_path, monkeypatch):
-        """Test that .env file is loaded if present."""
-        # Create a temporary .env file
+        """Test that create_app loads .env at runtime if present."""
         env_file = tmp_path / ".env"
         env_file.write_text("OPENROUTER_API_KEY=test-key-from-file\n")
-
-        # Change to temp directory
         monkeypatch.chdir(tmp_path)
-
-        # Clear environment
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-
-        # Re-import server to trigger dotenv loading
-        import importlib
 
         from openrouter_mcp import server
 
-        importlib.reload(server)
+        with patch("openrouter_mcp.server.register_handlers", create=True):
+            with patch("openrouter_mcp.server.validate_environment"):
+                with patch("openrouter_mcp.server.load_dotenv") as mock_load_dotenv:
+                    server.create_app()
 
-        # Verify API key was loaded (but validate_environment will still fail
-        # because we're in a different process and load_dotenv() ran earlier)
-        # This test verifies the dotenv import exists
+        mock_load_dotenv.assert_called_once()
 
 
 class TestServerConfiguration:

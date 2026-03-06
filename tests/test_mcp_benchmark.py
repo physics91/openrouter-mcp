@@ -145,7 +145,7 @@ class TestMCPBenchmarkTools:
         models = ["invalid-model"]
 
         # 실패한 결과
-        failed_result = BenchmarkResult(
+        failed_result = BenchmarkResult.from_enhanced_result(
             model_id="invalid-model",
             success=False,
             response=None,
@@ -237,27 +237,27 @@ class TestMCPBenchmarkTools:
 
             # 벤치마크 결과 모킹
             mock_handler.benchmark_models.return_value = {
-                "gpt-4": BenchmarkResult(
-                    "gpt-4",
-                    True,
-                    "Response",
-                    None,
-                    BenchmarkMetrics(
-                        1.0,
-                        1.0,
-                        1.0,
-                        100,
-                        50,
-                        150,
-                        0.001,
-                        0.001,
-                        0.001,
-                        9.0,
-                        150.0,
-                        1.0,
-                        0.9,
-                        0.8,
-                        0.85,
+                "gpt-4": BenchmarkResult.from_enhanced_result(
+                    model_id="gpt-4",
+                    success=True,
+                    response="Response",
+                    error_message=None,
+                    metrics=BenchmarkMetrics(
+                        avg_response_time_ms=1.0,
+                        avg_tokens_used=1.0,
+                        avg_cost=1.0,
+                        total_cost=100,
+                        success_rate=50,
+                        sample_count=150,
+                        avg_quality_score=0.001,
+                        avg_throughput=0.001,
+                        avg_prompt_tokens=0.001,
+                        avg_completion_tokens=9.0,
+                        cost_per_quality_point=150.0,
+                        avg_total_tokens=1.0,
+                        avg_response_length=0.9,
+                        avg_input_cost_per_1k_tokens=0.8,
+                        avg_output_cost_per_1k_tokens=0.85,
                     ),
                 )
             }
@@ -269,7 +269,16 @@ class TestMCPBenchmarkTools:
             ) as mock_analyzer_class:
                 mock_analyzer = Mock()
                 mock_analyzer.rank_models.return_value = [
-                    (BenchmarkResult("gpt-4", True, "Response", None, None), 0.9)
+                    (
+                        BenchmarkResult.from_enhanced_result(
+                            model_id="gpt-4",
+                            success=True,
+                            response="Response",
+                            error_message=None,
+                            metrics=None,
+                        ),
+                        0.9,
+                    )
                 ]
                 mock_analyzer_class.return_value = mock_analyzer
 
@@ -300,7 +309,7 @@ class TestMCPBenchmarkTools:
         ]
 
         def _make_result(model_id: str) -> BenchmarkResult:
-            return BenchmarkResult(
+            return BenchmarkResult.from_enhanced_result(
                 model_id=model_id,
                 success=True,
                 response="ok",

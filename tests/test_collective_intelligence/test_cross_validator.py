@@ -7,7 +7,7 @@ including peer review, adversarial validation, and specialized validators.
 
 import asyncio
 from datetime import datetime
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -162,12 +162,66 @@ class TestFactCheckValidator:
             confidence=0.9,
         )
 
+        mock_model_provider.process_task.side_effect = None
         mock_model_provider.process_task.return_value = fact_check_response
 
         issues = await validator.validate(result, sample_task, "fact_checker_model")
 
         assert isinstance(issues, list)
         assert len(issues) == 0  # Should find no issues
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "fact_check_message",
+        [
+            "No errors found in the response.",
+            "The answer appears correct and no issues found.",
+        ],
+    )
+    async def test_fact_check_validate_no_errors_false_positive(
+        self,
+        mock_model_provider,
+        sample_task,
+        sample_processing_results,
+        fact_check_message,
+    ):
+        """Test that negative status phrases do not create validation issues."""
+        validator = FactCheckValidator(mock_model_provider)
+        result = sample_processing_results[0]
+
+        mock_model_provider.process_task.return_value = ProcessingResult(
+            task_id="fact_check_test",
+            model_id="fact_checker",
+            content=fact_check_message,
+            confidence=0.9,
+        )
+        mock_model_provider.process_task.side_effect = None
+
+        issues = await validator.validate(result, sample_task, "fact_checker_model")
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_fact_check_validate_mixed_sentence_preserves_issue(
+        self, mock_model_provider, sample_task, sample_processing_results
+    ):
+        """Test negated phrases do not hide later factual issues in the same sentence."""
+        validator = FactCheckValidator(mock_model_provider)
+        result = sample_processing_results[0]
+
+        mock_model_provider.process_task.return_value = ProcessingResult(
+            task_id="fact_check_test",
+            model_id="fact_checker",
+            content="No errors found at first glance, but the final claim is incorrect.",
+            confidence=0.9,
+        )
+        mock_model_provider.process_task.side_effect = None
+
+        issues = await validator.validate(result, sample_task, "fact_checker_model")
+
+        assert len(issues) == 1
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -265,9 +319,7 @@ class TestCrossValidator:
         assert validator.model_provider == mock_model_provider
         assert isinstance(validator.config, ValidationConfig)
         assert isinstance(validator.specialized_validators, dict)
-        assert (
-            ValidationCriteria.FACTUAL_CORRECTNESS in validator.specialized_validators
-        )
+        assert ValidationCriteria.FACTUAL_CORRECTNESS in validator.specialized_validators
         assert ValidationCriteria.BIAS_NEUTRALITY in validator.specialized_validators
         assert isinstance(validator.validation_history, list)
         assert len(validator.validation_history) == 0
@@ -328,9 +380,7 @@ class TestCrossValidator:
         model = sample_models[0]
         result = sample_processing_results[0]
 
-        suitability = validator._calculate_validator_suitability(
-            model, sample_task, result
-        )
+        suitability = validator._calculate_validator_suitability(model, sample_task, result)
 
         assert isinstance(suitability, float)
         assert 0.0 <= suitability <= 1.0
@@ -377,6 +427,78 @@ class TestCrossValidator:
         assert 0.0 <= validation_report.consensus_level <= 1.0
 
     @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_peer_review_validation_ignores_no_errors_phrase(
+        self, mock_model_provider, sample_processing_results
+    ):
+        """Test that peer review parsing ignores plain 'no errors found' feedback."""
+        validator = CrossValidator(mock_model_provider)
+
+        validation_result = ProcessingResult(
+            task_id="peer_review_no_errors",
+            model_id="validator_1",
+            content="No errors found. Overall strong answer.",
+            confidence=0.9,
+        )
+
+        issues = validator._parse_peer_review_result(validation_result, "validator_1")
+
+        assert issues == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_peer_review_validation_mixed_feedback_keeps_real_issue(
+        self, mock_model_provider, sample_processing_results
+    ):
+        """Test that mixed feedback still keeps strong issue signals."""
+        validator = CrossValidator(mock_model_provider)
+
+        validation_result = ProcessingResult(
+            task_id="peer_review_mixed",
+            model_id="validator_1",
+            content="No errors in the introduction, but the conclusion is incorrect.",
+            confidence=0.9,
+        )
+
+        issues = validator._parse_peer_review_result(validation_result, "validator_1")
+
+        assert len(issues) == 1
+        assert issues[0].description.endswith("incorrect")
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_peer_review_validation_records_validator_failures_in_metadata(
+        self, mock_model_provider, sample_task, sample_processing_results
+    ):
+        """Test peer review validator failures are captured in report metadata."""
+        validator = CrossValidator(mock_model_provider)
+        result = sample_processing_results[0]
+        validator_models = ["validator_1", "validator_2"]
+
+        mock_model_provider.process_task.side_effect = [
+            RuntimeError("peer reviewer unavailable"),
+            ProcessingResult(
+                task_id="peer_review_2",
+                model_id="validator_2",
+                content="No errors found. Overall clear response.",
+                confidence=0.85,
+            ),
+        ]
+
+        validation_report = await validator._peer_review_validation(
+            result, sample_task, validator_models
+        )
+
+        assert validation_report.issues == []
+        assert validation_report.metadata["validator_failures"] == [
+            {
+                "validator_model_id": "validator_1",
+                "criteria": ValidationCriteria.ACCURACY.value,
+                "error": "peer reviewer unavailable",
+            }
+        ]
+
+    @pytest.mark.asyncio
     @pytest.mark.integration
     async def test_adversarial_validation(
         self, mock_model_provider, sample_task, sample_processing_results
@@ -414,6 +536,39 @@ class TestCrossValidator:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
+    async def test_adversarial_validation_records_validator_failures_in_metadata(
+        self, mock_model_provider, sample_task, sample_processing_results
+    ):
+        """Test adversarial validator failures are captured in report metadata."""
+        validator = CrossValidator(mock_model_provider)
+        result = sample_processing_results[0]
+        validator_models = ["adversary_1", "adversary_2"]
+
+        mock_model_provider.process_task.side_effect = [
+            RuntimeError("adversarial reviewer unavailable"),
+            ProcessingResult(
+                task_id="adversarial_2",
+                model_id="adversary_2",
+                content="The response seems weak in its argumentation and lacks evidence",
+                confidence=0.85,
+            ),
+        ]
+
+        validation_report = await validator._adversarial_validation(
+            result, sample_task, validator_models
+        )
+
+        assert validation_report.metadata["validator_failures"] == [
+            {
+                "validator_model_id": "adversary_1",
+                "criteria": ValidationCriteria.LOGICAL_SOUNDNESS.value,
+                "error": "adversarial reviewer unavailable",
+            }
+        ]
+        assert len(validation_report.issues) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
     async def test_consensus_validation(
         self, mock_model_provider, sample_task, sample_processing_results
     ):
@@ -445,9 +600,7 @@ class TestCrossValidator:
         )
 
         assert isinstance(validation_report, ValidationReport)
-        assert (
-            validation_report.validation_strategy == ValidationStrategy.CONSENSUS_CHECK
-        )
+        assert validation_report.validation_strategy == ValidationStrategy.CONSENSUS_CHECK
         assert 0.0 <= validation_report.consensus_level <= 1.0
 
     @pytest.mark.asyncio
@@ -477,6 +630,42 @@ class TestCrossValidator:
 
         assert isinstance(validation_report, ValidationReport)
         assert validation_report.validation_strategy == ValidationStrategy.FACT_CHECK
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_fact_check_validator_failure_metadata_exposed_in_process_result(
+        self, mock_model_provider, sample_models, sample_task, sample_processing_results
+    ):
+        """Test validator failures are exposed via metadata instead of issue conversion."""
+        config = ValidationConfig(
+            strategy=ValidationStrategy.FACT_CHECK,
+            min_validators=1,
+            max_validators=1,
+        )
+        validator = CrossValidator(mock_model_provider, config)
+        result = sample_processing_results[0]
+        failed_validator = sample_models[1].model_id
+
+        mock_model_provider.get_available_models.return_value = [sample_models[1]]
+        validator.specialized_validators[
+            ValidationCriteria.FACTUAL_CORRECTNESS
+        ].validate = AsyncMock(side_effect=RuntimeError("validator service unavailable"))
+
+        validation_result = await validator.process(result, sample_task)
+
+        assert validation_result.validation_report.issues == []
+        assert validation_result.metadata["total_issues"] == 0
+        assert validation_result.metadata["validator_failures"] == [
+            {
+                "validator_model_id": failed_validator,
+                "criteria": ValidationCriteria.FACTUAL_CORRECTNESS.value,
+                "error": "validator service unavailable",
+            }
+        ]
+        assert (
+            validation_result.validation_report.metadata["validator_failures"]
+            == validation_result.metadata["validator_failures"]
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -850,18 +1039,11 @@ class TestCrossValidator:
 
         # Run validations concurrently - use matching tasks
         validation_results = await asyncio.gather(
-            *[
-                validator.process(result, task)
-                for result, task in zip(test_results, tasks)
-            ],
+            *[validator.process(result, task) for result, task in zip(test_results, tasks)],
             return_exceptions=True,
         )
 
         # All should succeed
         assert len(validation_results) == 3
-        assert all(
-            isinstance(result, ValidationResult) for result in validation_results
-        )
-        assert (
-            len(set(result.task_id for result in validation_results)) == 3
-        )  # All unique
+        assert all(isinstance(result, ValidationResult) for result in validation_results)
+        assert len(set(result.task_id for result in validation_results)) == 3  # All unique

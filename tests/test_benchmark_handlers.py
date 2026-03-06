@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import src.openrouter_mcp.handlers.benchmark as benchmark_module
 from src.openrouter_mcp.handlers.benchmark import (
     BenchmarkError,
     BenchmarkReportExporter,
@@ -103,9 +104,7 @@ This function prints a greeting."""
         assert 0 <= short_score <= 1
 
         # Long complete response
-        long_response = (
-            "This is a comprehensive answer that provides detailed information. " * 5
-        )
+        long_response = "This is a comprehensive answer that provides detailed information. " * 5
         long_score = analyzer._calculate_completeness("test", long_response)
         assert long_score > short_score
 
@@ -115,7 +114,9 @@ This function prints a greeting."""
 
         # Highly relevant
         prompt = "quantum computing advantages"
-        relevant_response = "Quantum computing offers advantages in parallel processing and optimization."
+        relevant_response = (
+            "Quantum computing offers advantages in parallel processing and optimization."
+        )
         relevant_score = analyzer._calculate_relevance(prompt, relevant_response)
 
         # Less relevant
@@ -123,6 +124,26 @@ This function prints a greeting."""
         irrelevant_score = analyzer._calculate_relevance(prompt, irrelevant_response)
 
         assert relevant_score > irrelevant_score
+
+    def test_calculate_relevance_uses_prompt_word_order_for_main_topic_bonus(self, monkeypatch):
+        """Main topic bonus should not depend on set iteration order."""
+        analyzer = ResponseQualityAnalyzer()
+
+        class ReversedSet(set):
+            def __iter__(self):
+                return iter(sorted(super().copy(), reverse=True))
+
+            def __sub__(self, other):
+                return ReversedSet(super().__sub__(other))
+
+        monkeypatch.setattr(benchmark_module, "set", ReversedSet, raising=False)
+
+        score = analyzer._calculate_relevance(
+            "alpha beta gamma delta",
+            "alpha beta gamma",
+        )
+
+        assert score == 1.0
 
     def test_calculate_coherence(self):
         """Test coherence calculation."""
@@ -269,9 +290,7 @@ This computes the factorial recursively."""
 
     def test_calculate_detailed_cost(self, handler):
         """Test detailed cost calculation."""
-        api_response = {
-            "usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
-        }
+        api_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}}
 
         model_pricing = {
             "prompt": 0.03,  # per 1k tokens
@@ -321,9 +340,7 @@ This computes the factorial recursively."""
         """Test benchmark with timeout."""
         handler.client.chat_completion = AsyncMock(side_effect=asyncio.TimeoutError())
 
-        result = await handler.benchmark_model(
-            model_id="test-model", prompt="test", timeout=1.0
-        )
+        result = await handler.benchmark_model(model_id="test-model", prompt="test", timeout=1.0)
 
         assert result.error is not None
         assert "Timeout" in result.error
@@ -387,6 +404,20 @@ This computes the factorial recursively."""
 
         # Should use actual token breakdown: (10 * 0.03 + 20 * 0.06) / 1_000_000
         expected = (10 * 0.03 + 20 * 0.06) / 1_000_000
+        assert abs(cost - expected) < 0.0000001
+
+    def test_calculate_cost_enhanced_uses_zero_token_breakdown_when_available(self, handler):
+        """Zero token counts should still use the explicit breakdown path."""
+        model_info = {
+            "pricing": {
+                "prompt": "0.03",
+                "completion": "0.06",
+            }
+        }
+
+        cost = handler._calculate_cost_enhanced(model_info, 0, 20, 20)
+
+        expected = (0 * 0.03 + 20 * 0.06) / 1_000_000
         assert abs(cost - expected) < 0.0000001
 
     @pytest.mark.asyncio
@@ -710,9 +741,7 @@ class TestMCPBenchmarkTools:
                 timestamp=datetime.now(timezone.utc),
             )
 
-            handler.benchmark_models_enhanced = AsyncMock(
-                return_value={"test-model": mock_result}
-            )
+            handler.benchmark_models_enhanced = AsyncMock(return_value={"test-model": mock_result})
             handler.save_results = AsyncMock()
 
             mock_handler.return_value = handler
@@ -735,9 +764,7 @@ class TestMCPBenchmarkTools:
             # Create a test benchmark file
             test_data = {
                 "timestamp": datetime.now().isoformat(),
-                "results": {
-                    "model1": {"success": True, "metrics": {"quality_score": 0.8}}
-                },
+                "results": {"model1": {"success": True, "metrics": {"quality_score": 0.8}}},
                 "config": {"models": ["model1"]},
             }
 
@@ -793,9 +820,7 @@ class TestIntegration:
     async def test_end_to_end_benchmark_workflow(self):
         """Test complete benchmark workflow."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "src.openrouter_mcp.handlers.benchmark.ModelCache"
-            ) as mock_cache:
+            with patch("src.openrouter_mcp.handlers.benchmark.ModelCache") as mock_cache:
                 # Create handler
                 handler = EnhancedBenchmarkHandler(
                     api_key="test-key", model_cache=mock_cache(), results_dir=tmpdir
@@ -817,9 +842,7 @@ class TestIntegration:
                 )
 
                 # Run benchmark
-                result = await handler.benchmark_model(
-                    model_id="test-model", prompt="test prompt"
-                )
+                result = await handler.benchmark_model(model_id="test-model", prompt="test prompt")
 
                 assert result.error is None
                 assert result.response is not None

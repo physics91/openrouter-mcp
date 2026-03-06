@@ -84,6 +84,37 @@ class TestBenchmarkResult:
         assert result.response is None
         assert result.tokens_used == 0
 
+    def test_benchmark_result_from_enhanced_result(self):
+        """Test creating a compatibility result from enhanced-style fields."""
+        metrics = BenchmarkMetrics(
+            avg_response_time_ms=500.0,
+            avg_tokens_used=100.0,
+            avg_cost=0.001,
+            total_cost=0.001,
+            success_rate=1.0,
+            sample_count=1,
+        )
+
+        result = BenchmarkResult.from_enhanced_result(
+            model_id="openai/gpt-4",
+            success=False,
+            response=None,
+            error_message="Model not found",
+            metrics=metrics,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        assert result.model_id == "openai/gpt-4"
+        assert result.prompt == ""
+        assert result.response is None
+        assert result.response_time_ms == 0.0
+        assert result.tokens_used == 0
+        assert result.cost == 0.0
+        assert result.success is False
+        assert result.error == "Model not found"
+        assert result.error_message == "Model not found"
+        assert result.metrics is metrics
+
 
 class TestBenchmarkMetrics:
     """Test the BenchmarkMetrics class."""
@@ -581,9 +612,7 @@ class TestAdvancedBenchmarkHandler:
     async def test_quality_assessment(self, enhanced_handler):
         """Test response quality assessment."""
         # This will fail initially - we need to implement quality assessment
-        response_text = (
-            "Quantum computing is a revolutionary technology that uses quantum bits..."
-        )
+        response_text = "Quantum computing is a revolutionary technology that uses quantum bits..."
         quality_score = enhanced_handler.assess_response_quality(
             prompt="Explain quantum computing", response=response_text
         )
@@ -692,9 +721,7 @@ class TestNewBenchmarkTools:
             # Test markdown export - needs actual result objects not dict
             md_path = os.path.join(temp_dir, "test_report.md")
             # Create a simplified dict for markdown export with first result from each model
-            markdown_results = {
-                model: results[0] for model, results in comparison.results.items()
-            }
+            markdown_results = {model: results[0] for model, results in comparison.results.items()}
             await exporter.export_markdown(markdown_results, md_path)
             assert os.path.exists(md_path)
 
@@ -709,10 +736,7 @@ class TestNewBenchmarkTools:
     @pytest.mark.asyncio
     async def test_compare_model_performance_tool(self):
         """Test advanced model performance comparison."""
-        from src.openrouter_mcp.handlers.benchmark import (
-            BenchmarkMetrics,
-            ModelPerformanceAnalyzer,
-        )
+        from src.openrouter_mcp.handlers.benchmark import BenchmarkMetrics, ModelPerformanceAnalyzer
 
         # Test the analyzer directly
         analyzer = ModelPerformanceAnalyzer()
@@ -784,9 +808,7 @@ class TestBenchmarkIntegration:
 
         # Mock client response
         mock_response = {
-            "choices": [
-                {"message": {"content": "Test response for quantum computing analysis"}}
-            ],
+            "choices": [{"message": {"content": "Test response for quantum computing analysis"}}],
             "usage": {"prompt_tokens": 15, "completion_tokens": 35, "total_tokens": 50},
         }
 
@@ -810,9 +832,7 @@ class TestBenchmarkIntegration:
         assert result.quality_score is not None
         assert result.quality_score > 0
         assert result.throughput_tokens_per_second is not None
-        assert result.response_length == len(
-            "Test response for quantum computing analysis"
-        )
+        assert result.response_length == len("Test response for quantum computing analysis")
 
         # Test cost calculation
         expected_cost = (15 * 0.03 + 35 * 0.06) / 1_000_000
@@ -833,19 +853,13 @@ class TestBenchmarkIntegration:
         exporter = BenchmarkReportExporter(handler)
         with tempfile.TemporaryDirectory() as temp_dir:
             # Test all export formats
-            csv_path = exporter.export_to_csv(
-                comparison, os.path.join(temp_dir, "test.csv")
-            )
+            csv_path = exporter.export_to_csv(comparison, os.path.join(temp_dir, "test.csv"))
             assert os.path.exists(csv_path)
 
-            md_path = exporter.export_to_markdown(
-                comparison, os.path.join(temp_dir, "test.md")
-            )
+            md_path = exporter.export_to_markdown(comparison, os.path.join(temp_dir, "test.md"))
             assert os.path.exists(md_path)
 
-            json_path = exporter.export_to_json(
-                comparison, os.path.join(temp_dir, "test.json")
-            )
+            json_path = exporter.export_to_json(comparison, os.path.join(temp_dir, "test.json"))
             assert os.path.exists(json_path)
 
         # Test performance analysis
@@ -888,23 +902,21 @@ class TestBenchmarkIntegration:
         # Test code-containing response
         code_response = """
         Here's how to implement a simple quantum circuit:
-        
+
         ```python
         from qiskit import QuantumCircuit, execute, Aer
-        
+
         def create_bell_state():
             qc = QuantumCircuit(2, 2)
             qc.h(0)  # Hadamard gate
             qc.cx(0, 1)  # CNOT gate
             return qc
         ```
-        
+
         This creates a Bell state, demonstrating quantum entanglement.
         """
 
-        code_analysis = analyzer.analyze_response(
-            "Show me quantum code", code_response.strip()
-        )
+        code_analysis = analyzer.analyze_response("Show me quantum code", code_response.strip())
 
         assert code_analysis["contains_code_example"] is True
         assert code_analysis["quality_score"] > 0.6

@@ -8,12 +8,13 @@ and improve overall output quality through peer review processes.
 
 import asyncio
 import logging
+import re
 import statistics
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .base import (
     CollectiveIntelligenceComponent,
@@ -122,6 +123,23 @@ class ValidationResult:
 
 
 @dataclass
+class ValidatorFailureRecord:
+    """Structured validator failure metadata."""
+
+    validator_model_id: str
+    criteria: ValidationCriteria
+    error: str
+
+    def to_metadata(self) -> Dict[str, str]:
+        """Serialize the failure for report and process metadata."""
+        return {
+            "validator_model_id": self.validator_model_id,
+            "criteria": self.criteria.value,
+            "error": self.error,
+        }
+
+
+@dataclass
 class ValidationReport:
     """Comprehensive validation report for a result."""
 
@@ -146,6 +164,7 @@ class SpecializedValidator:
     def __init__(self, criteria: ValidationCriteria, model_provider: ModelProvider):
         self.criteria = criteria
         self.model_provider = model_provider
+        self._last_failure: Optional[ValidatorFailureRecord] = None
 
     async def validate(
         self,
@@ -156,9 +175,51 @@ class SpecializedValidator:
         """Perform specialized validation."""
         raise NotImplementedError
 
+    async def _execute_validation_with_metadata(
+        self,
+        *,
+        validation_task: TaskContext,
+        validator_model_id: str,
+        parser: Callable[[ProcessingResult, str], List[ValidationIssue]],
+        failure_label: str,
+    ) -> Tuple[List[ValidationIssue], Optional[ValidatorFailureRecord]]:
+        """Run validation and keep transport failures out of ValidationIssue."""
+        try:
+            validation_result = await self.model_provider.process_task(
+                validation_task, validator_model_id
+            )
+        except Exception as exc:
+            failure = ValidatorFailureRecord(
+                validator_model_id=validator_model_id,
+                criteria=self.criteria,
+                error=str(exc),
+            )
+            self._last_failure = failure
+            logger.warning(f"{failure_label} failed with model {validator_model_id}: {str(exc)}")
+            return [], failure
+
+        self._last_failure = None
+        return parser(validation_result, validator_model_id), None
+
+    def consume_last_failure(self) -> Optional[ValidatorFailureRecord]:
+        """Return and clear the most recent validator failure."""
+        failure = self._last_failure
+        self._last_failure = None
+        return failure
+
 
 class FactCheckValidator(SpecializedValidator):
     """Specialized validator for fact-checking."""
+
+    _FACT_CHECK_ISSUE_PATTERNS = (
+        re.compile(r"\berrors?\b"),
+        re.compile(r"\bincorrect(?:ly|ness)?\b"),
+        re.compile(r"\binaccurate\b"),
+        re.compile(r"\binaccurac(?:y|ies)\b"),
+    )
+    _FACT_CHECK_NEGATION_PATTERN = re.compile(
+        r"\b(?:no|without)\s+(?:\w+\s+){0,2}(?:errors?|issues?|inaccurate|inaccurac(?:y|ies)|incorrect(?:ness)?)\b"
+    )
 
     def __init__(self, model_provider: ModelProvider):
         super().__init__(ValidationCriteria.FACTUAL_CORRECTNESS, model_provider)
@@ -170,6 +231,16 @@ class FactCheckValidator(SpecializedValidator):
         validator_model_id: str,
     ) -> List[ValidationIssue]:
         """Validate factual accuracy of the result."""
+        issues, _ = await self.validate_with_metadata(result, task_context, validator_model_id)
+        return issues
+
+    async def validate_with_metadata(
+        self,
+        result: ProcessingResult,
+        task_context: TaskContext,
+        validator_model_id: str,
+    ) -> Tuple[List[ValidationIssue], Optional[ValidatorFailureRecord]]:
+        """Validate factual accuracy while keeping failure metadata available."""
 
         # Create fact-checking prompt
         fact_check_prompt = f"""
@@ -193,18 +264,29 @@ class FactCheckValidator(SpecializedValidator):
             content=fact_check_prompt,
         )
 
-        try:
-            validation_result = await self.model_provider.process_task(
-                fact_check_task, validator_model_id
-            )
+        return await self._execute_validation_with_metadata(
+            validation_task=fact_check_task,
+            validator_model_id=validator_model_id,
+            parser=self._parse_fact_check_result,
+            failure_label="Fact-checking",
+        )
 
-            # Parse the validation result to extract issues
-            issues = self._parse_fact_check_result(validation_result, validator_model_id)
-            return issues
-
-        except Exception as e:
-            logger.warning(f"Fact-checking failed with model {validator_model_id}: {str(e)}")
-            return []
+    def _contains_fact_check_issue(self, content: str) -> bool:
+        """Check whether fact-check output contains an unnegated issue claim."""
+        for sentence in re.split(r"[.!?\n]+", content):
+            normalized_sentence = sentence.strip().lower()
+            if not normalized_sentence:
+                continue
+            if not any(
+                pattern.search(normalized_sentence) for pattern in self._FACT_CHECK_ISSUE_PATTERNS
+            ):
+                continue
+            residual_sentence = self._FACT_CHECK_NEGATION_PATTERN.sub(" ", normalized_sentence)
+            if any(
+                pattern.search(residual_sentence) for pattern in self._FACT_CHECK_ISSUE_PATTERNS
+            ):
+                return True
+        return False
 
     def _parse_fact_check_result(
         self, validation_result: ProcessingResult, validator_model_id: str
@@ -212,10 +294,9 @@ class FactCheckValidator(SpecializedValidator):
         """Parse fact-checking result to extract validation issues."""
         issues: List[ValidationIssue] = []
 
-        # Simple parsing logic (would be more sophisticated in practice)
         content = validation_result.content.lower()
 
-        if "error" in content or "incorrect" in content or "inaccurate" in content:
+        if self._contains_fact_check_issue(content):
             issues.append(
                 ValidationIssue(
                     issue_id=f"fact_check_{len(issues)}",
@@ -245,7 +326,6 @@ class BiasDetectionValidator(SpecializedValidator):
         validator_model_id: str,
     ) -> List[ValidationIssue]:
         """Detect potential biases in the result."""
-
         bias_check_prompt = f"""
         Analyze the following response for potential biases:
 
@@ -348,6 +428,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
         """Set validation history for backward compatibility."""
         self._validation_history = deque(value, maxlen=self.max_history_size)
 
+    def _build_validator_failure_metadata(
+        self, failures: List[ValidatorFailureRecord]
+    ) -> Dict[str, Any]:
+        """Normalize validator failures for reports and process results."""
+        serialized_failures = [failure.to_metadata() for failure in failures]
+        return {"validator_failures": serialized_failures} if serialized_failures else {}
+
     async def process(
         self, result: ProcessingResult, task_context: TaskContext, **kwargs: Any
     ) -> ValidationResult:
@@ -381,6 +468,19 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
             # Create final validation result
             processing_time = (datetime.now() - start_time).total_seconds()
+            metadata = {
+                "validator_count": len(validator_models),
+                "total_issues": len(validation_report.issues),
+                "critical_issues": len(
+                    [
+                        i
+                        for i in validation_report.issues
+                        if i.severity == ValidationSeverity.CRITICAL
+                    ]
+                ),
+            }
+            if "validator_failures" in validation_report.metadata:
+                metadata["validator_failures"] = validation_report.metadata["validator_failures"]
 
             validation_result = ValidationResult(
                 task_id=task_context.task_id,
@@ -391,17 +491,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 improvement_suggestions=improvement_suggestions,
                 quality_metrics=quality_metrics,
                 processing_time=processing_time,
-                metadata={
-                    "validator_count": len(validator_models),
-                    "total_issues": len(validation_report.issues),
-                    "critical_issues": len(
-                        [
-                            i
-                            for i in validation_report.issues
-                            if i.severity == ValidationSeverity.CRITICAL
-                        ]
-                    ),
-                },
+                metadata=metadata,
             )
 
             # Update validation history and metrics
@@ -518,6 +608,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
         all_issues: List[ValidationIssue] = []
         criteria_scores: Dict[ValidationCriteria, float] = {}
+        validator_failures: List[ValidatorFailureRecord] = []
 
         # Create validation tasks for each validator
         validation_tasks = []
@@ -536,6 +627,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
             if isinstance(validation_result, BaseException):
                 logger.warning(
                     f"Validation failed for validator {validator_models[i]}: {str(validation_result)}"
+                )
+                validator_failures.append(
+                    ValidatorFailureRecord(
+                        validator_model_id=validator_models[i],
+                        criteria=ValidationCriteria.ACCURACY,
+                        error=str(validation_result),
+                    )
                 )
                 continue
 
@@ -562,6 +660,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             criteria_scores=criteria_scores,
             consensus_level=consensus_level,
             recommendations=self._generate_recommendations(all_issues),
+            metadata=self._build_validator_failure_metadata(validator_failures),
         )
 
     def _create_peer_review_task(
@@ -617,7 +716,6 @@ class CrossValidator(CollectiveIntelligenceComponent):
     ) -> List[ValidationIssue]:
         """Parse peer review result to extract validation issues."""
         issues: List[ValidationIssue] = []
-        content = validation_result.content.lower()
 
         # Simple parsing logic (would be more sophisticated in practice)
         issue_indicators = {
@@ -629,12 +727,20 @@ class CrossValidator(CollectiveIntelligenceComponent):
             "suggest": ValidationSeverity.LOW,
         }
 
-        for indicator, severity in issue_indicators.items():
-            if indicator in content:
-                # Extract context around the indicator
-                start_idx = max(0, content.find(indicator) - 50)
-                end_idx = min(len(content), content.find(indicator) + 100)
-                context = validation_result.content[start_idx:end_idx]
+        for sentence in re.split(r"[.!?\n]+", validation_result.content):
+            normalized_sentence = sentence.strip().lower()
+            if not normalized_sentence:
+                continue
+
+            residual_sentence = re.sub(
+                r"\b(?:no|without)\s+(?:\w+\s+){0,2}(?:errors?|issues?|incorrect(?:ness)?|inaccurate|inaccurac(?:y|ies))\b",
+                " ",
+                normalized_sentence,
+            )
+
+            for indicator, severity in issue_indicators.items():
+                if indicator not in residual_sentence:
+                    continue
 
                 issues.append(
                     ValidationIssue(
@@ -644,7 +750,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
                         description=f"Peer reviewer identified: {indicator}",
                         suggestion="Review and address the identified concern",
                         confidence=validation_result.confidence,
-                        evidence=context,
+                        evidence=sentence.strip(),
                         validator_model_id=validator_model_id,
                     )
                 )
@@ -671,6 +777,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
         """
 
         all_issues = []
+        validator_failures: List[ValidatorFailureRecord] = []
 
         for validator_model_id in validator_models:
             adversarial_task = TaskContext(
@@ -688,6 +795,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
             except Exception as e:
                 logger.warning(f"Adversarial validation failed for {validator_model_id}: {str(e)}")
+                validator_failures.append(
+                    ValidatorFailureRecord(
+                        validator_model_id=validator_model_id,
+                        criteria=ValidationCriteria.LOGICAL_SOUNDNESS,
+                        error=str(e),
+                    )
+                )
 
         # Create validation report
         criteria_scores = {}
@@ -708,6 +822,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             criteria_scores=criteria_scores,
             consensus_level=consensus_level,
             recommendations=self._generate_recommendations(all_issues),
+            metadata=self._build_validator_failure_metadata(validator_failures),
         )
 
     def _parse_adversarial_result(
@@ -846,14 +961,26 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
         if ValidationCriteria.FACTUAL_CORRECTNESS in self.specialized_validators:
             fact_checker = self.specialized_validators[ValidationCriteria.FACTUAL_CORRECTNESS]
-            all_issues = []
+            all_issues: List[ValidationIssue] = []
+            validator_failures: List[ValidatorFailureRecord] = []
 
             for validator_model_id in validator_models:
                 try:
                     issues = await fact_checker.validate(result, task_context, validator_model_id)
-                    all_issues.extend(issues)
-                except Exception as e:
-                    logger.warning(f"Fact-checking failed with {validator_model_id}: {str(e)}")
+                except Exception as exc:
+                    validator_failures.append(
+                        ValidatorFailureRecord(
+                            validator_model_id=validator_model_id,
+                            criteria=ValidationCriteria.FACTUAL_CORRECTNESS,
+                            error=str(exc),
+                        )
+                    )
+                    continue
+
+                all_issues.extend(issues)
+                failure = fact_checker.consume_last_failure()
+                if failure is not None:
+                    validator_failures.append(failure)
 
             criteria_scores = {
                 ValidationCriteria.FACTUAL_CORRECTNESS: self._calculate_criteria_score(all_issues)
@@ -870,6 +997,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 criteria_scores=criteria_scores,
                 consensus_level=1.0,  # Single criteria validation
                 recommendations=self._generate_recommendations(all_issues),
+                metadata=self._build_validator_failure_metadata(validator_failures),
             )
         else:
             # Fallback to peer review

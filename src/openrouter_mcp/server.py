@@ -29,28 +29,24 @@ from dotenv import load_dotenv
 
 from .collective_intelligence import shutdown_lifecycle_manager
 from .config.constants import EnvVars, LoggingConfig
-from .handlers import chat  # noqa: F401
-from .handlers import collective_intelligence  # noqa: F401
-from .handlers import free_chat  # noqa: F401
-from .handlers import mcp_benchmark  # noqa: F401
-from .handlers import multimodal  # noqa: F401
+from .handlers import register_handlers
 from .mcp_registry import cleanup_shared_client, mcp
 from .utils.env import get_env_value
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    level=LoggingConfig.DEFAULT_LEVEL,
-    format=LoggingConfig.FORMAT,
-    datefmt=LoggingConfig.DATE_FORMAT,
-)
-
 logger = logging.getLogger(__name__)
 
-# Import handlers to register MCP tools.
-# These imports trigger the @mcp.tool() decorators on module import.
+
+def configure_logging() -> None:
+    """Configure server logging when the executable entrypoint runs."""
+    if getattr(configure_logging, "_configured", False):
+        return
+
+    logging.basicConfig(
+        level=LoggingConfig.DEFAULT_LEVEL,
+        format=LoggingConfig.FORMAT,
+        datefmt=LoggingConfig.DATE_FORMAT,
+    )
+    configure_logging._configured = True
 
 
 def validate_environment() -> None:
@@ -72,7 +68,10 @@ def validate_environment() -> None:
 
 def create_app() -> Any:
     """Create and configure the FastMCP application."""
+    load_dotenv()
     logger.info("Initializing OpenRouter MCP Server...")
+
+    register_handlers()
 
     # Validate environment
     validate_environment()
@@ -133,6 +132,7 @@ def _run_shutdown() -> None:
 def main() -> None:
     """Main entry point for the server."""
     try:
+        configure_logging()
         app = create_app()
 
         logger.info("Starting OpenRouter MCP Server via stdio")

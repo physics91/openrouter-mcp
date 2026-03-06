@@ -8,15 +8,11 @@ including adding, removing, listing, and configuring MCP servers.
 
 import json
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-# Add the parent directory to the system path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.openrouter_mcp.cli.mcp_manager import (
     MCPConfigError,
@@ -184,10 +180,7 @@ class TestMCPManager:
 
         manager.update_server(updated_config)
 
-        assert (
-            manager.config["mcpServers"]["openrouter"]["env"]["OPENROUTER_API_KEY"]
-            == "new-key"
-        )
+        assert manager.config["mcpServers"]["openrouter"]["env"]["OPENROUTER_API_KEY"] == "new-key"
 
     def test_validate_server_compatibility(self, manager):
         """Test validating server compatibility."""
@@ -202,15 +195,11 @@ class TestMCPManager:
 
     def test_handle_duplicate_server(self, manager):
         """Test handling duplicate server with force option."""
-        config = MCPServerConfig(
-            name="openrouter", command="python", args=["-m", "old.server"]
-        )
+        config = MCPServerConfig(name="openrouter", command="python", args=["-m", "old.server"])
 
         manager.add_server(config)
 
-        new_config = MCPServerConfig(
-            name="openrouter", command="python", args=["-m", "new.server"]
-        )
+        new_config = MCPServerConfig(name="openrouter", command="python", args=["-m", "new.server"])
 
         # Should replace with force=True
         manager.add_server(new_config, force=True)
@@ -359,6 +348,31 @@ class TestCLIIntegration:
                 "openrouter", api_key="test-key", force=False
             )
 
+    def test_claude_mcp_add_custom_command(self, cli_runner):
+        """Test custom server path uses explicit custom configuration."""
+        from src.openrouter_mcp.cli.commands import add_mcp_server
+
+        with patch("src.openrouter_mcp.cli.commands.MCPManager") as MockManager:
+            MockManager.PRESETS = {"openrouter": {}}
+            mock_manager = MockManager.return_value
+
+            result = add_mcp_server(
+                "custom-server",
+                command="python",
+                args=["-m", "custom.server"],
+                cwd="/tmp/custom",
+                env={"API_KEY": "value"},
+            )
+
+            assert result is True
+            mock_manager.add_server_from_preset.assert_not_called()
+            added_config = mock_manager.add_server.call_args.args[0]
+            assert added_config.name == "custom-server"
+            assert added_config.command == "python"
+            assert added_config.args == ["-m", "custom.server"]
+            assert added_config.cwd == "/tmp/custom"
+            assert added_config.env == {"API_KEY": "value"}
+
     def test_claude_mcp_remove_command(self, cli_runner):
         """Test 'claude mcp remove openrouter' command."""
         from src.openrouter_mcp.cli.commands import remove_mcp_server
@@ -411,12 +425,20 @@ class TestCLIIntegration:
         from src.openrouter_mcp.cli.commands import configure_mcp_server
 
         with patch("src.openrouter_mcp.cli.commands.MCPManager"):
-
-            result = configure_mcp_server(
-                "openrouter", env={"OPENROUTER_API_KEY": "new-key"}
-            )
+            result = configure_mcp_server("openrouter", env={"OPENROUTER_API_KEY": "new-key"})
 
             assert result is True
+
+    def test_mcp_group_configures_logging(self, cli_runner):
+        """Test CLI group configures logging when invoked."""
+        from src.openrouter_mcp.cli.commands import mcp
+
+        with patch(
+            "src.openrouter_mcp.cli.commands.configure_cli_logging", create=True
+        ) as mock_configure:
+            mcp.callback()
+
+        mock_configure.assert_called_once()
 
 
 if __name__ == "__main__":
