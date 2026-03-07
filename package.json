@@ -52,6 +52,10 @@
     "start": "node bin/openrouter-mcp.js start",
     "init": "node bin/openrouter-mcp.js init",
     "test": "cd . && python -m pytest tests/ -v",
+    "test:contract": "node -e \"const {spawnSync}=require('child_process'); const args=['-m','pytest','tests/contracts/','-m','contract','-v']; const py=['python','python3'].find((c)=>{const r=spawnSync(c,['--version'],{stdio:'ignore'}); return !r.error && r.status===0;}); if(!py){console.error('Python executable not found (python/python3).'); process.exit(1);} const r=spawnSync(py,args,{stdio:'inherit'}); process.exit(r.status===null?1:r.status);\"",
+    "test:property": "node -e \"const {spawnSync}=require('child_process'); const args=['-m','pytest','tests/test_property/','-m','property','-v']; const py=['python','python3'].find((c)=>{const r=spawnSync(c,['--version'],{stdio:'ignore'}); return !r.error && r.status===0;}); if(!py){console.error('Python executable not found (python/python3).'); process.exit(1);} const r=spawnSync(py,args,{stdio:'inherit'}); process.exit(r.status===null?1:r.status);\"",
+    "test:replay": "node -e \"const {spawnSync}=require('child_process'); const args=['-m','pytest','tests/test_replay/','-m','replay','-v']; const py=['python','python3'].find((c)=>{const r=spawnSync(c,['--version'],{stdio:'ignore'}); return !r.error && r.status===0;}); if(!py){console.error('Python executable not found (python/python3).'); process.exit(1);} const r=spawnSync(py,args,{stdio:'inherit'}); process.exit(r.status===null?1:r.status);\"",
+    "test:assurance": "node -e \"const {spawnSync}=require('child_process'); const args=['run_tests.py','assurance','-v']; const py=['python','python3'].find((c)=>{const r=spawnSync(c,['--version'],{stdio:'ignore'}); return !r.error && r.status===0;}); if(!py){console.error('Python executable not found (python/python3).'); process.exit(1);} const r=spawnSync(py,args,{stdio:'inherit'}); process.exit(r.status===null?1:r.status);\"",
     "test:coverage": "cd . && python -m pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html",
     "test:collective": "cd . && python -m pytest tests/test_collective_intelligence_mocked.py tests/test_lifecycle_manager.py tests/test_operational_controls.py -v",
     "test:security": "node tests/test-encryption-security.js",
@@ -77,8 +81,8 @@
     "prettier": "^3.0.3"
   },
   "optionalDependencies": {
-    "keytar": "^7.9.0",
-    "argon2": "^0.31.0"
+    "argon2": "^0.31.0",
+    "keytar": "^7.9.0"
   },
   "preferGlobal": true,
   "os": [

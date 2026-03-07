@@ -1,13 +1,16 @@
 """Free model routing for zero-cost AI chat."""
 
-from .router import FreeModelRouter
+from .classifier import FreeTaskType, TaskClassifier
 from .metrics import MetricsCollector, ModelMetrics
-from .classifier import TaskClassifier, FreeTaskType
+from .quota import QuotaExceededError, QuotaTracker
+from .router import FreeModelRouter
 
 __all__ = [
     "FreeModelRouter",
     "MetricsCollector",
     "ModelMetrics",
+    "QuotaExceededError",
+    "QuotaTracker",
     "TaskClassifier",
     "FreeTaskType",
 ]

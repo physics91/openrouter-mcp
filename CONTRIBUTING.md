@@ -62,7 +62,21 @@ npm install
 npm link
 ```
 
-### 3. Environment Configuration
+### 3. Install Git Hooks (Required)
+
+This repository uses `pre-commit` hooks for local commit and push checks.
+
+```bash
+# Install git hooks declared in .pre-commit-config.yaml
+pre-commit install
+```
+
+By default, this installs:
+- `pre-commit`
+- `pre-push`
+- `commit-msg`
+
+### 4. Environment Configuration
 
 Create a `.env` file for development:
 
@@ -78,7 +92,7 @@ PORT=8000
 LOG_LEVEL=debug
 ```
 
-### 4. Verify Setup
+### 5. Verify Setup
 
 ```bash
 # Run tests
@@ -391,6 +405,32 @@ git commit -m "refactor: simplify client authentication logic"
 
 # Breaking change
 git commit -m "feat!: change API response format for consistency"
+```
+
+Commit message policy:
+- Required format: `type(scope): subject` or `type(scope)!: subject`
+- Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`, `build`, `perf`, `revert`
+- Subject rules:
+  - Must start with a lowercase English letter
+  - Must be 1-72 characters
+  - Must not end with `.`
+  - Must be English-only (no Korean characters)
+- Auto-generated exceptions:
+  - `Merge ...`
+  - `Revert "..."`
+
+Examples:
+
+```bash
+# Valid
+git commit -m "feat(cli): add commit message validator"
+git commit -m "fix: handle timeout edge case"
+
+# Invalid (ends with period)
+git commit -m "fix: handle timeout edge case."
+
+# Invalid (Korean subject)
+git commit -m "feat: 커밋 메시지 검증 추가"
 ```
 
 ## Pull Request Process

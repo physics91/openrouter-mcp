@@ -30,10 +30,21 @@ class CacheConfig:
     """Cache configuration for model and response caching."""
 
     DEFAULT_TTL_SECONDS: int = 3600  # 1 hour
-    MIN_TTL_HOURS: float = 0.08334   # 5 minutes minimum
+    MIN_TTL_HOURS: float = 0.08334  # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
     MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
     BENCHMARK_CACHE_TTL_HOURS: float = 6.0
+    # Pattern list used to heuristically identify "latest" model families.
+    # This is intentionally centralized for easier updates.
+    LATEST_MODEL_PATTERNS: tuple[str, ...] = (
+        r"gpt-5",
+        r"claude-4",
+        r"gemini-2\.5",
+        r"deepseek-v3",
+        r"o1",
+        r"grok-3",
+        r"llama.*4",
+    )
 
 
 class ModelDefaults:
@@ -107,6 +118,7 @@ class BenchmarkDefaults:
     DEFAULT_DELAY_SECONDS: float = 1.0
     DEFAULT_RUNS_PER_MODEL: int = 1
     DEFAULT_MCP_RUNS: int = 3
+    DEFAULT_MAX_CONCURRENT_MODELS: int = 3
     DEFAULT_RESULTS_DIR: str = ".cache/benchmarks"
     DEFAULT_TIMEOUT_SECONDS: float = 60.0
     CATEGORY_COMPARE_RUNS: int = 2
@@ -130,7 +142,7 @@ class ImageProcessingConfig:
     MAX_PIXELS: int = 89_478_485
     MAX_DIMENSION: int = 65535
     MAX_SIZE_MB: int = 20
-    SUPPORTED_FORMATS: tuple = ('JPEG', 'PNG', 'WEBP', 'GIF')
+    SUPPORTED_FORMATS: tuple = ("JPEG", "PNG", "WEBP", "GIF")
 
 
 class FreeChatConfig:
@@ -139,20 +151,23 @@ class FreeChatConfig:
     MAX_CONTEXT_LENGTH: int = 262144
     DEFAULT_COOLDOWN_SECONDS: float = 60.0
     MAX_RETRY_COUNT: int = 3
+    NATIVE_FALLBACK_MODEL_LIMIT: int = 3
     MAX_TOKENS: int = 4096
     CONTEXT_LENGTH_WEIGHT: float = 0.4
     REPUTATION_WEIGHT: float = 0.4
     FEATURES_WEIGHT: float = 0.2
     USAGE_PENALTY_FACTOR: float = 0.06
     DEFAULT_REPUTATION: float = 0.5
-    MODEL_REPUTATION: MappingProxyType = MappingProxyType({
-        "google": 0.9,
-        "meta": 0.85,
-        "qwen": 0.8,
-        "mistral": 0.75,
-        "microsoft": 0.7,
-        "deepseek": 0.7,
-    })
+    MODEL_REPUTATION: MappingProxyType = MappingProxyType(
+        {
+            "google": 0.9,
+            "meta": 0.85,
+            "qwen": 0.8,
+            "mistral": 0.75,
+            "microsoft": 0.7,
+            "deepseek": 0.7,
+        }
+    )
 
     # Adaptive scoring
     ADAPTIVE_MIN_REQUESTS: int = 5
@@ -163,6 +178,14 @@ class FreeChatConfig:
     PERFORMANCE_THROUGHPUT_WEIGHT: float = 0.2
     MAX_LATENCY_MS: float = 10000.0
     MAX_TOKENS_PER_SECOND: float = 50.0
+
+    # Quota limits
+    FREE_DAILY_LIMIT: int = 50
+    FREE_MINUTE_LIMIT: int = 20
+
+    # Metrics persistence
+    METRICS_CACHE_FILE: str = ".cache/free_metrics.json"
+    METRICS_SAVE_INTERVAL: int = 10
 
 
 __all__ = [

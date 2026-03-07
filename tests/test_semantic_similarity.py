@@ -10,12 +10,14 @@ These tests verify that the semantic similarity implementation correctly:
 5. Performs efficiently on realistic data
 """
 
+from unittest.mock import Mock
+
 import pytest
+
 from openrouter_mcp.collective_intelligence.semantic_similarity import (
-    SemanticSimilarityCalculator,
     ResponseGrouper,
-    SimilarityScore,
-    calculate_response_similarity
+    SemanticSimilarityCalculator,
+    calculate_response_similarity,
 )
 
 
@@ -105,6 +107,30 @@ class TestSemanticSimilarityCalculator:
         # Should be identical after normalization
         assert score.hybrid == pytest.approx(1.0, abs=0.01)
 
+    def test_identical_after_normalization_short_circuits_expensive_metrics(self):
+        """Identical normalized texts should skip the expensive metric pipeline."""
+        calculator = SemanticSimilarityCalculator()
+        calculator._jaccard_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._normalized_levenshtein = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._cosine_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+        calculator._ngram_similarity = Mock(
+            side_effect=AssertionError("normalized identity should short-circuit")
+        )
+
+        score = calculator.calculate_similarity("HELLO   WORLD", "hello world")
+
+        assert score.hybrid == 1.0
+        assert score.jaccard == 1.0
+        assert score.levenshtein == 1.0
+        assert score.cosine == 1.0
+        assert score.ngram == 1.0
+
     def test_empty_strings(self, calculator):
         """Empty strings should be handled correctly."""
         score1 = calculator.calculate_similarity("", "")
@@ -173,8 +199,27 @@ class TestResponseGrouper:
         responses = [
             "Renewable energy reduces carbon emissions.",
             "Renewable energy reduces carbon emissions.",
-            "Renewable energy reduces carbon emissions."
+            "Renewable energy reduces carbon emissions.",
         ]
+        groups = grouper.group_responses(responses)
+
+        assert len(groups) == 1
+        assert set(groups[0]) == {0, 1, 2}
+
+    def test_normalized_duplicate_responses_skip_similarity_checks(self):
+        """Normalized duplicates should group without calling the similarity engine."""
+        calculator = SemanticSimilarityCalculator()
+        calculator.are_similar = Mock(
+            side_effect=AssertionError("normalized duplicates should short-circuit")
+        )
+        grouper = ResponseGrouper(similarity_threshold=0.7, calculator=calculator)
+
+        responses = [
+            "Renewable energy reduces carbon emissions.",
+            " renewable   energy reduces carbon emissions. ",
+            "RENEWABLE ENERGY REDUCES CARBON EMISSIONS.",
+        ]
+
         groups = grouper.group_responses(responses)
 
         assert len(groups) == 1
@@ -203,7 +248,7 @@ class TestResponseGrouper:
         responses = [
             "Renewable energy sources are sustainable and reduce carbon emissions.",
             "Python is a versatile programming language used for web development.",
-            "The stock market experienced volatility due to economic uncertainty."
+            "The stock market experienced volatility due to economic uncertainty.",
         ]
         groups = grouper.group_responses(responses)
 
@@ -214,11 +259,11 @@ class TestResponseGrouper:
     def test_mixed_grouping(self, grouper):
         """Test grouping with mix of similar and different responses."""
         responses = [
-            "Climate change is a global challenge.",           # Topic 1
-            "Global warming poses significant risks.",          # Topic 1 (related)
-            "Python is excellent for data science.",            # Topic 2
-            "Python excels at data analysis.",                  # Topic 2 (related)
-            "The economy is recovering steadily.",              # Topic 3
+            "Climate change is a global challenge.",  # Topic 1
+            "Global warming poses significant risks.",  # Topic 1 (related)
+            "Python is excellent for data science.",  # Topic 2
+            "Python excels at data analysis.",  # Topic 2 (related)
+            "The economy is recovering steadily.",  # Topic 3
         ]
         groups = grouper.group_responses(responses)
 
@@ -292,13 +337,11 @@ class TestResponseGrouper:
             "Renewable energy sources are sustainable, reduce carbon emissions, and become more cost-effective over time.",
             "Key advantages of renewable energy include sustainability, environmental protection through reduced emissions, and long-term economic benefits.",
             "Renewable energy is sustainable, reduces greenhouse gas emissions, and provides energy independence.",
-
             # Group 2: Economic-focused answers (related)
             "Renewable energy creates jobs, stimulates economic growth, and reduces dependency on fossil fuel imports.",
             "The renewable energy sector drives job creation, economic development, and reduces reliance on imported energy.",
-
             # Group 3: Technology-focused answer
-            "Advances in renewable energy technologies like solar panels and wind turbines have dramatically improved efficiency and lowered costs."
+            "Advances in renewable energy technologies like solar panels and wind turbines have dramatically improved efficiency and lowered costs.",
         ]
 
         groups = grouper.group_responses(responses)
@@ -351,17 +394,16 @@ class TestPerformance:
         grouper = ResponseGrouper(similarity_threshold=0.7)
 
         # Create many responses
-        responses = [
-            f"This is response number {i} about renewable energy."
-            for i in range(50)
-        ]
+        responses = [f"This is response number {i} about renewable energy." for i in range(50)]
 
         # Add some duplicates
-        responses.extend([
-            "This is a duplicate response.",
-            "This is a duplicate response.",
-            "This is a duplicate response.",
-        ])
+        responses.extend(
+            [
+                "This is a duplicate response.",
+                "This is a duplicate response.",
+                "This is a duplicate response.",
+            ]
+        )
 
         # Should complete efficiently
         groups = grouper.group_responses(responses)

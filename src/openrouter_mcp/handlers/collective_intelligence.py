@@ -8,40 +8,36 @@ cross-model validation, and collaborative problem-solving.
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 import httpx
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from ..client.openrouter import OpenRouterClient
 
 from ..collective_intelligence import (
-    ConsensusEngine,
-    EnsembleReasoner,
-    AdaptiveRouter,
-    CrossValidator,
-    CollaborativeSolver,
+    CollectiveIntelligenceLifecycleManager,
     ConsensusConfig,
     ConsensusStrategy,
-    AgreementLevel,
-    TaskContext,
-    TaskType,
     ModelInfo,
     ProcessingResult,
-    ModelProvider,
-    get_lifecycle_manager
+    TaskContext,
+    TaskType,
+    get_lifecycle_manager,
 )
-# Import shared MCP instance and client manager from registry
-from ..mcp_registry import mcp, get_openrouter_client
+from ..collective_intelligence.base import ModelCapability
+
 # Import centralized configuration constants
-from ..config.constants import ModelDefaults, ConsensusDefaults, PricingDefaults
+from ..config.constants import ConsensusDefaults, ModelDefaults, PricingDefaults
+
+# Import shared MCP instance and client manager from registry
+from ..mcp_registry import get_openrouter_client, mcp
 from ..models.requests import BaseCollectiveRequest, BaseConsensusRequest
-from ..utils.pricing import normalize_pricing, estimate_cost_from_usage
 from ..utils.async_utils import maybe_await
+from ..utils.pricing import estimate_cost_from_usage, normalize_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -60,44 +56,45 @@ class OpenRouterModelProvider:
         self._model_pricing_cache: Dict[str, Dict[str, float]] = {}
 
     async def process_task(
-        self,
-        task: TaskContext,
-        model_id: str,
-        **kwargs
+        self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
         """Process a task using the specified model."""
         start_time = datetime.now()
 
         try:
             # Prepare messages for the model
-            messages = [
-                {"role": "user", "content": task.content}
-            ]
+            messages = [{"role": "user", "content": task.content}]
 
             # Add system message if requirements specify behavior
             if task.requirements.get("system_prompt"):
-                messages.insert(0, {
-                    "role": "system",
-                    "content": task.requirements["system_prompt"]
-                })
+                messages.insert(
+                    0, {"role": "system", "content": task.requirements["system_prompt"]}
+                )
 
             # Extract temperature from task requirements or kwargs, with fallback to default
             # Use explicit None check to preserve valid 0.0 temperature values
             temp_from_req = task.requirements.get("temperature")
             temp_from_kwargs = kwargs.get("temperature")
             temperature = (
-                temp_from_req if temp_from_req is not None
-                else temp_from_kwargs if temp_from_kwargs is not None
-                else ModelDefaults.TEMPERATURE
+                temp_from_req
+                if temp_from_req is not None
+                else (
+                    temp_from_kwargs if temp_from_kwargs is not None else ModelDefaults.TEMPERATURE
+                )
             )
+
+            # Extract max_tokens from kwargs or task requirements
+            # Use explicit None check to preserve valid 0 values
+            kw_max = kwargs.get("max_tokens")
+            max_tokens_val = kw_max if kw_max is not None else task.requirements.get("max_tokens")
 
             # Call OpenRouter API
             response = await self.client.chat_completion(
                 model=model_id,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=kwargs.get("max_tokens"),
-                stream=False
+                max_tokens=max_tokens_val,
+                stream=False,
             )
 
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -127,8 +124,8 @@ class OpenRouterModelProvider:
                 cost=cost,
                 metadata={
                     "usage": usage,
-                    "response_metadata": response.get("model", {})
-                }
+                    "response_metadata": response.get("model", {}),
+                },
             )
 
         except Exception as e:
@@ -155,7 +152,7 @@ class OpenRouterModelProvider:
                     provider=raw_model.get("provider", "unknown"),
                     context_length=raw_model.get("context_length", 4096),
                     cost_per_token=self._extract_cost(raw_model.get("pricing", {})),
-                    metadata=raw_model
+                    metadata=raw_model,
                 )
 
                 # Add capability estimates based on model properties
@@ -167,30 +164,33 @@ class OpenRouterModelProvider:
 
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
             logger.error(f"Failed to fetch models: {str(e)}")
-            return []
-    
+            raise RuntimeError(
+                f"Unable to fetch available models from OpenRouter: {type(e).__name__}. "
+                "Check network connectivity and API key configuration."
+            ) from e
+
     def _calculate_confidence(self, response: Dict[str, Any], content: str) -> float:
         """Calculate confidence score based on response characteristics."""
         # This is a simplified confidence calculation
         # In practice, this could use more sophisticated methods
-        
-        base_confidence = ConsensusDefaults.CONFIDENCE_THRESHOLD
-        
+
+        base_confidence = float(ConsensusDefaults.CONFIDENCE_THRESHOLD)
+
         # Adjust based on response length (longer responses often more confident)
         if len(content) > 100:
             base_confidence += 0.1
         elif len(content) < 20:
             base_confidence -= 0.2
-        
+
         # Adjust based on finish reason
         finish_reason = response.get("choices", [{}])[0].get("finish_reason")
         if finish_reason == "stop":
             base_confidence += 0.1
         elif finish_reason == "length":
             base_confidence -= 0.1
-        
-        return max(0.0, min(1.0, base_confidence))
-    
+
+        return float(max(0.0, min(1.0, base_confidence)))
+
     async def _get_model_pricing(self, model_id: str) -> Dict[str, float]:
         """
         Get pricing information for a specific model.
@@ -208,10 +208,15 @@ class OpenRouterModelProvider:
             return self._model_pricing_cache[model_id]
 
         try:
-            normalized = await self.client.get_model_pricing(model_id)
+            normalized_raw = await self.client.get_model_pricing(model_id)
         except Exception as e:
             logger.warning(f"Failed to fetch pricing for model {model_id}: {e}")
-            normalized = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
+            normalized_raw = normalize_pricing({}, PricingDefaults.DEFAULT_TOKEN_PRICE)
+
+        normalized = {
+            "prompt": float(normalized_raw.get("prompt", 0.0)),
+            "completion": float(normalized_raw.get("completion", 0.0)),
+        }
 
         self._model_pricing_cache[model_id] = normalized
         return normalized
@@ -230,10 +235,12 @@ class OpenRouterModelProvider:
         pricing = await self._get_model_pricing(model_id)
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        total_cost = estimate_cost_from_usage(
-            usage,
-            pricing,
-            PricingDefaults.DEFAULT_TOKEN_PRICE,
+        total_cost = float(
+            estimate_cost_from_usage(
+                usage,
+                pricing,
+                PricingDefaults.DEFAULT_TOKEN_PRICE,
+            )
         )
         prompt_cost = prompt_tokens * pricing["prompt"]
         completion_cost = completion_tokens * pricing["completion"]
@@ -250,45 +257,45 @@ class OpenRouterModelProvider:
     def _extract_cost(self, pricing: Dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
         normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
-        return normalized["completion"]
-    
-    def _estimate_capabilities(self, raw_model: Dict[str, Any]) -> Dict[str, float]:
+        return float(normalized.get("completion", PricingDefaults.DEFAULT_TOKEN_PRICE))
+
+    def _estimate_capabilities(self, raw_model: Dict[str, Any]) -> Dict[ModelCapability, float]:
         """Estimate model capabilities based on model metadata."""
-        capabilities = {}
+        capabilities: Dict[ModelCapability, float] = {}
         model_id = raw_model["id"].lower()
-        
+
         # Reasoning capability
         if any(term in model_id for term in ["gpt-4", "claude", "o1"]):
-            capabilities["reasoning"] = 0.9
+            capabilities[ModelCapability.REASONING] = 0.9
         elif any(term in model_id for term in ["gpt-3.5", "llama"]):
-            capabilities["reasoning"] = 0.7
+            capabilities[ModelCapability.REASONING] = 0.7
         else:
-            capabilities["reasoning"] = 0.5
-        
+            capabilities[ModelCapability.REASONING] = 0.5
+
         # Creativity capability
         if any(term in model_id for term in ["claude", "gpt-4"]):
-            capabilities["creativity"] = 0.8
+            capabilities[ModelCapability.CREATIVITY] = 0.8
         else:
-            capabilities["creativity"] = 0.6
-        
+            capabilities[ModelCapability.CREATIVITY] = 0.6
+
         # Code capability
         if any(term in model_id for term in ["code", "codestral", "deepseek"]):
-            capabilities["code"] = 0.9
+            capabilities[ModelCapability.CODE] = 0.9
         elif any(term in model_id for term in ["gpt-4", "claude"]):
-            capabilities["code"] = 0.8
+            capabilities[ModelCapability.CODE] = 0.8
         else:
-            capabilities["code"] = 0.5
-        
+            capabilities[ModelCapability.CODE] = 0.5
+
         # Accuracy capability
         if any(term in model_id for term in ["gpt-4", "claude", "o1"]):
-            capabilities["accuracy"] = 0.9
+            capabilities[ModelCapability.ACCURACY] = 0.9
         else:
-            capabilities["accuracy"] = 0.7
-        
+            capabilities[ModelCapability.ACCURACY] = 0.7
+
         return capabilities
 
 
-async def _get_configured_lifecycle_manager():
+async def _get_configured_lifecycle_manager() -> CollectiveIntelligenceLifecycleManager:
     """Return lifecycle manager configured with a shared OpenRouter model provider."""
     client = await maybe_await(get_openrouter_client())
     model_provider = OpenRouterModelProvider(client)
@@ -301,6 +308,7 @@ def _build_requirements(
     *,
     base: Optional[Dict[str, Any]] = None,
     temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
     models: Optional[List[str]] = None,
     extras: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -312,6 +320,8 @@ def _build_requirements(
         requirements.update(extras)
     if temperature is not None:
         requirements["temperature"] = temperature
+    if max_tokens is not None:
+        requirements["max_tokens"] = max_tokens
     if models:
         requirements["preferred_models"] = models
     return requirements
@@ -319,48 +329,75 @@ def _build_requirements(
 
 # Pydantic models for MCP tool inputs
 
+
 class CollectiveChatRequest(BaseConsensusRequest):
     """Request for collective chat completion."""
+
     prompt: str = Field(..., description="The prompt to process collectively")
-    strategy: str = Field(
+    strategy: Literal["majority_vote", "weighted_average", "confidence_threshold"] = Field(
         "majority_vote",
-        description="Consensus strategy: majority_vote, weighted_average, confidence_threshold"
+        description="Consensus strategy: majority_vote, weighted_average, confidence_threshold",
     )
+
+
+_TASK_TYPE_LITERAL = Literal[
+    "reasoning",
+    "analysis",
+    "creative",
+    "factual",
+    "code_generation",
+    "summarization",
+    "translation",
+    "math",
+    "classification",
+]
 
 
 class EnsembleReasoningRequest(BaseCollectiveRequest):
     """Request for ensemble reasoning."""
+
     problem: str = Field(..., description="Problem to solve with ensemble reasoning")
-    task_type: str = Field(
+    task_type: _TASK_TYPE_LITERAL = Field(
         "reasoning",
-        description="Type of task: reasoning, analysis, creative, factual, code_generation"
+        description="Type of task: reasoning, analysis, creative, factual, code_generation, summarization, translation, math, classification",
     )
     decompose: bool = Field(True, description="Whether to decompose the problem into subtasks")
 
 
 class AdaptiveModelRequest(BaseModel):
     """Request for adaptive model selection."""
+
     query: str = Field(..., description="Query for adaptive model selection")
-    task_type: str = Field("reasoning", description="Type of task")
-    performance_requirements: Optional[Dict[str, float]] = Field(None, description="Performance requirements")
-    constraints: Optional[Dict[str, Any]] = Field(None, description="Task constraints")
+    task_type: _TASK_TYPE_LITERAL = Field(
+        "reasoning",
+        description="Type of task: reasoning, analysis, creative, factual, code_generation, summarization, translation, math, classification",
+    )
+    performance_requirements: Optional[Dict[str, float]] = Field(
+        None,
+        description="Performance requirements as metric-score pairs, e.g. {'accuracy': 0.9, 'speed': 0.7}. Keys are used as routing hints.",
+    )
+    constraints: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Task constraints, e.g. {'max_cost': 0.01, 'preferred_provider': 'openai'}",
+    )
 
 
 class CrossValidationRequest(BaseCollectiveRequest):
     """Request for cross-model validation."""
+
     content: str = Field(..., description="Content to validate across models")
     validation_criteria: Optional[List[str]] = Field(
-        None,
-        description="Specific validation criteria"
+        None, description="Specific validation criteria"
     )
     threshold: float = Field(
         ConsensusDefaults.CONFIDENCE_THRESHOLD,
-        description="Validation threshold"
+        description="Validation threshold (0.0-1.0). Content scoring below this is considered invalid",
     )
 
 
 class CollaborativeSolvingRequest(BaseCollectiveRequest):
     """Request for collaborative problem solving."""
+
     problem: str = Field(..., description="Problem to solve collaboratively")
     requirements: Optional[Dict[str, Any]] = Field(None, description="Problem requirements")
     constraints: Optional[Dict[str, Any]] = Field(None, description="Problem constraints")
@@ -368,26 +405,29 @@ class CollaborativeSolvingRequest(BaseCollectiveRequest):
 
 
 def create_task_context(
-    content: str, 
+    content: str,
     task_type: str = "reasoning",
     requirements: Optional[Dict[str, Any]] = None,
-    constraints: Optional[Dict[str, Any]] = None
+    constraints: Optional[Dict[str, Any]] = None,
 ) -> TaskContext:
     """Create a TaskContext from request parameters."""
     try:
         task_type_enum = TaskType(task_type.lower())
     except ValueError:
-        task_type_enum = TaskType.REASONING
-    
+        valid = ", ".join(sorted(e.value for e in TaskType))
+        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}")
+
     return TaskContext(
         task_type=task_type_enum,
         content=content,
         requirements=requirements or {},
-        constraints=constraints or {}
+        constraints=constraints or {},
     )
 
 
-async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Dict[str, Any]:
+async def _collective_chat_completion_impl(
+    request: CollectiveChatRequest,
+) -> Dict[str, Any]:
     """
     Generate chat completion using collective intelligence with multiple models.
 
@@ -420,17 +460,15 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
         # Setup - use shared singleton client from registry
         lifecycle_manager = await _get_configured_lifecycle_manager()
 
-        # Configure consensus engine
-        try:
-            strategy = ConsensusStrategy(request.strategy.lower())
-        except ValueError:
-            strategy = ConsensusStrategy.MAJORITY_VOTE
+        # Configure consensus engine (Pydantic validates the Literal type)
+        strategy = ConsensusStrategy(request.strategy)
 
         config = ConsensusConfig(
             strategy=strategy,
             min_models=request.min_models,
             max_models=request.max_models,
-            timeout_seconds=ConsensusDefaults.TIMEOUT_SECONDS
+            timeout_seconds=ConsensusDefaults.TIMEOUT_SECONDS,
+            confidence_threshold=request.confidence_threshold,
         )
 
         # Get singleton consensus engine from lifecycle manager
@@ -442,14 +480,12 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
             extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
             extras=extras or None,
         )
 
-        task = create_task_context(
-            content=request.prompt,
-            requirements=requirements
-        )
+        task = create_task_context(content=request.prompt, requirements=requirements)
 
         # Process with consensus - NO async with client (client is singleton managed by lifecycle)
         result = await consensus_engine.process(task)
@@ -463,7 +499,7 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
                 {
                     "model": resp.model_id,
                     "content": resp.result.content,
-                    "confidence": resp.result.confidence
+                    "confidence": resp.result.confidence,
                 }
                 for resp in result.model_responses
             ],
@@ -473,8 +509,8 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
                 "accuracy": result.quality_metrics.accuracy,
                 "consistency": result.quality_metrics.consistency,
                 "completeness": result.quality_metrics.completeness,
-                "overall_score": result.quality_metrics.overall_score()
-            }
+                "overall_score": result.quality_metrics.overall_score(),
+            },
         }
 
     except Exception as e:
@@ -483,7 +519,15 @@ async def _collective_chat_completion_impl(request: CollectiveChatRequest) -> Di
 
 
 async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for collective chat completion."""
+    """Generate a chat completion using multiple AI models to reach consensus.
+
+    Queries several models in parallel and combines their responses using the chosen
+    consensus strategy, producing a single agreed-upon answer with confidence metrics.
+
+    Returns keys: consensus_response, agreement_level, confidence_score,
+    participating_models, individual_responses, strategy_used, processing_time,
+    quality_metrics.
+    """
     return await _collective_chat_completion_impl(request)
 
 
@@ -521,16 +565,21 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
         # Get singleton ensemble reasoner from lifecycle manager
         ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
 
-        # Create task context with temperature and models
+        # Create task context with temperature, max_tokens, system_prompt and models
+        extras = {}
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
+            extras=extras or None,
         )
 
         task = create_task_context(
             content=request.problem,
             task_type=request.task_type,
-            requirements=requirements
+            requirements=requirements,
         )
 
         # Process with ensemble reasoning - NO async with (singleton managed by lifecycle)
@@ -544,7 +593,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
                     "model": subtask.assignment.model_id,
                     "result": subtask.result.content,
                     "confidence": subtask.result.confidence,
-                    "success": subtask.success
+                    "success": subtask.success,
                 }
                 for subtask in result.sub_task_results
             ],
@@ -555,12 +604,12 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
             "reasoning_quality": {
                 "overall_quality": result.overall_quality.overall_score(),
                 "consistency": result.overall_quality.consistency,
-                "completeness": result.overall_quality.completeness
+                "completeness": result.overall_quality.completeness,
             },
             "processing_time": result.total_time,
             "strategy_used": result.decomposition_strategy.value,
             "success_rate": result.success_rate,
-            "total_cost": result.total_cost
+            "total_cost": result.total_cost,
         }
 
     except Exception as e:
@@ -569,11 +618,20 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
 
 
 async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for ensemble reasoning."""
+    """Decompose a complex problem and route subtasks to specialized models.
+
+    Breaks the problem into subtasks, assigns each to the best-suited model, and
+    synthesizes the partial results into a unified answer.
+
+    Returns keys: final_result, subtask_results, model_assignments,
+    reasoning_quality, processing_time, strategy_used, success_rate, total_cost.
+    """
     return await _ensemble_reasoning_impl(request)
 
 
-async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[str, Any]:
+async def _adaptive_model_selection_impl(
+    request: AdaptiveModelRequest,
+) -> Dict[str, Any]:
     """
     Intelligently select the best model for a given task using adaptive routing.
 
@@ -615,7 +673,7 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
             content=request.query,
             task_type=request.task_type,
             requirements=requirements,
-            constraints=request.constraints
+            constraints=request.constraints,
         )
 
         # Perform adaptive routing - NO async with (singleton managed by lifecycle)
@@ -626,18 +684,15 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
             "selection_reasoning": decision.justification,
             "confidence": decision.confidence_score,
             "alternative_models": [
-                {
-                    "model": alt[0],
-                    "score": alt[1]
-                }
+                {"model": alt[0], "score": alt[1]}
                 for alt in decision.alternative_models[:3]  # Top 3 alternatives
             ],
             "routing_metrics": {
                 "expected_performance": decision.expected_performance,
                 "strategy_used": decision.strategy_used.value,
-                "total_candidates": decision.metadata.get("total_candidates", 0)
+                "total_candidates": decision.metadata.get("total_candidates", 0),
             },
-            "selection_time": decision.routing_time
+            "selection_time": decision.routing_time,
         }
 
     except Exception as e:
@@ -646,11 +701,20 @@ async def _adaptive_model_selection_impl(request: AdaptiveModelRequest) -> Dict[
 
 
 async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for adaptive model selection."""
+    """Select the best model for a task using adaptive performance-based routing.
+
+    Analyzes the query and task type, then picks the most suitable model based on
+    historical performance metrics and task requirements.
+
+    Returns keys: selected_model, selection_reasoning, confidence,
+    alternative_models, routing_metrics, selection_time.
+    """
     return await _adaptive_model_selection_impl(request)
 
 
-async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[str, Any]:
+async def _cross_model_validation_impl(
+    request: CrossValidationRequest,
+) -> Dict[str, Any]:
     """
     Validate content quality and accuracy across multiple models.
 
@@ -664,9 +728,12 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
         Dictionary containing:
         - validation_result: Overall validation result
         - validation_score: Numerical validation score
-        - consensus_issues: Issues found by multiple models
+        - validation_issues: Issues found by multiple models
         - model_validations: Individual validation results
         - recommendations: Suggested improvements
+        - confidence: Validation confidence score
+        - processing_time: Total processing time
+        - quality_metrics: Overall quality metrics
 
     Example:
         request = CrossValidationRequest(
@@ -690,22 +757,24 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
             task_id="validation_task",
             model_id="content_to_validate",
             content=request.content,
-            confidence=1.0
+            confidence=1.0,
         )
 
         # Create task context for validation with criteria and models
-        extras = {"validation_threshold": request.threshold}
+        extras: Dict[str, Any] = {"validation_threshold": request.threshold}
         if request.validation_criteria:
             extras["validation_criteria"] = request.validation_criteria
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
             extras=extras,
         )
 
         task = create_task_context(
-            content=request.content,
-            task_type="analysis",
-            requirements=requirements
+            content=request.content, task_type="analysis", requirements=requirements
         )
 
         # Perform cross-validation - NO async with (singleton managed by lifecycle)
@@ -726,7 +795,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
         for model_id in validator_models:
             model_issues = [issue for issue in issues if issue.validator_model_id == model_id]
             criteria_values = {
-                issue.criteria.value if hasattr(issue.criteria, "value") else str(issue.criteria)
+                (issue.criteria.value if hasattr(issue.criteria, "value") else str(issue.criteria))
                 for issue in model_issues
             }
             if not criteria_values:
@@ -736,11 +805,13 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
             else:
                 criteria_label = "multiple"
 
-            model_validations.append({
-                "model": model_id,
-                "criteria": criteria_label,
-                "issues_found": len(model_issues)
-            })
+            model_validations.append(
+                {
+                    "model": model_id,
+                    "criteria": criteria_label,
+                    "issues_found": len(model_issues),
+                }
+            )
 
         return {
             "validation_result": "VALID" if result.is_valid else "INVALID",
@@ -751,7 +822,7 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
                     "severity": issue.severity.value,
                     "description": issue.description,
                     "suggestion": issue.suggestion,
-                    "confidence": issue.confidence
+                    "confidence": issue.confidence,
                 }
                 for issue in issues
             ],
@@ -762,8 +833,8 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
             "quality_metrics": {
                 "overall_score": result.quality_metrics.overall_score(),
                 "accuracy": result.quality_metrics.accuracy,
-                "consistency": result.quality_metrics.consistency
-            }
+                "consistency": result.quality_metrics.consistency,
+            },
         }
 
     except Exception as e:
@@ -772,28 +843,44 @@ async def _cross_model_validation_impl(request: CrossValidationRequest) -> Dict[
 
 
 async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for cross-model validation."""
+    """Validate content accuracy and quality by cross-checking with multiple models.
+
+    Multiple models independently review the content for errors, inconsistencies,
+    and biases, then aggregate findings into a validation report.
+
+    Returns keys: validation_result, validation_score, validation_issues,
+    model_validations, recommendations, confidence, processing_time,
+    quality_metrics.
+    """
     return await _cross_model_validation_impl(request)
 
 
-async def _collaborative_problem_solving_impl(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
+async def _collaborative_problem_solving_impl(
+    request: CollaborativeSolvingRequest,
+) -> Dict[str, Any]:
     """
     Solve complex problems through collaborative multi-model interaction.
-    
+
     This tool orchestrates multiple models to work together on complex problems,
     with models building on each other's contributions through iterative refinement.
-    
+
     Args:
         request: Collaborative problem solving request
-        
+
     Returns:
         Dictionary containing:
         - final_solution: The collaborative solution
-        - solution_iterations: Step-by-step solution development
-        - model_contributions: Individual model contributions
-        - collaboration_quality: Quality metrics for collaboration
-        - convergence_metrics: How the solution evolved
-        
+        - solution_path: Step-by-step solution development
+        - alternative_solutions: Alternative approaches discovered
+        - quality_assessment: Quality metrics for the solution
+        - component_contributions: Individual component contributions
+        - confidence: Confidence score
+        - improvement_suggestions: Suggested improvements
+        - processing_time: Total processing time
+        - session_id: Collaboration session identifier
+        - strategy_used: Strategy used for solving
+        - components_used: Components involved in solving
+
     Example:
         request = CollaborativeSolvingRequest(
             problem="Design an AI ethics framework for autonomous vehicles",
@@ -811,17 +898,22 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
         # Get singleton collaborative solver from lifecycle manager
         collaborative_solver = await lifecycle_manager.get_collaborative_solver()
 
-        # Create task context with max_iterations and models
+        # Create task context with max_iterations, system_prompt and models
+        extras: Dict[str, Any] = {"max_iterations": request.max_iterations}
+        if request.system_prompt:
+            extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             base=request.requirements,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
             models=request.models,
-            extras={"max_iterations": request.max_iterations},
+            extras=extras,
         )
 
         task = create_task_context(
             content=request.problem,
             requirements=requirements,
-            constraints=request.constraints
+            constraints=request.constraints,
         )
 
         # Start collaborative solving session - NO async with (singleton managed by lifecycle)
@@ -835,7 +927,7 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
                 "overall_score": result.quality_assessment.overall_score(),
                 "accuracy": result.quality_assessment.accuracy,
                 "consistency": result.quality_assessment.consistency,
-                "completeness": result.quality_assessment.completeness
+                "completeness": result.quality_assessment.completeness,
             },
             "component_contributions": result.component_contributions,
             "confidence": result.confidence_score,
@@ -843,7 +935,7 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
             "processing_time": result.total_processing_time,
             "session_id": result.session.session_id,
             "strategy_used": result.session.strategy.value,
-            "components_used": result.session.components_used
+            "components_used": result.session.components_used,
         }
 
     except Exception as e:
@@ -851,8 +943,19 @@ async def _collaborative_problem_solving_impl(request: CollaborativeSolvingReque
         raise
 
 
-async def collaborative_problem_solving(request: CollaborativeSolvingRequest) -> Dict[str, Any]:
-    """MCP tool wrapper for collaborative problem solving."""
+async def collaborative_problem_solving(
+    request: CollaborativeSolvingRequest,
+) -> Dict[str, Any]:
+    """Solve complex problems through iterative multi-model collaboration.
+
+    Orchestrates multiple models to build on each other's contributions through
+    iterative refinement rounds until the solution converges.
+
+    Returns keys: final_solution, solution_path, alternative_solutions,
+    quality_assessment, component_contributions, confidence,
+    improvement_suggestions, processing_time, session_id, strategy_used,
+    components_used.
+    """
     return await _collaborative_problem_solving_impl(request)
 
 

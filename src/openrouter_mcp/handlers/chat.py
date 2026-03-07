@@ -1,53 +1,63 @@
+# mypy: disable-error-code=untyped-decorator
+
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
+
 from pydantic import BaseModel, Field
 
 # Import shared MCP instance and client manager from registry
-from ..mcp_registry import mcp, get_openrouter_client
+from ..mcp_registry import get_openrouter_client, mcp
+
 # Import centralized configuration constants
-from ..models.requests import BaseChatRequest, ChatMessage
+from ..models.requests import BaseChatRequest
 from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
-
 
 logger = logging.getLogger(__name__)
 
 
 class ChatCompletionRequest(BaseChatRequest):
     """Request for chat completion."""
+
     pass
 
 
 class ModelListRequest(BaseModel):
     """Request for listing available models."""
+
     filter_by: Optional[str] = Field(None, description="Filter models by name substring")
 
 
 class UsageStatsRequest(BaseModel):
     """Request for usage statistics."""
-    start_date: Optional[str] = Field(None, description="Start date for usage tracking (YYYY-MM-DD)")
+
+    start_date: Optional[str] = Field(
+        None, description="Start date for usage tracking (YYYY-MM-DD)"
+    )
     end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
 
 
 @mcp.tool()
-async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+async def chat_with_model(
+    request: ChatCompletionRequest,
+) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
     """
     Generate chat completion using OpenRouter API.
-    
+
     This tool allows you to have conversations with various AI models through OpenRouter.
     You can specify the model, conversation messages, and various parameters like temperature.
-    
+
     Args:
         request: Chat completion request containing model, messages, and parameters
-        
+
     Returns:
         For non-streaming: Single response dictionary with choices and usage
         For streaming: List of response chunks
-        
+
     Raises:
         ValueError: If request parameters are invalid
         OpenRouterError: If the API request fails
-        
+
     Example:
         request = ChatCompletionRequest(
             model="openai/gpt-4",
@@ -70,13 +80,16 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
     try:
         if request.stream:
             logger.info("Initiating streaming chat completion")
-            chunks = await collect_async_iterable(
-                client.stream_chat_completion(
-                model=request.model,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens
-                )
+            chunks = cast(
+                List[Dict[str, Any]],
+                await collect_async_iterable(
+                    client.stream_chat_completion(
+                        model=request.model,
+                        messages=messages,
+                        temperature=request.temperature,
+                        max_tokens=request.max_tokens,
+                    )
+                ),
             )
 
             logger.info(f"Streaming completed with {len(chunks)} chunks")
@@ -88,10 +101,14 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
                 messages=messages,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
-                stream=False
+                stream=False,
             )
+            if not isinstance(response, dict):
+                raise ValueError("Invalid response format from chat completion")
 
-            logger.info(f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}")
+            logger.info(
+                f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
+            )
             return response
 
     except Exception as e:
@@ -103,14 +120,14 @@ async def chat_with_model(request: ChatCompletionRequest) -> Union[Dict[str, Any
 async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any]]:
     """
     List all available models from OpenRouter.
-    
+
     This tool retrieves information about all AI models available through OpenRouter,
     including their pricing, capabilities, and context limits. You can optionally
     filter the results by model name.
-    
+
     Args:
         request: Model list request with optional filter
-        
+
     Returns:
         List of dictionaries containing model information:
         - id: Model identifier (e.g., "openai/gpt-4")
@@ -119,10 +136,10 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
         - pricing: Cost per token for prompts and completions
         - context_length: Maximum context window size
         - architecture: Model architecture details
-        
+
     Raises:
         OpenRouterError: If the API request fails
-        
+
     Example:
         request = ModelListRequest(filter_by="gpt")
         models = await list_available_models(request)
@@ -134,6 +151,7 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
 
     try:
         models = await client.list_models(filter_by=request.filter_by)
+        models = [model for model in models if isinstance(model, dict)]
         logger.info(f"Retrieved {len(models)} models")
         return models
 
@@ -146,24 +164,24 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
 async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
     """
     Get API usage statistics from OpenRouter.
-    
+
     This tool retrieves usage statistics for your OpenRouter API account,
     including total costs, token usage, and request counts. You can optionally
     specify a date range to get statistics for a specific period.
-    
+
     Args:
         request: Usage stats request with optional date range
-        
+
     Returns:
         Dictionary containing usage statistics:
         - total_cost: Total cost in USD
         - total_tokens: Total tokens used
         - requests: Number of API requests made
         - models: List of models used
-        
+
     Raises:
         OpenRouterError: If the API request fails
-        
+
     Example:
         request = UsageStatsRequest(
             start_date="2024-01-01",
@@ -171,16 +189,17 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
         )
         stats = await get_usage_stats(request)
     """
-    logger.info(f"Getting usage stats from {request.start_date or 'beginning'} to {request.end_date or 'now'}")
+    logger.info(
+        f"Getting usage stats from {request.start_date or 'beginning'} to {request.end_date or 'now'}"
+    )
 
     # Get shared client (already in async context, no need for 'async with')
     client = await get_openrouter_client()
 
     try:
-        stats = await client.track_usage(
-            start_date=request.start_date,
-            end_date=request.end_date
-        )
+        stats = await client.track_usage(start_date=request.start_date, end_date=request.end_date)
+        if not isinstance(stats, dict):
+            raise ValueError("Invalid usage stats response format")
         logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
         return stats
 

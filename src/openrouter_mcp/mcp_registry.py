@@ -24,13 +24,17 @@ Usage:
         result = await client.list_models()
 """
 
-import logging
 import asyncio
-from typing import Optional
+import logging
+from typing import TYPE_CHECKING, Optional
+
 from fastmcp import FastMCP
 
 from .config.constants import APIConfig, CacheConfig, EnvVars
 from .utils.env import get_env_value, get_required_env
+
+if TYPE_CHECKING:
+    from .client.openrouter import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +43,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("openrouter-mcp")
 
 # Singleton client instance and lock for thread-safe initialization
-_client_instance: Optional[object] = None  # Will be OpenRouterClient
+_client_instance: Optional["OpenRouterClient"] = None
 _client_lock: Optional[asyncio.Lock] = None
 _client_initialized = False
 _client_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -52,7 +56,7 @@ def _get_client_lock() -> asyncio.Lock:
     return _client_lock
 
 
-async def get_shared_client():
+async def get_shared_client() -> "OpenRouterClient":
     """
     Get or create the singleton OpenRouterClient instance.
 
@@ -121,11 +125,11 @@ async def get_shared_client():
         logger.info("Initializing shared OpenRouterClient singleton")
         _client_instance = OpenRouterClient(
             api_key=api_key,
-            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL),
+            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL) or APIConfig.BASE_URL,
             app_name=get_env_value(EnvVars.APP_NAME),
             http_referer=get_env_value(EnvVars.HTTP_REFERER),
             enable_cache=True,
-            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS
+            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS,
         )
 
         # Enter the async context manager once
@@ -138,12 +142,12 @@ async def get_shared_client():
     return _client_instance
 
 
-async def get_openrouter_client():
+async def get_openrouter_client() -> "OpenRouterClient":
     """Return the shared OpenRouter client (legacy helper for handlers/tests)."""
     return await get_shared_client()
 
 
-async def cleanup_shared_client():
+async def cleanup_shared_client() -> None:
     """
     Clean up the shared client on shutdown.
 

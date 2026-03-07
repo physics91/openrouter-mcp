@@ -81,7 +81,7 @@ class SensitiveDataSanitizer:
             return "EMPTY"
 
         hasher = hashlib.new(algorithm)
-        hasher.update(content.encode('utf-8'))
+        hasher.update(content.encode("utf-8"))
         return f"{algorithm}:{hasher.hexdigest()[:16]}..."
 
     @staticmethod
@@ -105,8 +105,7 @@ class SensitiveDataSanitizer:
 
     @staticmethod
     def sanitize_messages(
-        messages: List[Dict[str, Any]],
-        mode: str = "hash"
+        messages: List[Dict[str, Any]], mode: str = "hash"
     ) -> List[Dict[str, Any]]:
         """Sanitize message content for logging.
 
@@ -150,10 +149,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_payload(
-        payload: Dict[str, Any],
-        enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+    def sanitize_payload(payload: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
         """Sanitize request payload for logging.
 
         Args:
@@ -167,7 +163,7 @@ class SensitiveDataSanitizer:
             "model": payload.get("model", "unknown"),
             "temperature": payload.get("temperature"),
             "max_tokens": payload.get("max_tokens"),
-            "stream": payload.get("stream", False)
+            "stream": payload.get("stream", False),
         }
 
         # Sanitize messages based on verbosity setting
@@ -190,10 +186,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_response(
-        response: Dict[str, Any],
-        enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+    def sanitize_response(response: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
         """Sanitize API response for logging.
 
         Args:
@@ -206,7 +199,7 @@ class SensitiveDataSanitizer:
         sanitized = {
             "id": response.get("id", "unknown"),
             "model": response.get("model", "unknown"),
-            "created": response.get("created")
+            "created": response.get("created"),
         }
 
         # Sanitize choices
@@ -223,7 +216,7 @@ class SensitiveDataSanitizer:
                 sanitized["first_choice"] = {
                     "role": message.get("role", "unknown"),
                     "content": SensitiveDataSanitizer.truncate_content(content, 100),
-                    "finish_reason": first_choice.get("finish_reason")
+                    "finish_reason": first_choice.get("finish_reason"),
                 }
             else:
                 # Only metadata
@@ -234,8 +227,8 @@ class SensitiveDataSanitizer:
 
                     sanitized["first_choice_metadata"] = {
                         "role": message.get("role", "unknown"),
-                        "content_length": len(content) if isinstance(content, str) else 0,
-                        "finish_reason": first_choice.get("finish_reason")
+                        "content_length": (len(content) if isinstance(content, str) else 0),
+                        "finish_reason": first_choice.get("finish_reason"),
                     }
 
         # Include usage information (not sensitive)

@@ -6,11 +6,13 @@ Verifies that multiple clients with different credentials don't interfere
 with each other, and that credential threading works correctly.
 """
 
-import os
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from src.openrouter_mcp.models.cache import ModelCache
+
 from src.openrouter_mcp.client.openrouter import OpenRouterClient
+from src.openrouter_mcp.models.cache import ModelCache
+from tests.fixtures.httpx_mocks import setup_async_client_mock
 
 
 class TestCredentialIsolation:
@@ -28,7 +30,7 @@ class TestCredentialIsolation:
                     "context_length": 8192,
                     "pricing": {"prompt": "0.00003", "completion": "0.00006"},
                     "architecture": {"modality": "text"},
-                    "top_provider": {"provider": "OpenAI"}
+                    "top_provider": {"provider": "OpenAI"},
                 }
             ]
         }
@@ -39,7 +41,7 @@ class TestCredentialIsolation:
         cache = ModelCache(
             ttl_hours=1,
             api_key="test-api-key",
-            base_url="https://test.openrouter.ai/api/v1"
+            base_url="https://test.openrouter.ai/api/v1",
         )
 
         assert cache._api_key == "test-api-key"
@@ -60,45 +62,29 @@ class TestCredentialIsolation:
         cache = ModelCache(
             ttl_hours=1,
             api_key="cache-specific-key",
-            base_url="https://cache-specific.url/api/v1"
+            base_url="https://cache-specific.url/api/v1",
         )
 
         # Set environment variables to different values
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'env-key',
-            'OPENROUTER_BASE_URL': 'https://env.url/api/v1'
-        }):
-            with patch('httpx.AsyncClient') as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                # Track the headers used in the request
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get('headers', {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "env-key",
+                "OPENROUTER_BASE_URL": "https://env.url/api/v1",
+            },
+        ):
+            with patch("httpx.AsyncClient") as mock_httpx_client:
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 # Fetch models
                 await cache._fetch_models_from_api()
 
                 # Verify that cache-specific credentials were used, not env vars
-                assert captured_headers['Authorization'] == 'Bearer cache-specific-key'
+                assert captured_headers["Authorization"] == "Bearer cache-specific-key"
                 # Verify URL contains cache-specific base URL
                 # (checked via the URL passed to httpx, but in this mock we track headers)
 
@@ -108,39 +94,24 @@ class TestCredentialIsolation:
         """Test that ModelCache falls back to environment variables when credentials not provided."""
         cache = ModelCache(ttl_hours=1)
 
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'env-fallback-key',
-            'OPENROUTER_BASE_URL': 'https://env-fallback.url/api/v1'
-        }):
-            with patch('httpx.AsyncClient') as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get('headers', {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "env-fallback-key",
+                "OPENROUTER_BASE_URL": "https://env-fallback.url/api/v1",
+            },
+        ):
+            with patch("httpx.AsyncClient") as mock_httpx_client:
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 await cache._fetch_models_from_api()
 
                 # Verify environment credentials were used
-                assert captured_headers['Authorization'] == 'Bearer env-fallback-key'
+                assert captured_headers["Authorization"] == "Bearer env-fallback-key"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -149,7 +120,7 @@ class TestCredentialIsolation:
         cache = ModelCache(ttl_hours=1)
 
         # Clear environment variables
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(ValueError, match="API key is required"):
                 await cache._fetch_models_from_api()
 
@@ -159,7 +130,7 @@ class TestCredentialIsolation:
         client = OpenRouterClient(
             api_key="client-api-key",
             base_url="https://client.url/api/v1",
-            enable_cache=True
+            enable_cache=True,
         )
 
         assert client._model_cache is not None
@@ -169,10 +140,7 @@ class TestCredentialIsolation:
     @pytest.mark.unit
     def test_openrouter_client_cache_disabled(self):
         """Test that OpenRouterClient doesn't create cache when disabled."""
-        client = OpenRouterClient(
-            api_key="client-api-key",
-            enable_cache=False
-        )
+        client = OpenRouterClient(api_key="client-api-key", enable_cache=False)
 
         assert client._model_cache is None
 
@@ -183,13 +151,13 @@ class TestCredentialIsolation:
         client1 = OpenRouterClient(
             api_key="client1-key",
             base_url="https://client1.url/api/v1",
-            enable_cache=True
+            enable_cache=True,
         )
 
         client2 = OpenRouterClient(
             api_key="client2-key",
             base_url="https://client2.url/api/v1",
-            enable_cache=True
+            enable_cache=True,
         )
 
         # Verify each client has its own cache with its own credentials
@@ -210,11 +178,11 @@ class TestCredentialIsolation:
     async def test_programmatic_credential_passing(self, mock_models_response):
         """Test that credentials can be passed programmatically without environment."""
         # Clear environment to ensure no fallback
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             client = OpenRouterClient(
                 api_key="programmatic-key",
                 base_url="https://programmatic.url/api/v1",
-                enable_cache=True
+                enable_cache=True,
             )
 
             # Verify cache has the programmatic credentials
@@ -222,36 +190,18 @@ class TestCredentialIsolation:
             assert client._model_cache._base_url == "https://programmatic.url/api/v1"
 
             # Mock the API call
-            with patch('httpx.AsyncClient') as mock_httpx_client:
-                mock_client_instance = MagicMock()
-                mock_httpx_client.return_value = mock_client_instance
-
-                async def mock_aenter(self):
-                    return mock_client_instance
-
-                async def mock_aexit(self, *args):
-                    return None
-
-                mock_client_instance.__aenter__ = mock_aenter
-                mock_client_instance.__aexit__ = mock_aexit
-
-                mock_response = MagicMock()
-                mock_response.json.return_value = mock_models_response
-                mock_response.raise_for_status = MagicMock()
-
-                captured_headers = {}
-
-                async def mock_get(*args, **kwargs):
-                    captured_headers.update(kwargs.get('headers', {}))
-                    return mock_response
-
-                mock_client_instance.get = mock_get
+            with patch("httpx.AsyncClient") as mock_httpx_client:
+                _, _, captured_headers = setup_async_client_mock(
+                    mock_httpx_client,
+                    mock_models_response,
+                    capture_headers=True,
+                )
 
                 # Trigger cache refresh
                 await client._model_cache.get_models(force_refresh=True)
 
                 # Verify programmatic credentials were used
-                assert captured_headers['Authorization'] == 'Bearer programmatic-key'
+                assert captured_headers["Authorization"] == "Bearer programmatic-key"
 
             await client.close()
 
@@ -270,19 +220,22 @@ class TestCredentialIsolation:
     @pytest.mark.unit
     def test_openrouter_client_from_env_backward_compatible(self):
         """Test that OpenRouterClient.from_env() still works and passes credentials to cache."""
-        with patch.dict('os.environ', {
-            'OPENROUTER_API_KEY': 'env-test-key',
-            'OPENROUTER_BASE_URL': 'https://env-test.url/api/v1'
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "OPENROUTER_API_KEY": "env-test-key",
+                "OPENROUTER_BASE_URL": "https://env-test.url/api/v1",
+            },
+        ):
             client = OpenRouterClient.from_env()
 
             # Client should have env credentials
-            assert client.api_key == 'env-test-key'
-            assert client.base_url == 'https://env-test.url/api/v1'
+            assert client.api_key == "env-test-key"
+            assert client.base_url == "https://env-test.url/api/v1"
 
             # Cache should have the same credentials
-            assert client._model_cache._api_key == 'env-test-key'
-            assert client._model_cache._base_url == 'https://env-test.url/api/v1'
+            assert client._model_cache._api_key == "env-test-key"
+            assert client._model_cache._base_url == "https://env-test.url/api/v1"
 
 
 class TestTestIsolation:
@@ -293,9 +246,7 @@ class TestTestIsolation:
     async def test_isolation_scenario_1(self, mock_models_response):
         """Test scenario 1 with specific credentials."""
         cache = ModelCache(
-            ttl_hours=1,
-            api_key="test1-key",
-            base_url="https://test1.url/api/v1"
+            ttl_hours=1, api_key="test1-key", base_url="https://test1.url/api/v1"
         )
 
         assert cache._api_key == "test1-key"
@@ -305,9 +256,7 @@ class TestTestIsolation:
     async def test_isolation_scenario_2(self, mock_models_response):
         """Test scenario 2 with different credentials - should not affect scenario 1."""
         cache = ModelCache(
-            ttl_hours=1,
-            api_key="test2-key",
-            base_url="https://test2.url/api/v1"
+            ttl_hours=1, api_key="test2-key", base_url="https://test2.url/api/v1"
         )
 
         assert cache._api_key == "test2-key"
@@ -325,7 +274,7 @@ class TestTestIsolation:
                     "context_length": 8192,
                     "pricing": {"prompt": "0.00003", "completion": "0.00006"},
                     "architecture": {"modality": "text"},
-                    "top_provider": {"provider": "OpenAI"}
+                    "top_provider": {"provider": "OpenAI"},
                 }
             ]
         }

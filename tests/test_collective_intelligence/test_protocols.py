@@ -5,27 +5,27 @@ Verifies that operational control classes properly implement the
 ISP-compliant Protocol interfaces.
 """
 
-import pytest
 import asyncio
-from typing import get_type_hints
 
-from openrouter_mcp.collective_intelligence.protocols import (
-    ConcurrencyAware,
-    QuotaAware,
-    FailureAware,
-    StorageAware,
-    CancellationAware,
-)
+import pytest
+
 from openrouter_mcp.collective_intelligence.operational_controls import (
-    ConcurrencyLimiter,
     ConcurrencyConfig,
-    QuotaTracker,
-    QuotaConfig,
-    FailureController,
+    ConcurrencyLimiter,
     FailureConfig,
-    StorageManager,
+    FailureController,
+    QuotaConfig,
+    QuotaTracker,
     StorageConfig,
+    StorageManager,
     TaskCancellationManager,
+)
+from openrouter_mcp.collective_intelligence.protocols import (
+    CancellationAware,
+    ConcurrencyAware,
+    FailureAware,
+    QuotaAware,
+    StorageAware,
 )
 
 
@@ -43,12 +43,12 @@ class TestConcurrencyAwareProtocol:
     def test_concurrency_aware_has_required_methods(self):
         """ConcurrencyAware protocol should define all required methods."""
         required_methods = [
-            'acquire_task_slot',
-            'release_task_slot',
-            'acquire_model_slot',
-            'release_model_slot',
-            'get_active_count',
-            'is_at_capacity',
+            "acquire_task_slot",
+            "release_task_slot",
+            "acquire_model_slot",
+            "release_model_slot",
+            "get_active_count",
+            "is_at_capacity",
         ]
 
         for method in required_methods:
@@ -73,6 +73,24 @@ class TestConcurrencyAwareProtocol:
         assert limiter.get_active_count() == 1
         assert not limiter.is_at_capacity()
 
+    @pytest.mark.asyncio
+    async def test_model_slot_acquisition_times_out(self):
+        """Model slots should return False instead of waiting forever."""
+        config = ConcurrencyConfig(max_concurrent_models=1, queue_timeout_seconds=0.01)
+        limiter = ConcurrencyLimiter(config)
+
+        assert await limiter.acquire_model_slot()
+
+        try:
+            try:
+                acquired = await asyncio.wait_for(limiter.acquire_model_slot(), timeout=0.05)
+            except asyncio.TimeoutError as exc:
+                pytest.fail(f"acquire_model_slot should time out internally: {exc}")
+
+            assert acquired is False
+        finally:
+            limiter.release_model_slot()
+
 
 class TestQuotaAwareProtocol:
     """Tests for QuotaAware protocol implementation."""
@@ -87,9 +105,9 @@ class TestQuotaAwareProtocol:
     def test_quota_aware_has_required_methods(self):
         """QuotaAware protocol should define all required methods."""
         required_methods = [
-            'check_and_increment',
-            'reset_request',
-            'get_usage',
+            "check_and_increment",
+            "reset_request",
+            "get_usage",
         ]
 
         for method in required_methods:
@@ -101,27 +119,25 @@ class TestQuotaAwareProtocol:
         config = QuotaConfig(
             max_api_calls_per_request=5,
             max_tokens_per_request=1000,
-            max_cost_per_request=1.0
+            max_cost_per_request=1.0,
         )
         tracker = QuotaTracker(config)
 
         # Test check_and_increment
-        can_proceed, reason = await tracker.check_and_increment(
-            "req-1", tokens=100, cost=0.1
-        )
+        can_proceed, reason = await tracker.check_and_increment("req-1", tokens=100, cost=0.1)
         assert can_proceed
         assert reason == ""
 
         # Test get_usage
         usage = tracker.get_usage("req-1")
-        assert usage['calls'] == 1
-        assert usage['tokens'] == 100
-        assert usage['cost'] == 0.1
+        assert usage["calls"] == 1
+        assert usage["tokens"] == 100
+        assert usage["cost"] == 0.1
 
         # Test reset_request
         tracker.reset_request("req-1")
         usage = tracker.get_usage("req-1")
-        assert usage['calls'] == 0
+        assert usage["calls"] == 0
 
 
 class TestFailureAwareProtocol:
@@ -137,12 +153,12 @@ class TestFailureAwareProtocol:
     def test_failure_aware_has_required_methods(self):
         """FailureAware protocol should define all required methods."""
         required_methods = [
-            'record_failure',
-            'should_retry',
-            'get_backoff_delay',
-            'check_circuit_breaker',
-            'record_circuit_breaker_failure',
-            'record_circuit_breaker_success',
+            "record_failure",
+            "should_retry",
+            "get_backoff_delay",
+            "check_circuit_breaker",
+            "record_circuit_breaker_failure",
+            "record_circuit_breaker_success",
         ]
 
         for method in required_methods:
@@ -152,9 +168,7 @@ class TestFailureAwareProtocol:
     async def test_failure_controller_methods_work(self):
         """FailureController methods should work as expected."""
         config = FailureConfig(
-            max_failures_before_cancel=3,
-            retry_failed_tasks=True,
-            max_retry_attempts=2
+            max_failures_before_cancel=3, retry_failed_tasks=True, max_retry_attempts=2
         )
         controller = FailureController(config)
 
@@ -189,11 +203,11 @@ class TestStorageAwareProtocol:
     def test_storage_aware_has_required_methods(self):
         """StorageAware protocol should define all required methods."""
         required_methods = [
-            'add_item',
-            'cleanup_expired',
-            'get_items',
-            'get_count',
-            'shutdown',
+            "add_item",
+            "cleanup_expired",
+            "get_items",
+            "get_count",
+            "shutdown",
         ]
 
         for method in required_methods:
@@ -202,10 +216,7 @@ class TestStorageAwareProtocol:
     @pytest.mark.asyncio
     async def test_storage_manager_methods_work(self):
         """StorageManager methods should work as expected."""
-        config = StorageConfig(
-            max_history_size=10,
-            enable_auto_cleanup=False
-        )
+        config = StorageConfig(max_history_size=10, enable_auto_cleanup=False)
         manager = StorageManager(config)
 
         try:
@@ -242,10 +253,10 @@ class TestCancellationAwareProtocol:
     def test_cancellation_aware_has_required_methods(self):
         """CancellationAware protocol should define all required methods."""
         required_methods = [
-            'register_task',
-            'cancel_all_tasks',
-            'unregister_task',
-            'get_pending_count',
+            "register_task",
+            "cancel_all_tasks",
+            "unregister_task",
+            "get_pending_count",
         ]
 
         for method in required_methods:
@@ -298,6 +309,7 @@ class TestProtocolTypeChecking:
         class PartialConcurrencyAware:
             async def acquire_task_slot(self, task_id: str) -> bool:
                 return True
+
             # Missing other required methods
 
         obj = PartialConcurrencyAware()

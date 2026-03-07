@@ -377,4 +377,4 @@ For more information, see the main [README](../README.md) or check the [API Docu
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0

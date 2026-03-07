@@ -9,12 +9,12 @@ This module provides:
 
 from .cache import ModelCache
 from .requests import (
-    ChatMessage,
-    BaseCompletionParams,
-    StreamableRequest,
     BaseChatRequest,
     BaseCollectiveRequest,
+    BaseCompletionParams,
     BaseConsensusRequest,
+    ChatMessage,
+    StreamableRequest,
 )
 
 __all__ = [

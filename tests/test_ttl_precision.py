@@ -5,9 +5,9 @@ This module tests the fix for the cache TTL conversion issue where
 integer division caused all sub-hour TTL values to be clamped to 1 hour.
 """
 
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch, Mock
+
+import pytest
 
 from src.openrouter_mcp.client.openrouter import OpenRouterClient
 from src.openrouter_mcp.models.cache import ModelCache
@@ -21,9 +21,7 @@ class TestTTLPrecision:
         """Test 5-minute TTL (300s) converts correctly."""
         cache_ttl = 300  # 5 minutes in seconds
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         # Should convert to ~0.08334 hours (5 minutes = 300s)
@@ -32,106 +30,106 @@ class TestTTLPrecision:
         expected_seconds = 300
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Expected {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Expected {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_30_minute_ttl_conversion(self):
         """Test 30-minute TTL (1800s) converts correctly."""
         cache_ttl = 1800  # 30 minutes in seconds
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         # Should convert to 0.5 hours (30 minutes)
         expected_seconds = 1800
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Expected {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Expected {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_1_hour_ttl_conversion(self):
         """Test 1-hour TTL (3600s) converts correctly."""
         cache_ttl = 3600  # 1 hour in seconds
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         # Should convert to 1.0 hours
         expected_seconds = 3600
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Expected {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Expected {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_24_hour_ttl_conversion(self):
         """Test 24-hour TTL (86400s) converts correctly."""
         cache_ttl = 86400  # 24 hours in seconds
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         # Should convert to 24.0 hours
         expected_seconds = 86400
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Expected {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Expected {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_minimum_ttl_enforced(self):
         """Test that minimum TTL (5 minutes) is enforced."""
         cache_ttl = 60  # 1 minute - below minimum
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         # Should be clamped to minimum of 0.0833 hours (5 minutes = 300s)
         expected_seconds = 300  # 5 minutes minimum
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Expected minimum {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Expected minimum {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_model_cache_accepts_fractional_hours(self):
         """Test ModelCache directly accepts fractional hour values."""
         test_cases = [
-            (0.08334, 300),    # 5 minutes (0.08334 * 3600 = 300.024)
-            (0.5, 1800),       # 30 minutes
-            (1.0, 3600),       # 1 hour
-            (2.5, 9000),       # 2.5 hours
-            (24.0, 86400),     # 24 hours
+            (0.08334, 300),  # 5 minutes (0.08334 * 3600 = 300.024)
+            (0.5, 1800),  # 30 minutes
+            (1.0, 3600),  # 1 hour
+            (2.5, 9000),  # 2.5 hours
+            (24.0, 86400),  # 24 hours
         ]
 
         for ttl_hours, expected_seconds in test_cases:
             cache = ModelCache(ttl_hours=ttl_hours)
-            assert cache.ttl_seconds == expected_seconds, \
-                f"TTL {ttl_hours}h should be {expected_seconds}s, got {cache.ttl_seconds}s"
+            assert (
+                cache.ttl_seconds == expected_seconds
+            ), f"TTL {ttl_hours}h should be {expected_seconds}s, got {cache.ttl_seconds}s"
 
     @pytest.mark.unit
     def test_cache_expiry_with_short_ttl(self):
         """Test cache expiration works correctly with short TTL."""
-        import tempfile
         import os
+        import tempfile
 
         # Use a temporary cache file to avoid interference
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             cache_file = f.name
 
         try:
             # Create cache with 5-minute TTL
-            cache = ModelCache(ttl_hours=0.08334, cache_file=cache_file)  # 5 minutes (300s)
+            cache = ModelCache(
+                ttl_hours=0.08334, cache_file=cache_file
+            )  # 5 minutes (300s)
 
             # Initially, cache should be expired (no data)
             assert cache.is_expired()
@@ -173,29 +171,26 @@ class TestTTLPrecision:
         """Test that float conversion maintains precision."""
         # Test various TTL values
         test_values = [
-            (300, 0.0833),      # 5 minutes
-            (600, 0.1667),      # 10 minutes
-            (900, 0.25),        # 15 minutes
-            (1800, 0.5),        # 30 minutes
-            (2700, 0.75),       # 45 minutes
-            (3600, 1.0),        # 1 hour
-            (7200, 2.0),        # 2 hours
+            (300, 0.0833),  # 5 minutes
+            (600, 0.1667),  # 10 minutes
+            (900, 0.25),  # 15 minutes
+            (1800, 0.5),  # 30 minutes
+            (2700, 0.75),  # 45 minutes
+            (3600, 1.0),  # 1 hour
+            (7200, 2.0),  # 2 hours
         ]
 
         for seconds, expected_hours in test_values:
             actual_hours = seconds / 3600.0
             # Allow small floating-point precision difference
-            assert abs(actual_hours - expected_hours) < 0.0001, \
-                f"{seconds}s should be ~{expected_hours}h, got {actual_hours}h"
+            assert (
+                abs(actual_hours - expected_hours) < 0.0001
+            ), f"{seconds}s should be ~{expected_hours}h, got {actual_hours}h"
 
     @pytest.mark.unit
     def test_cache_disabled_no_ttl_conversion(self):
         """Test that when cache is disabled, no TTL conversion occurs."""
-        client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=False,
-            cache_ttl=300
-        )
+        client = OpenRouterClient(api_key="test-key", enable_cache=False, cache_ttl=300)
 
         # Cache should be None
         assert client._model_cache is None
@@ -205,15 +200,16 @@ class TestTTLPrecision:
         """Test default TTL value (3600s = 1 hour)."""
         client = OpenRouterClient(
             api_key="test-key",
-            enable_cache=True
+            enable_cache=True,
             # cache_ttl defaults to 3600
         )
 
         expected_seconds = 3600  # 1 hour
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Default TTL should be {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Default TTL should be {expected_seconds}s, got {actual_seconds}s"
 
 
 class TestTTLEdgeCases:
@@ -222,50 +218,43 @@ class TestTTLEdgeCases:
     @pytest.mark.unit
     def test_zero_ttl_gets_clamped(self):
         """Test that zero TTL gets clamped to minimum."""
-        client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=0
-        )
+        client = OpenRouterClient(api_key="test-key", enable_cache=True, cache_ttl=0)
 
         # Should be clamped to minimum 5 minutes
         expected_seconds = 300
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Zero TTL should be clamped to {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Zero TTL should be clamped to {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_negative_ttl_gets_clamped(self):
         """Test that negative TTL gets clamped to minimum."""
-        client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=-100
-        )
+        client = OpenRouterClient(api_key="test-key", enable_cache=True, cache_ttl=-100)
 
         # Should be clamped to minimum 5 minutes
         expected_seconds = 300
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Negative TTL should be clamped to {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Negative TTL should be clamped to {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_very_large_ttl(self):
         """Test handling of very large TTL values."""
         cache_ttl = 86400 * 7  # 1 week in seconds
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=cache_ttl
+            api_key="test-key", enable_cache=True, cache_ttl=cache_ttl
         )
 
         expected_seconds = 604800  # 1 week
         actual_seconds = client._model_cache.ttl_seconds
 
-        assert actual_seconds == expected_seconds, \
-            f"Large TTL should be {expected_seconds}s, got {actual_seconds}s"
+        assert (
+            actual_seconds == expected_seconds
+        ), f"Large TTL should be {expected_seconds}s, got {actual_seconds}s"
 
     @pytest.mark.unit
     def test_fractional_seconds_truncated(self):
@@ -305,9 +294,7 @@ class TestBackwardCompatibility:
     def test_client_get_cache_info(self):
         """Test that client.get_cache_info() returns TTL."""
         client = OpenRouterClient(
-            api_key="test-key",
-            enable_cache=True,
-            cache_ttl=1800  # 30 minutes
+            api_key="test-key", enable_cache=True, cache_ttl=1800  # 30 minutes
         )
 
         cache_info = client.get_cache_info()

@@ -1,4 +1,5 @@
 """Message utilities for consistent request serialization."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
@@ -22,10 +23,12 @@ def serialize_messages(messages: Iterable[Any]) -> List[Dict[str, Any]]:
             continue
 
         if hasattr(message, "role") and hasattr(message, "content"):
-            serialized.append({
-                "role": message.role,
-                "content": message.content,
-            })
+            serialized.append(
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+            )
             continue
 
         raise TypeError(f"Unsupported message type: {type(message)!r}")

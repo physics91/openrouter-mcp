@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adaptive_model_selection.response.schema.json",
+  "title": "AdaptiveModelSelectionResponse",
+  "type": "object",
+  "required": [
+    "selected_model",
+    "selection_reasoning",
+    "confidence",
+    "alternative_models",
+    "routing_metrics",
+    "selection_time"
+  ],
+  "properties": {
+    "selected_model": {"type": "string", "minLength": 1},
+    "selection_reasoning": {"type": "string", "minLength": 1},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "alternative_models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model", "score"],
+        "properties": {
+          "model": {"type": "string", "minLength": 1},
+          "score": {"type": "number"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "routing_metrics": {
+      "type": "object",
+      "required": ["expected_performance", "strategy_used", "total_candidates"],
+      "properties": {
+        "expected_performance": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "strategy_used": {"type": "string", "minLength": 1},
+        "total_candidates": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "selection_time": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": true
+}

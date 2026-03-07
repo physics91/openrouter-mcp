@@ -1,5 +1,6 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from src.openrouter_mcp.handlers.free_chat import list_free_models
 
@@ -8,8 +9,10 @@ class TestListFreeModels:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_lists_free_models_with_scores(self):
-        with patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
-            mock_router = MagicMock()
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_router = AsyncMock()
             mock_router.list_models_with_status.return_value = [
                 {
                     "id": "google/gemma-3-27b:free",
@@ -39,8 +42,10 @@ class TestListFreeModels:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_shows_unavailable_models(self):
-        with patch("src.openrouter_mcp.handlers.free_chat._get_router") as mock_get_router:
-            mock_router = MagicMock()
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_router = AsyncMock()
             mock_router.list_models_with_status.return_value = [
                 {
                     "id": "google/gemma-3-27b:free",

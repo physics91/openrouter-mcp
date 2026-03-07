@@ -14,7 +14,7 @@ Quick answers to common questions about the OpenRouter MCP Server.
 ## General Questions
 
 ### What is OpenRouter MCP Server?
-The OpenRouter MCP Server is a Model Context Protocol (MCP) implementation that provides unified access to 200+ AI models through OpenRouter's API. It allows you to use models from OpenAI, Anthropic, Google, Meta, and many others through a single interface.
+The OpenRouter MCP Server is a Model Context Protocol (MCP) implementation that provides unified access to OpenRouter models through a single interface. It allows you to use models from OpenAI, Anthropic, Google, Meta, and many others through one MCP server.
 
 ### What is MCP (Model Context Protocol)?
 MCP is a standard protocol developed by Anthropic that enables AI assistants to connect with external tools and services. It provides a structured way for AI models to interact with APIs, databases, and other resources.
@@ -63,11 +63,11 @@ Yes! The MCP server can be used:
 ### How do I update to the latest version?
 ```bash
 # If installed globally
-npm update -g openrouter-mcp
+npm update -g @physics91/openrouter-mcp
 
 # If using npx
 npm cache clean --force
-npx openrouter-mcp@latest start
+npx @physics91/openrouter-mcp@latest start
 ```
 
 ## Usage Questions
@@ -247,7 +247,7 @@ Yes, but consider:
 
 ### Need more help?
 - Read the [Troubleshooting Guide](TROUBLESHOOTING.md)
-- Check [GitHub Issues](https://github.com/your-repo/issues)
+- Check [GitHub Issues](https://github.com/physics91/openrouter-mcp/issues)
 - Join the community Discord
 - Contact OpenRouter support
 
@@ -283,6 +283,6 @@ Yes, you can wrap it in a web framework like FastAPI or Flask. See the [Architec
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0
 
 **Still have questions?** Open an issue on GitHub or check our other documentation!

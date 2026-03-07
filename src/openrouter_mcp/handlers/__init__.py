@@ -1,24 +1,28 @@
-"""
-Handlers package for OpenRouter MCP Server.
+"""Handler registration helpers for the shared FastMCP instance."""
 
-This package contains all the MCP tool handlers that provide OpenRouter API functionality.
+from importlib import import_module
 
-All handlers import the shared MCP instance from mcp_registry to prevent duplicate
-tool registration. Importing these modules triggers the @mcp.tool() decorators which
-register the tools with the shared FastMCP instance.
-"""
-
-# Import all handlers to trigger tool registration
-from . import chat
-from . import multimodal
-from . import mcp_benchmark
-from . import collective_intelligence
-from . import free_chat
-
-__all__ = [
+_HANDLER_MODULES = (
     "chat",
-    "multimodal",
-    "mcp_benchmark",
     "collective_intelligence",
     "free_chat",
-]
+    "mcp_benchmark",
+    "multimodal",
+)
+_handlers_registered = False
+
+
+def register_handlers() -> None:
+    """Import handler modules once so their MCP tools register explicitly."""
+    global _handlers_registered
+
+    if _handlers_registered:
+        return
+
+    for module_name in _HANDLER_MODULES:
+        import_module(f"{__name__}.{module_name}")
+
+    _handlers_registered = True
+
+
+__all__ = ["register_handlers"]

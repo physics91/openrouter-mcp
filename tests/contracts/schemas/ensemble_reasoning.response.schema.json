@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ensemble_reasoning.response.schema.json",
+  "title": "EnsembleReasoningResponse",
+  "type": "object",
+  "required": [
+    "final_result",
+    "subtask_results",
+    "model_assignments",
+    "reasoning_quality",
+    "processing_time",
+    "strategy_used",
+    "success_rate",
+    "total_cost"
+  ],
+  "properties": {
+    "final_result": {"type": "string", "minLength": 1},
+    "subtask_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["subtask", "model", "result", "confidence", "success"],
+        "properties": {
+          "subtask": {"type": "string"},
+          "model": {"type": "string", "minLength": 1},
+          "result": {"type": "string"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "success": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "model_assignments": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "reasoning_quality": {
+      "type": "object",
+      "required": ["overall_quality", "consistency", "completeness"],
+      "properties": {
+        "overall_quality": {"type": "number", "minimum": 0, "maximum": 1},
+        "consistency": {"type": "number", "minimum": 0, "maximum": 1},
+        "completeness": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": true
+    },
+    "processing_time": {"type": "number", "minimum": 0},
+    "strategy_used": {"type": "string", "minLength": 1},
+    "success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+    "total_cost": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": true
+}

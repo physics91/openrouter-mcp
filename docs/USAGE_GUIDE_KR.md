@@ -29,14 +29,14 @@ npx @physics91/openrouter-mcp init
 npx @physics91/openrouter-mcp start
 
 # 3. 상태 확인
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 ```
 
 ### Claude Desktop 연동
 
 ```bash
 # Claude Desktop 자동 설정
-npx openrouter-mcp install-claude
+npx @physics91/openrouter-mcp@latest install-claude
 
 # Claude Desktop 재시작 후 사용 가능
 ```
@@ -90,23 +90,23 @@ LOG_LEVEL=INFO
 
 ```bash
 # 기본 실행
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 
 # Verbose 로깅 (개발 환경에서만)
-npx openrouter-mcp start --verbose
+npx @physics91/openrouter-mcp@latest start --verbose
 
 # 디버그 모드
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 
 # 커스텀 포트
-npx openrouter-mcp start --port 9000
+npx @physics91/openrouter-mcp@latest start --port 9000
 ```
 
 ### Claude Desktop에서 사용
 
 1. **설치**:
    ```bash
-   npx openrouter-mcp install-claude
+   npx @physics91/openrouter-mcp@latest install-claude
    ```
 
 2. **Claude Desktop 재시작**
@@ -132,7 +132,7 @@ cat > ~/.claude/claude_code_config.json << 'EOF'
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
       }
@@ -205,10 +205,10 @@ list_available_models(
 **초기 설정**:
 ```bash
 # API 키를 안전하게 저장 (OS Keychain 사용)
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 
 # 상태 확인 (키 출처 확인 가능)
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 # 출력: ✓ API key loaded from os-keychain (sk-o...***MASKED***)
 ```
 
@@ -216,16 +216,13 @@ npx openrouter-mcp status
 
 ```bash
 # 암호화 마이그레이션 (v1.0 → v2.0)
-npx openrouter-mcp migrate-encryption
+npx @physics91/openrouter-mcp@latest migrate-encryption
 
 # 보안 감사
-npx openrouter-mcp security-audit
+npx @physics91/openrouter-mcp@latest security-audit
 
 # API 키 교체 (90일마다 권장)
-npx openrouter-mcp rotate-key
-
-# 마스터 키 내보내기 (새 머신으로 이동 시)
-npx openrouter-mcp export-key
+npx @physics91/openrouter-mcp@latest rotate-key
 ```
 
 **자동 감사 로그**:
@@ -252,12 +249,12 @@ npx openrouter-mcp export-key
 
 ```bash
 # 안전 모드 (기본)
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 
 # Verbose 모드 (디버깅 시만)
-npx openrouter-mcp start --verbose
+npx @physics91/openrouter-mcp@latest start --verbose
 # 또는
-OPENROUTER_VERBOSE_LOGGING=true npx openrouter-mcp start
+OPENROUTER_VERBOSE_LOGGING=true npx @physics91/openrouter-mcp@latest start
 ```
 
 **로그 예시**:
@@ -301,7 +298,7 @@ img = ImageInput(
 **마이그레이션 필수**:
 - 모든 `type="path"` 코드를 위의 패턴으로 변경
 - 실패 시 명확한 에러 메시지 표시
-- 자세한 내용: `MULTIMODAL_SECURITY_MIGRATION.md`
+- 자세한 내용: `MULTIMODAL_GUIDE.md`
 
 ---
 
@@ -696,13 +693,13 @@ final_result = await collaborative_problem_solving({
 
 ```bash
 # 1. 마이그레이션 실행
-npx openrouter-mcp migrate-encryption
+npx @physics91/openrouter-mcp@latest migrate-encryption
 
 # 2. 검증
-npx openrouter-mcp security-audit
+npx @physics91/openrouter-mcp@latest security-audit
 
 # 3. 서버 시작 확인
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 
 # 출력 예시:
 # ✓ Master key loaded from os-keychain
@@ -797,27 +794,27 @@ sudo apt install python3 python3-pip
 # Linux: ~/.config/claude/claude_desktop_config.json
 
 # 2. 재설치
-npx openrouter-mcp install-claude
+npx @physics91/openrouter-mcp@latest install-claude
 
 # 3. Claude Desktop 완전 재시작 (Quit → 재실행)
 
 # 4. 로그 확인
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 ```
 
 #### 3. API 키 관련 에러
 
 ```bash
 # 상태 확인
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 
 # 출력 예시:
 # ✗ No API key found
 #
-# Please run: npx openrouter-mcp init
+# Please run: npx @physics91/openrouter-mcp@latest init
 
 # API 키 재설정
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 #### 4. 캐시 손상
@@ -827,7 +824,7 @@ npx openrouter-mcp init
 rm .cache/openrouter_model_cache.json
 
 # 서버 재시작
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 
 # 새 파일 locking으로 더 이상 손상 없음
 ```
@@ -839,7 +836,7 @@ npx openrouter-mcp start
 # OPENROUTER_VERBOSE_LOGGING=true  # 제거
 
 # 기본 모드로 재시작
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 ```
 
 ### 로그 위치
@@ -868,12 +865,12 @@ npx openrouter-mcp start
 ### 상세 문서
 
 - `SECURITY.md` - 보안 가이드
-- `LOGGING_SECURITY.md` - 로깅 보안 상세
-- `MULTIMODAL_SECURITY_MIGRATION.md` - Multimodal 마이그레이션
+- `SECURITY_BEST_PRACTICES.md` - 운영 보안 모범 사례
+- `MULTIMODAL_GUIDE.md` - Multimodal 사용 가이드
 - `COLLECTIVE_INTELLIGENCE_INTEGRATION.md` - Collective Intelligence 완전 가이드
-- `PERFORMANCE_IMPROVEMENTS.md` - 성능 최적화 상세
+- `BENCHMARK_GUIDE.md` - 성능 비교 및 벤치마크 가이드
 - `MODEL_CACHING.md` - 캐시 시스템 가이드
-- `SEMANTIC_SIMILARITY_IMPROVEMENT.md` - 의미론적 유사도 알고리즘
+- `ARCHITECTURE.md` - 시스템 아키텍처 개요
 
 ### 예제 코드
 
@@ -962,4 +959,4 @@ OpenRouter MCP는 이제 다음을 제공합니다:
 ---
 
 **마지막 업데이트**: 2025-11-18
-**버전**: 1.3.0 (문서 수정 및 명령어 정정)
+**버전**: 1.4.0 (문서 수정 및 명령어 정정)

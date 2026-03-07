@@ -17,15 +17,19 @@ Usage:
         custom_field: str = Field(...)
 """
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
-from ..config.constants import ModelDefaults, ConsensusDefaults
+from ..config.constants import ConsensusDefaults, ModelDefaults
 
 
 class ChatMessage(BaseModel):
     """A chat message for completion requests."""
-    role: str = Field(..., description="The role of the message sender (system, user, assistant)")
+
+    role: str = Field(
+        ..., description="The role of the message sender (system, user, assistant)"
+    )
     content: str = Field(..., description="The content of the message")
 
 
@@ -36,13 +40,12 @@ class BaseCompletionParams(BaseModel):
     This base class provides shared fields for temperature and max_tokens,
     ensuring consistent defaults and descriptions across all handlers.
     """
+
     temperature: float = Field(
-        ModelDefaults.TEMPERATURE,
-        description="Sampling temperature (0.0 to 2.0)"
+        ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)"
     )
     max_tokens: Optional[int] = Field(
-        ModelDefaults.MAX_TOKENS,
-        description="Maximum number of tokens to generate"
+        ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate"
     )
 
 
@@ -52,9 +55,9 @@ class StreamableRequest(BaseCompletionParams):
 
     Extends BaseCompletionParams with a stream field.
     """
+
     stream: bool = Field(
-        ModelDefaults.STREAM,
-        description="Whether to stream the response"
+        ModelDefaults.STREAM, description="Whether to stream the response"
     )
 
 
@@ -65,8 +68,11 @@ class BaseChatRequest(StreamableRequest):
     Provides standard fields for model and messages, plus all streaming
     and completion parameters.
     """
+
     model: str = Field(..., description="The model to use for completion")
-    messages: List[ChatMessage] = Field(..., description="List of messages in the conversation")
+    messages: List[ChatMessage] = Field(
+        ..., description="List of messages in the conversation"
+    )
 
 
 class BaseCollectiveRequest(BaseCompletionParams):
@@ -76,13 +82,12 @@ class BaseCollectiveRequest(BaseCompletionParams):
     Provides common fields for multi-model operations, including model
     selection and system prompts.
     """
+
     models: Optional[List[str]] = Field(
-        None,
-        description="Specific models to use (optional)"
+        None, description="Specific models to use (optional)"
     )
     system_prompt: Optional[str] = Field(
-        None,
-        description="System prompt for all models"
+        None, description="System prompt for all models"
     )
 
 
@@ -92,17 +97,16 @@ class BaseConsensusRequest(BaseCollectiveRequest):
 
     Extends BaseCollectiveRequest with consensus-specific parameters.
     """
+
     min_models: int = Field(
-        ConsensusDefaults.MIN_MODELS,
-        description="Minimum number of models to use"
+        ConsensusDefaults.MIN_MODELS, description="Minimum number of models to use"
     )
     max_models: int = Field(
-        ConsensusDefaults.MAX_MODELS,
-        description="Maximum number of models to use"
+        ConsensusDefaults.MAX_MODELS, description="Maximum number of models to use"
     )
     confidence_threshold: float = Field(
         ConsensusDefaults.CONFIDENCE_THRESHOLD,
-        description="Confidence threshold for consensus"
+        description="Confidence threshold for consensus",
     )
 
 
