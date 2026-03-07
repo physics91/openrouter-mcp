@@ -103,13 +103,17 @@ See:
 - API keys should not be committed. Use `init` for secure storage. See `SECURITY.md`.
 
 ## Documentation
-- `docs/INDEX.md`
 - `docs/INSTALLATION.md`
+- `docs/CLAUDE_DESKTOP_GUIDE.md`
+- `docs/CLAUDE_CODE_GUIDE.md`
 - `docs/API.md`
+- `docs/SECURITY.md`
 - `docs/MULTIMODAL_GUIDE.md`
 - `docs/BENCHMARK_GUIDE.md`
 - `docs/SECURE_STORAGE_INTEGRATION.md`
 - `docs/QUICK_REFERENCE.md`
+- `docs/USAGE_GUIDE_KR.md`
+- `docs/CLAUDE_CODE_SETUP_KR.md`
 
 ## Contributing
 See `CONTRIBUTING.md`.

@@ -100,10 +100,10 @@ pip3 --version
 
 ```bash
 # Using npx (no installation needed)
-npx openrouter-mcp init && npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest init && npx @physics91/openrouter-mcp@latest start
 
 # Or install globally
-npm install -g openrouter-mcp
+npm install -g @physics91/openrouter-mcp
 openrouter-mcp init
 openrouter-mcp start
 ```
@@ -130,10 +130,10 @@ choco install nodejs python
 #### Step 2: Install OpenRouter MCP
 ```powershell
 # Install globally
-npm install -g openrouter-mcp
+npm install -g @physics91/openrouter-mcp
 
 # Or use npx (recommended)
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 #### Step 3: Configure Environment
@@ -163,10 +163,10 @@ source ~/.zshrc
 #### Step 2: Install OpenRouter MCP
 ```bash
 # Install globally
-npm install -g openrouter-mcp
+npm install -g @physics91/openrouter-mcp
 
 # Or use npx (recommended)
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 #### Step 3: Configure Environment
@@ -201,10 +201,10 @@ sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 #### Step 2: Install OpenRouter MCP
 ```bash
 # Install globally (may need sudo)
-sudo npm install -g openrouter-mcp
+sudo npm install -g @physics91/openrouter-mcp
 
 # Or use npx (recommended)
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 #### Step 3: Configure Environment
@@ -225,7 +225,7 @@ FROM node:18-python3.11
 WORKDIR /app
 
 # Install OpenRouter MCP
-RUN npm install -g openrouter-mcp
+RUN npm install -g @physics91/openrouter-mcp
 
 # Copy configuration
 COPY .env .env
@@ -249,7 +249,7 @@ docker run -p 8000:8000 --env-file .env openrouter-mcp
 
 #### 1. Initialize Configuration
 ```bash
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 This will prompt you for:
@@ -283,7 +283,7 @@ via `ModelCache` and `OpenRouterClient` rather than environment variables.
 
 #### Automatic Setup
 ```bash
-npx openrouter-mcp install-claude
+npx @physics91/openrouter-mcp@latest install-claude
 ```
 
 #### Manual Setup
@@ -312,7 +312,7 @@ Add configuration:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "your-api-key-here"
       }
@@ -325,7 +325,7 @@ Add configuration:
 
 #### Automatic Setup
 ```bash
-npx openrouter-mcp install-claude-code
+npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
 #### Manual Setup
@@ -340,7 +340,7 @@ Add configuration:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "your-api-key-here"
       }
@@ -354,19 +354,19 @@ Add configuration:
 ### 1. Check Installation
 ```bash
 # Check CLI installation
-npx openrouter-mcp --version
+npx @physics91/openrouter-mcp@latest --version
 
 # Check Python dependencies
 python -c "import fastmcp; print('FastMCP installed')"
 
 # Check server status
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 ```
 
 ### 2. Test Server
 ```bash
 # Start server in verbose mode
-npx openrouter-mcp start --verbose
+npx @physics91/openrouter-mcp@latest start --verbose
 
 # In another terminal, test API
 curl http://localhost:8000/health
@@ -381,15 +381,15 @@ curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
 
 ### 4. Run Diagnostic
 ```bash
-# Full system diagnostic
-npx openrouter-mcp diagnose
+# Check current configuration and detected integrations
+npx @physics91/openrouter-mcp@latest status
 
-# This checks:
-# - Node.js version
-# - Python version and packages
-# - API key validity
-# - Network connectivity
-# - File permissions
+# Start with debug output when deeper troubleshooting is needed
+npx @physics91/openrouter-mcp@latest start --debug
+
+# Complementary environment checks
+node --version
+python --version
 ```
 
 ## Upgrading
@@ -399,7 +399,7 @@ npx openrouter-mcp diagnose
 #### Global Installation
 ```bash
 # Update global package
-npm update -g openrouter-mcp
+npm update -g @physics91/openrouter-mcp
 
 # Verify version
 openrouter-mcp --version
@@ -411,7 +411,7 @@ openrouter-mcp --version
 npm cache clean --force
 
 # Use latest version
-npx openrouter-mcp@latest start
+npx @physics91/openrouter-mcp@latest start
 ```
 
 ### Migrate Configuration
@@ -424,10 +424,10 @@ cp .env .env.backup
 cp .cache/openrouter_model_cache.json cache.backup.json
 
 # Run migration
-npx openrouter-mcp migrate
+npx @physics91/openrouter-mcp@latest migrate-encryption
 
 # Verify configuration
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 ```
 
 ## Uninstallation
@@ -437,10 +437,10 @@ npx openrouter-mcp status
 #### 1. Uninstall Package
 ```bash
 # Global installation
-npm uninstall -g openrouter-mcp
+npm uninstall -g @physics91/openrouter-mcp
 
 # Local installation
-npm uninstall openrouter-mcp
+npm uninstall @physics91/openrouter-mcp
 ```
 
 #### 2. Remove Configuration Files
@@ -498,10 +498,10 @@ source ~/.bashrc
 #### Permission Denied
 ```bash
 # Use sudo on Unix systems
-sudo npm install -g openrouter-mcp
+sudo npm install -g @physics91/openrouter-mcp
 
 # Or use npx to avoid global install
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 ```
 
 #### SSL Certificate Issues
@@ -517,8 +517,8 @@ npm config set strict-ssl false
 
 If you encounter issues:
 1. Check [Troubleshooting Guide](TROUBLESHOOTING.md)
-2. Run diagnostic: `npx openrouter-mcp diagnose`
-3. Check [GitHub Issues](https://github.com/your-repo/issues)
+2. Run `npx @physics91/openrouter-mcp@latest status` and `npx @physics91/openrouter-mcp@latest start --debug`
+3. Check [GitHub Issues](https://github.com/physics91/openrouter-mcp/issues)
 4. Join community Discord
 
 ## Next Steps
@@ -529,8 +529,7 @@ After installation:
 - [FAQ](FAQ.md) - Common questions and answers
 - [Claude Desktop Guide](CLAUDE_DESKTOP_GUIDE.md) - Desktop integration
 - [Claude Code Guide](CLAUDE_CODE_GUIDE.md) - Terminal workflow
-
-For a complete documentation overview, see the [Documentation Index](INDEX.md).
+- [Main README](../README.md) - Project overview and primary documentation entrypoint
 
 ---
 

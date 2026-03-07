@@ -1,6 +1,6 @@
 # Claude Code CLI Integration Guide
 
-This guide walks you through integrating OpenRouter MCP Server with Claude Code CLI, giving you access to 100+ AI models directly within your terminal development workflow.
+This guide walks you through integrating OpenRouter MCP Server with Claude Code CLI so you can use OpenRouter models directly inside your terminal development workflow.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ Before starting, ensure you have:
 
 3. **OpenRouter MCP Server** installed
    ```bash
-   npm install -g openrouter-mcp
+   npm install -g @physics91/openrouter-mcp
    # or use npx for one-time usage
    ```
 
@@ -37,7 +37,7 @@ The easiest way to set up Claude Code CLI integration:
 ### Step 1: Initialize OpenRouter MCP
 
 ```bash
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 This will prompt you for:
@@ -51,7 +51,7 @@ This will prompt you for:
 If you already have configuration set up:
 
 ```bash
-npx openrouter-mcp install-claude-code
+npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
 This automatically:
@@ -81,7 +81,7 @@ If the file doesn't exist, create it. If it exists, add to the existing `mcpServ
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "your-openrouter-api-key-here"
       }
@@ -99,7 +99,7 @@ Here's a complete configuration file with multiple MCP servers:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-xxx...",
         "OPENROUTER_APP_NAME": "claude-code",
@@ -140,7 +140,7 @@ After configuration:
 You can also verify the server status:
 
 ```bash
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 ```
 
 This shows:
@@ -234,7 +234,7 @@ claude --version
 python -c "import json; print(json.load(open('~/.claude/claude_code_config.json')))"
 
 # Check server status
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 ```
 
 #### 2. Authentication Errors
@@ -253,7 +253,7 @@ npx openrouter-mcp status
 curl -H "Authorization: Bearer your-api-key" https://openrouter.ai/api/v1/models
 
 # Re-initialize if needed
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 #### 3. Server Connection Issues
@@ -273,7 +273,7 @@ python --version
 pip list | grep -E "(fastmcp|httpx|pydantic)"
 
 # Test manual server start
-npx openrouter-mcp start --verbose
+npx @physics91/openrouter-mcp@latest start --verbose
 
 # Check system resources
 ps aux | grep openrouter-mcp
@@ -295,7 +295,7 @@ Enable debug logging for detailed troubleshooting:
 
 ```bash
 # Start with debug logging
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 
 # Check configuration in detail
 claude "Debug: Show me all available MCP tools and their status"
@@ -312,7 +312,7 @@ You can customize the server behavior with environment variables in the config:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start", "--port", "9000"],
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
       "env": {
         "OPENROUTER_API_KEY": "your-key",
         "OPENROUTER_APP_NAME": "claude-code-custom",
@@ -335,14 +335,14 @@ You can run multiple OpenRouter instances with different configurations:
   "mcpServers": {
     "openrouter-main": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start", "--port", "8000"],
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "8000"],
       "env": {
         "OPENROUTER_API_KEY": "your-main-key"
       }
     },
     "openrouter-experimental": {
-      "command": "npx", 
-      "args": ["openrouter-mcp", "start", "--port", "8001"],
+      "command": "npx",
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "8001"],
       "env": {
         "OPENROUTER_API_KEY": "your-experimental-key"
       }
@@ -360,7 +360,7 @@ For development-focused usage:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "your-key",
         "OPENROUTER_APP_NAME": "dev-assistant",
@@ -388,7 +388,7 @@ For high-volume development usage:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "your-key",
         "LOG_LEVEL": "warning",

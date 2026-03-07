@@ -32,7 +32,7 @@ nano ~/.claude/claude_code_config.json
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
       }
@@ -76,7 +76,7 @@ source ~/.bashrc
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
       }
@@ -93,7 +93,7 @@ source ~/.bashrc
 ### 방법 3: 자동 설치 명령어
 
 ```bash
-npx openrouter-mcp install-claude-code
+npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
 **주의**: 이 명령어는 기본 설정만 생성합니다. API 키는 별도로 설정해야 합니다.
@@ -112,7 +112,7 @@ claude mcp list
 ```
 Available MCP servers:
 - openrouter (running)
-  Tools: 15
+  Tools: 18
   Status: ✓ Connected
 ```
 
@@ -149,7 +149,7 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"]
+      "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
@@ -164,7 +164,7 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-api-key-here"
       }
@@ -182,7 +182,7 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start", "--port", "9000"],
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
       "env": {
         "LOG_LEVEL": "DEBUG"
       }
@@ -198,7 +198,7 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"]
+      "args": ["@physics91/openrouter-mcp", "start"]
     },
     "other-server": {
       "command": "node",
@@ -247,7 +247,7 @@ OpenRouter MCP Tools:
 8. cross_model_validation - Cross-model validation
 9. collaborative_problem_solving - Collaborative solving
 10. benchmark_models - Benchmark models
-... (15 tools total)
+... (18 tools total)
 ```
 
 ### 방법 3: 간단한 쿼리 테스트
@@ -351,7 +351,7 @@ claude "Which models am I using most?"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start", "--debug"],
+      "args": ["@physics91/openrouter-mcp", "start", "--debug"],
       "env": {
         "LOG_LEVEL": "DEBUG",
         "OPENROUTER_VERBOSE_LOGGING": "true"
@@ -375,7 +375,7 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "LOG_LEVEL": "WARNING"
       }
@@ -391,7 +391,7 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "OPENROUTER_VERBOSE_LOGGING": "false",
         "LOG_LEVEL": "WARNING"
@@ -413,7 +413,7 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
         "LOG_LEVEL": "INFO"
       }
@@ -433,7 +433,7 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start"],
+      "args": ["@physics91/openrouter-mcp", "start"],
       "description": "Team OpenRouter MCP Server",
       "env": {
         "OPENROUTER_APP_NAME": "TeamProject",
@@ -498,7 +498,7 @@ ls ~/.claude/claude_code_config.json
 cat ~/.claude/claude_code_config.json | python -m json.tool
 
 # 3. 재설치
-npx openrouter-mcp install-claude-code
+npx @physics91/openrouter-mcp@latest install-claude-code
 
 # 4. Claude Code 재시작
 ```
@@ -513,7 +513,7 @@ Error: MCP server 'openrouter' failed to start
 **해결**:
 ```bash
 # 1. 수동으로 서버 시작해보기
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 
 # 2. Python 설치 확인
 python --version  # 3.9+ 필요
@@ -533,7 +533,7 @@ lsof -i :8000  # 기본 포트
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["openrouter-mcp", "start", "--port", "9000"]
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"]
     }
   }
 }
@@ -550,7 +550,7 @@ Error: OPENROUTER_API_KEY not found
 
 **방법 1: 초기화**:
 ```bash
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 **방법 2: 환경변수**:
@@ -586,7 +586,7 @@ claude mcp tools openrouter
 **해결**:
 ```bash
 # 1. 서버 재시작
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 
 # 2. 로그 확인
 tail -f ~/.openrouter-mcp/logs/server.log
@@ -639,7 +639,7 @@ npx --version
   "mcpServers": {
     "openrouter": {
       "command": "C:\\Program Files\\nodejs\\npx.cmd",
-      "args": ["openrouter-mcp", "start"]
+      "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
@@ -694,7 +694,7 @@ npm install -g @physics91/openrouter-mcp
 
 - [ ] API 키가 인식됨
   ```bash
-  npx openrouter-mcp status
+  npx @physics91/openrouter-mcp@latest status
   ```
 
 ---
@@ -741,7 +741,7 @@ npm install -g @physics91/openrouter-mcp
 ## 📚 추가 리소스
 
 - **전체 사용 가이드**: `docs/USAGE_GUIDE_KR.md`
-- **빠른 시작**: `QUICKSTART.md`
+- **프로젝트 개요 및 시작점**: `README.md`
 - **보안 가이드**: `docs/SECURITY.md`
 - **Claude Code 공식 문서**: https://docs.anthropic.com/claude-code
 - **OpenRouter 문서**: https://openrouter.ai/docs

@@ -149,10 +149,10 @@ from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
 async def run_benchmark():
     # Set API key
     os.environ["OPENROUTER_API_KEY"] = "your-api-key"
-    
+
     # Get benchmark handler
     handler = await get_benchmark_handler()
-    
+
     # Run model benchmarking
     results = await handler.benchmark_models(
         model_ids=["openai/gpt-3.5-turbo", "anthropic/claude-3-haiku"],
@@ -160,7 +160,7 @@ async def run_benchmark():
         runs=2,
         delay_between_requests=0.5
     )
-    
+
     print(f"Benchmark complete: {len(results)} models")
     for model_id, result in results.items():
         if result.success:
@@ -178,41 +178,41 @@ asyncio.run(run_benchmark())
 ```python
 async def advanced_benchmark():
     handler = await get_benchmark_handler()
-    
+
     # 1. Select models by category
     cache = handler.model_cache
     models = await cache.get_models()
-    
+
     # Select top 3 chat models
     chat_models = cache.filter_models_by_metadata(category="chat")
     top_chat_models = sorted(
-        chat_models, 
-        key=lambda x: x.get('quality_score', 0), 
+        chat_models,
+        key=lambda x: x.get('quality_score', 0),
         reverse=True
     )[:3]
-    
+
     model_ids = [model['id'] for model in top_chat_models]
-    
+
     # 2. Run benchmark
     results = await handler.benchmark_models(
         model_ids=model_ids,
         prompt="Explain a step-by-step approach to solving complex problems.",
         runs=3
     )
-    
+
     # 3. Save results
     filename = f"advanced_benchmark_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     await handler.save_results(results, filename)
-    
+
     # 4. Export report
     from src.openrouter_mcp.handlers.mcp_benchmark import BenchmarkReportExporter
-    
+
     exporter = BenchmarkReportExporter()
     await exporter.export_markdown(
-        results, 
+        results,
         f"reports/{filename.replace('.json', '_report.md')}"
     )
-    
+
     print(f"Advanced benchmark complete: {filename}")
 
 asyncio.run(advanced_benchmark())
@@ -415,7 +415,7 @@ results = await benchmark_models(
 )
 
 # Sort by overall score
-best_model = max(results.items(), 
+best_model = max(results.items(),
                 key=lambda x: x[1].metrics.overall_score if x[1].success else 0)
 print(f"Best performing model: {best_model[0]}")
 ```
@@ -453,13 +453,13 @@ for category, models in specialist_comparison["results"].items():
 # Track regular performance of key models
 async def monitor_model_performance():
     key_models = ["openai/gpt-4", "anthropic/claude-3-opus", "google/gemini-pro"]
-    
+
     results = await benchmark_models(
         models=key_models,
         prompt="Explain the current state and future prospects of AI technology.",
         runs=2
     )
-    
+
     # Save as time-series data for trend analysis
     timestamp = datetime.now().isoformat()
     performance_log = {
@@ -474,7 +474,7 @@ async def monitor_model_performance():
             if result.success
         }
     }
-    
+
     # Save log
     with open(f"performance_log_{datetime.now().strftime('%Y%m')}.json", "a") as f:
         f.write(json.dumps(performance_log) + "\n")
@@ -493,8 +493,7 @@ Use this guide to fully leverage the powerful benchmarking features of the OpenR
 - [Model Metadata Guide](METADATA_GUIDE.md) - Understanding model categorization
 - [Troubleshooting](TROUBLESHOOTING.md) - Common benchmarking issues
 - [Architecture Overview](ARCHITECTURE.md) - System design details
-
-For a complete documentation overview, see the [Documentation Index](INDEX.md).
+- [Main README](../README.md) - Project overview and core documentation links
 
 ---
 

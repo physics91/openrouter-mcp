@@ -12,7 +12,7 @@ This document describes the technical architecture of the OpenRouter MCP Server,
 
 ## System Overview
 
-The OpenRouter MCP Server is a hybrid Node.js/Python application that implements the Model Context Protocol (MCP) to provide unified access to 200+ AI models through OpenRouter's API.
+The OpenRouter MCP Server is a hybrid Node.js/Python application that implements the Model Context Protocol (MCP) to provide unified access to OpenRouter models.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -189,7 +189,7 @@ Cache manager implementation:
 ```python
 class CacheManager:
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -278,14 +278,14 @@ tests/
 python -m venv venv
 pip install -r requirements-dev.txt
 npm install
-npm run dev
+npm start
 ```
 
 ### Production Deployment
 ```bash
-npm install -g openrouter-mcp
+npm install -g @physics91/openrouter-mcp
 openrouter-mcp init
-openrouter-mcp start --production
+openrouter-mcp start
 ```
 
 ## Future Considerations
