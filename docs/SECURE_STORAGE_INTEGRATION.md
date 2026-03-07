@@ -196,7 +196,7 @@ $ openrouter-mcp init
 - `bin/secure-credentials.js` - Credential management module
 - `bin/crypto-manager.js` - Encryption v2.0 implementation
 - `SECURITY.md` - Security best practices
-- `SECURITY_QUICKSTART.md` - Quick setup guide
+- `SECURITY_BEST_PRACTICES.md` - Operational hardening guidance
 
 ## Conclusion
 

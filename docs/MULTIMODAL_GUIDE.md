@@ -300,7 +300,7 @@ Error: Model does not support vision capabilities
 Enable debug logging to troubleshoot issues:
 
 ```bash
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 ```
 
 This will show detailed logs of image processing steps.

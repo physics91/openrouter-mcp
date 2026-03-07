@@ -124,7 +124,7 @@ This document outlines the security architecture, threat model, and best practic
   - ✅ **IMPLEMENTED**: AI responses sanitized (metadata only in default mode)
   - ✅ **IMPLEMENTED**: Explicit opt-in required for verbose logging
   - ✅ **IMPLEMENTED**: Warning message when verbose mode enabled
-  - See `docs/LOGGING_SECURITY.md` for complete documentation
+  - See `SECURITY_BEST_PRACTICES.md` for operational logging guidance
 - **Historical Risk**: Before v2.0.0, full payloads were logged at debug level (FIXED)
 
 **Threat 4.3**: API key exposure in process environment
@@ -184,7 +184,7 @@ This document outlines the security architecture, threat model, and best practic
   - Input validation and sanitization
   - Regular security updates
 - **Historical Vulnerability**: Path traversal in multimodal image handler (FIXED 2025-11-18)
-  - See `docs/SECURITY_ADVISORY_CVE_2025_MULTIMODAL.md` for details
+  - See `reports/SECURITY_FIXES.md` for fix summary and follow-up notes
 
 **Threat 6.2**: Configuration injection attacks
 - **Likelihood**: Medium
@@ -431,7 +431,7 @@ client = OpenRouterClient(
 - **HIPAA**: Never enable verbose logging for healthcare data
 - **PCI DSS**: No payment data should ever be sent to AI models
 
-**Full Documentation**: See `docs/LOGGING_SECURITY.md` for complete details, API reference, and security verification procedures.
+**Operational Guidance**: See `SECURITY_BEST_PRACTICES.md` for logging hygiene, credential handling, and deployment recommendations.
 
 ---
 
