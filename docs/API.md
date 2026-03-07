@@ -17,7 +17,7 @@ This document provides detailed API reference for the OpenRouter MCP Server, inc
 
 ## Overview
 
-The OpenRouter MCP Server implements the Model Context Protocol (MCP) to provide access to 100+ AI models through OpenRouter's unified API. All tools are asynchronous and support comprehensive error handling.
+The OpenRouter MCP Server implements the Model Context Protocol (MCP) to provide access to OpenRouter models through a unified API. All tools are asynchronous and support comprehensive error handling.
 
 **Base URL**: The server runs locally (default: `http://localhost:8000`)
 **Protocol**: Model Context Protocol (MCP)
@@ -34,7 +34,7 @@ export OPENROUTER_API_KEY="your-api-key-here"
 Or configure through the CLI:
 
 ```bash
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 ```
 
 ## Available Tools
@@ -137,7 +137,7 @@ Generate chat completions using any available AI model through OpenRouter.
       "content": "You are a helpful assistant that explains complex topics simply."
     },
     {
-      "role": "user", 
+      "role": "user",
       "content": "Explain quantum computing in simple terms."
     }
   ],
@@ -465,7 +465,7 @@ def retry_with_backoff(func, max_retries=3):
         except RateLimitError as e:
             if attempt == max_retries - 1:
                 raise
-            
+
             # Exponential backoff with jitter
             delay = (2 ** attempt) + random.uniform(0, 1)
             time.sleep(delay)
@@ -587,17 +587,17 @@ except Exception as e:
 
 ## Related Documentation
 
-- [Installation Guide](INSTALLATION.md) - Set up the OpenRouter MCP Server  
+- [Installation Guide](INSTALLATION.md) - Set up the OpenRouter MCP Server
 - [Benchmarking Guide](BENCHMARK_GUIDE.md) - Compare model performance
 - [Model Metadata Guide](METADATA_GUIDE.md) - Model filtering and categorization
 - [Multimodal Guide](MULTIMODAL_GUIDE.md) - Image and vision capabilities
 - [Troubleshooting](TROUBLESHOOTING.md) - API usage issues and solutions
 
-For a complete documentation overview, see the [Documentation Index](INDEX.md).
+For project overview and the main documentation entrypoint, see the [README](../README.md).
 
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0
 
 For more information, see the [main README](../README.md) or visit [OpenRouter Documentation](https://openrouter.ai/docs).

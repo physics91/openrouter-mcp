@@ -419,19 +419,10 @@ openrouter-mcp migrate-encryption
 # Each machine gets its own master key
 ```
 
-### Option 2: Export/Import Master Key
+### Option 2: Re-initialize Credentials on the New Machine
 
-```bash
-# Machine 1: Export master key
-openrouter-mcp export-key
-# Enter strong password
-# Save output: ZXhwb3J0ZWQta2V5LWRhdGE...
-
-# Machine 2: Import master key
-openrouter-mcp import-key
-# Paste exported data
-# Enter same password
-```
+The current CLI does not provide `export-key` or `import-key` commands.
+If you move to a new machine, initialize secure storage there and register the API key again.
 
 **Security Note**: Option 1 is more secure (separate keys per machine)
 
@@ -453,7 +444,7 @@ openrouter-mcp import-key
 
 ### Q: Can I migrate on a different machine?
 
-**A**: No. v1.0 keys are machine-specific. You must migrate on the same machine where credentials were encrypted. Alternatively, use manual migration (export key first).
+**A**: No. v1.0 keys are machine-specific. You must migrate on the same machine where credentials were encrypted. On a different machine, initialize secure storage again and re-enter the API key.
 
 ### Q: How do I verify my encryption version?
 

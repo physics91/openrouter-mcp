@@ -1,7 +1,6 @@
 import time
-import pytest
 
-from src.openrouter_mcp.free.router import FreeModelRouter
+import pytest
 
 
 class TestCooldownManagement:

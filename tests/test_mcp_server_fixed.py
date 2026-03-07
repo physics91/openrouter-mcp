@@ -14,8 +14,8 @@ Tests verify:
 
 import asyncio
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -29,6 +29,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def _get_tools_dict(mcp_instance):
+    """Build a stable name->tool mapping via the FastMCP public API."""
+    tools = await mcp_instance.list_tools()
+    return {tool.name: tool for tool in tools}
+
+
+def _get_tools_dict_sync(mcp_instance):
+    """Synchronous wrapper for non-async tests."""
+    return asyncio.run(_get_tools_dict(mcp_instance))
+
+
 class TestMCPServerBasicFunctionality:
     """MCP server basic functionality tests with assertions."""
 
@@ -36,6 +47,7 @@ class TestMCPServerBasicFunctionality:
         """Test that MCP server module can be imported."""
         try:
             from openrouter_mcp import server
+
             assert server is not None
         except ImportError as e:
             pytest.fail(f"Failed to import server module: {e}")
@@ -45,15 +57,14 @@ class TestMCPServerBasicFunctionality:
         from openrouter_mcp.server import mcp
 
         assert mcp is not None, "MCP instance should exist"
-        assert hasattr(mcp, 'name'), "MCP instance should have a name"
+        assert hasattr(mcp, "name"), "MCP instance should have a name"
         assert mcp.name == "openrouter-mcp", f"Expected name 'openrouter-mcp', got '{mcp.name}'"
 
     def test_benchmark_tools_are_registered(self):
         """Test that benchmark tools are registered."""
         from openrouter_mcp.handlers.mcp_benchmark import mcp
 
-        # Get registered tools directly from tool manager
-        tools = mcp._tool_manager._tools
+        tools = _get_tools_dict_sync(mcp)
         tool_names = list(tools.keys())
 
         # Expected benchmark tools
@@ -62,19 +73,21 @@ class TestMCPServerBasicFunctionality:
             "get_benchmark_history",
             "compare_model_categories",
             "export_benchmark_report",
-            "compare_model_performance"
+            "compare_model_performance",
         ]
 
         logger.info(f"Registered tools: {tool_names}")
 
         # Assert each expected tool is registered
         for expected_tool in expected_tools:
-            assert expected_tool in tool_names, \
-                f"Tool '{expected_tool}' not found in registered tools: {tool_names}"
+            assert (
+                expected_tool in tool_names
+            ), f"Tool '{expected_tool}' not found in registered tools: {tool_names}"
 
         # Assert minimum number of tools
-        assert len(tool_names) >= 5, \
-            f"Expected at least 5 benchmark tools, found {len(tool_names)}: {tool_names}"
+        assert (
+            len(tool_names) >= 5
+        ), f"Expected at least 5 benchmark tools, found {len(tool_names)}: {tool_names}"
 
         logger.info(f"✓ All {len(expected_tools)} benchmark tools are registered")
 
@@ -82,23 +95,19 @@ class TestMCPServerBasicFunctionality:
         """Test that chat tools are registered."""
         from openrouter_mcp.handlers.chat import mcp
 
-        tools = mcp._tool_manager._tools
+        tools = _get_tools_dict_sync(mcp)
         tool_names = list(tools.keys())
 
-        expected_tools = [
-            "chat_with_model",
-            "list_available_models",
-            "get_usage_stats"
-        ]
+        expected_tools = ["chat_with_model", "list_available_models", "get_usage_stats"]
 
         logger.info(f"Registered chat tools: {tool_names}")
 
         for expected_tool in expected_tools:
-            assert expected_tool in tool_names, \
-                f"Chat tool '{expected_tool}' not found: {tool_names}"
+            assert (
+                expected_tool in tool_names
+            ), f"Chat tool '{expected_tool}' not found: {tool_names}"
 
-        assert len(tool_names) >= 3, \
-            f"Expected at least 3 chat tools, found {len(tool_names)}"
+        assert len(tool_names) >= 3, f"Expected at least 3 chat tools, found {len(tool_names)}"
 
         logger.info(f"✓ All {len(expected_tools)} chat tools are registered")
 
@@ -106,8 +115,7 @@ class TestMCPServerBasicFunctionality:
         """Test that collective intelligence tools are registered."""
         from openrouter_mcp.handlers.collective_intelligence import mcp
 
-        # Get registered tools directly from tool manager
-        tools = mcp._tool_manager._tools
+        tools = _get_tools_dict_sync(mcp)
         tool_names = list(tools.keys())
 
         expected_tools = [
@@ -115,17 +123,15 @@ class TestMCPServerBasicFunctionality:
             "ensemble_reasoning",
             "adaptive_model_selection",
             "cross_model_validation",
-            "collaborative_problem_solving"
+            "collaborative_problem_solving",
         ]
 
         logger.info(f"Registered CI tools: {tool_names}")
 
         for expected_tool in expected_tools:
-            assert expected_tool in tool_names, \
-                f"CI tool '{expected_tool}' not found: {tool_names}"
+            assert expected_tool in tool_names, f"CI tool '{expected_tool}' not found: {tool_names}"
 
-        assert len(tool_names) >= 5, \
-            f"Expected at least 5 CI tools, found {len(tool_names)}"
+        assert len(tool_names) >= 5, f"Expected at least 5 CI tools, found {len(tool_names)}"
 
         logger.info(f"✓ All {len(expected_tools)} collective intelligence tools are registered")
 
@@ -137,24 +143,27 @@ class TestMCPServerBasicFunctionality:
         due to module import issues.
         """
         from openrouter_mcp.handlers.chat import mcp as chat_mcp
-        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
         from openrouter_mcp.handlers.collective_intelligence import mcp as ci_mcp
+        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
 
-        chat_tools = len(chat_mcp._tool_manager._tools)
-        benchmark_tools = len(benchmark_mcp._tool_manager._tools)
-        ci_tools = len(ci_mcp._tool_manager._tools)
+        chat_tools = len(_get_tools_dict_sync(chat_mcp))
+        benchmark_tools = len(_get_tools_dict_sync(benchmark_mcp))
+        ci_tools = len(_get_tools_dict_sync(ci_mcp))
 
         # These assertions should NEVER fail
-        assert chat_tools > 0, \
-            "REGRESSION: Chat tools count is ZERO! Tools not registered properly."
-        assert benchmark_tools > 0, \
-            "REGRESSION: Benchmark tools count is ZERO! Tools not registered properly."
-        assert ci_tools > 0, \
-            "REGRESSION: Collective intelligence tools count is ZERO! Tools not registered properly."
+        assert (
+            chat_tools > 0
+        ), "REGRESSION: Chat tools count is ZERO! Tools not registered properly."
+        assert (
+            benchmark_tools > 0
+        ), "REGRESSION: Benchmark tools count is ZERO! Tools not registered properly."
+        assert (
+            ci_tools > 0
+        ), "REGRESSION: Collective intelligence tools count is ZERO! Tools not registered properly."
 
         total = chat_tools + benchmark_tools + ci_tools
 
-        logger.info(f"✓ Tool registration verified:")
+        logger.info("✓ Tool registration verified:")
         logger.info(f"  - Chat tools: {chat_tools}")
         logger.info(f"  - Benchmark tools: {benchmark_tools}")
         logger.info(f"  - Collective intelligence tools: {ci_tools}")
@@ -167,38 +176,36 @@ class TestMCPServerBasicFunctionality:
         from openrouter_mcp.handlers.chat import mcp as chat_mcp
         from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
 
-        # Get tools directly from tool managers
-        chat_tools = chat_mcp._tool_manager._tools
-        benchmark_tools = benchmark_mcp._tool_manager._tools
+        chat_tools = _get_tools_dict_sync(chat_mcp)
+        benchmark_tools = _get_tools_dict_sync(benchmark_mcp)
 
         tool_count = 0
 
         # Check chat tools
         for name, tool in chat_tools.items():
-            assert hasattr(tool, 'description'), \
-                f"Tool '{name}' missing description attribute"
-            assert tool.description, \
-                f"Tool '{name}' has empty description"
-            assert len(tool.description) > 10, \
-                f"Tool '{name}' description too short: '{tool.description}'"
+            assert hasattr(tool, "description"), f"Tool '{name}' missing description attribute"
+            assert tool.description, f"Tool '{name}' has empty description"
+            assert (
+                len(tool.description) > 10
+            ), f"Tool '{name}' description too short: '{tool.description}'"
             tool_count += 1
 
         # Check benchmark tools
         for name, tool in benchmark_tools.items():
-            assert hasattr(tool, 'description'), \
-                f"Tool '{name}' missing description attribute"
-            assert tool.description, \
-                f"Tool '{name}' has empty description"
-            assert len(tool.description) > 10, \
-                f"Tool '{name}' description too short: '{tool.description}'"
+            assert hasattr(tool, "description"), f"Tool '{name}' missing description attribute"
+            assert tool.description, f"Tool '{name}' has empty description"
+            assert (
+                len(tool.description) > 10
+            ), f"Tool '{name}' description too short: '{tool.description}'"
             tool_count += 1
 
         logger.info(f"✓ All {tool_count} tools have proper descriptions")
 
     def test_server_can_be_created(self):
         """Test that server app can be created with proper environment."""
-        from openrouter_mcp.server import create_app
         import os
+
+        from openrouter_mcp.server import create_app
 
         # Set required environment variable
         original_key = os.getenv("OPENROUTER_API_KEY")
@@ -207,7 +214,7 @@ class TestMCPServerBasicFunctionality:
         try:
             app = create_app()
             assert app is not None, "create_app() should return an app instance"
-            assert hasattr(app, 'run'), "App should have a run() method"
+            assert hasattr(app, "run"), "App should have a run() method"
             logger.info("✓ Server app created successfully")
         finally:
             # Restore original key
@@ -218,8 +225,9 @@ class TestMCPServerBasicFunctionality:
 
     def test_server_validates_environment(self):
         """Test that server properly validates environment variables."""
-        from openrouter_mcp.server import validate_environment
         import os
+
+        from openrouter_mcp.server import validate_environment
 
         # Remove API key temporarily
         original_key = os.getenv("OPENROUTER_API_KEY")
@@ -251,14 +259,12 @@ async def test_mcp_server_comprehensive():
     try:
         # Test 1: Import server
         from openrouter_mcp.server import mcp
+
         assert mcp is not None
         logger.info("✓ Server module imported successfully")
 
         # Test 2: Check all handler modules
-        from openrouter_mcp.handlers import chat
-        from openrouter_mcp.handlers import mcp_benchmark
-        from openrouter_mcp.handlers import collective_intelligence
-        from openrouter_mcp.handlers import multimodal
+        from openrouter_mcp.handlers import chat, collective_intelligence, mcp_benchmark, multimodal
 
         assert chat is not None
         assert mcp_benchmark is not None
@@ -267,10 +273,10 @@ async def test_mcp_server_comprehensive():
         logger.info("✓ All handler modules imported successfully")
 
         # Test 3: Verify tool counts
-        chat_tools = len(chat.mcp._tool_manager._tools)
-        benchmark_tools = len(mcp_benchmark.mcp._tool_manager._tools)
-        ci_tools = len(collective_intelligence.mcp._tool_manager._tools)
-        multimodal_tools = len(multimodal.mcp._tool_manager._tools)
+        chat_tools = len(await _get_tools_dict(chat.mcp))
+        benchmark_tools = len(await _get_tools_dict(mcp_benchmark.mcp))
+        ci_tools = len(await _get_tools_dict(collective_intelligence.mcp))
+        multimodal_tools = len(await _get_tools_dict(multimodal.mcp))
 
         assert chat_tools >= 3, f"Expected >= 3 chat tools, got {chat_tools}"
         assert benchmark_tools >= 5, f"Expected >= 5 benchmark tools, got {benchmark_tools}"
@@ -279,7 +285,7 @@ async def test_mcp_server_comprehensive():
 
         total_tools = chat_tools + benchmark_tools + ci_tools + multimodal_tools
 
-        logger.info(f"✓ Tool registration verified:")
+        logger.info("✓ Tool registration verified:")
         logger.info(f"    Chat tools: {chat_tools}")
         logger.info(f"    Benchmark tools: {benchmark_tools}")
         logger.info(f"    Collective intelligence tools: {ci_tools}")
@@ -289,13 +295,13 @@ async def test_mcp_server_comprehensive():
         assert total_tools >= 15, f"Expected at least 15 total tools, found {total_tools}"
 
         # Test 4: Verify specific tools exist
-        benchmark_tool_names = list(mcp_benchmark.mcp._tool_manager._tools.keys())
+        benchmark_tool_names = list((await _get_tools_dict(mcp_benchmark.mcp)).keys())
         expected_benchmark_tools = [
             "benchmark_models",
             "get_benchmark_history",
             "compare_model_categories",
             "export_benchmark_report",
-            "compare_model_performance"
+            "compare_model_performance",
         ]
 
         for tool in expected_benchmark_tools:
@@ -304,13 +310,13 @@ async def test_mcp_server_comprehensive():
         logger.info("✓ All expected benchmark tools present")
 
         # Test 5: Verify CI tools exist
-        ci_tool_names = list(collective_intelligence.mcp._tool_manager._tools.keys())
+        ci_tool_names = list((await _get_tools_dict(collective_intelligence.mcp)).keys())
         expected_ci_tools = [
             "collective_chat_completion",
             "ensemble_reasoning",
             "adaptive_model_selection",
             "cross_model_validation",
-            "collaborative_problem_solving"
+            "collaborative_problem_solving",
         ]
 
         for tool in expected_ci_tools:
@@ -339,6 +345,7 @@ async def test_mcp_server_comprehensive():
     except Exception as e:
         logger.error(f"✗ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         raise
 

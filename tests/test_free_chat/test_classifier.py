@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.openrouter_mcp.free.classifier import TaskClassifier, FreeTaskType
+from src.openrouter_mcp.free.classifier import FreeTaskType, TaskClassifier
 
 
 class TestTaskClassifier:

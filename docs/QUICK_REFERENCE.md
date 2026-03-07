@@ -154,10 +154,10 @@ The system checks sources in this order:
 ## Documentation
 
 - **Full details:** `SECURE_STORAGE_INTEGRATION.md`
-- **Comparison:** `INTEGRATION_COMPARISON.md`
-- **Changes:** `CHANGES_SUMMARY.md`
+- **Migration:** `MIGRATION_GUIDE.md`
+- **Encryption internals:** `ENCRYPTION_V2.md`
 - **Security:** `SECURITY.md`
-- **Quick start:** `SECURITY_QUICKSTART.md`
+- **Best practices:** `SECURITY_BEST_PRACTICES.md`
 
 ---
 

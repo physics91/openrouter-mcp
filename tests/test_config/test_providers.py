@@ -6,16 +6,16 @@ and provider information retrieval.
 """
 
 import json
+from unittest.mock import mock_open, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, mock_open
 
 from openrouter_mcp.config.providers import (
-    load_provider_config,
-    resolve_provider_alias,
+    ProviderConfigError,
     get_provider_info,
     get_quality_tier_info,
-    _config_cache,
+    load_provider_config,
+    resolve_provider_alias,
 )
 
 
@@ -23,6 +23,7 @@ from openrouter_mcp.config.providers import (
 def reset_config_cache():
     """Reset the configuration cache before each test."""
     import openrouter_mcp.config.providers as providers_module
+
     providers_module._config_cache = None
     yield
     providers_module._config_cache = None
@@ -42,22 +43,19 @@ class TestLoadProviderConfig:
                     "description": "Leading AI research organization",
                     "default_capabilities": {
                         "supports_streaming": True,
-                        "supports_system_prompt": True
+                        "supports_system_prompt": True,
                     },
-                    "model_families": ["gpt-3", "gpt-4"]
+                    "model_families": ["gpt-3", "gpt-4"],
                 }
             },
-            "aliases": {
-                "oai": "openai",
-                "chatgpt": "openai"
-            },
+            "aliases": {"oai": "openai", "chatgpt": "openai"},
             "quality_tiers": {
                 "premium": {
                     "description": "High-quality flagship models",
                     "typical_cost": "High",
-                    "examples": ["gpt-4", "claude-3-opus"]
+                    "examples": ["gpt-4", "claude-3-opus"],
                 }
-            }
+            },
         }
 
         # Mock the file open
@@ -76,7 +74,7 @@ class TestLoadProviderConfig:
         mock_config = {"providers": {}, "aliases": {}, "quality_tiers": {}}
         mock_file_content = json.dumps(mock_config)
 
-        with patch("builtins.open", mock_open(read_data=mock_file_content)) as mock_file:
+        with patch("builtins.open", mock_open(read_data=mock_file_content)):
             with patch("pathlib.Path.exists", return_value=True):
                 # Load twice
                 result1 = load_provider_config()
@@ -99,18 +97,14 @@ class TestLoadProviderConfig:
         invalid_json = "{invalid json content"
 
         with patch("builtins.open", mock_open(read_data=invalid_json)):
-            result = load_provider_config()
-
-        # Should return default empty configuration
-        assert result == {"providers": {}, "aliases": {}, "quality_tiers": {}}
+            with pytest.raises(ProviderConfigError):
+                load_provider_config()
 
     def test_load_config_general_exception(self):
         """Test handling of unexpected errors during load."""
         with patch("builtins.open", side_effect=Exception("Unexpected error")):
-            result = load_provider_config()
-
-        # Should return default empty configuration
-        assert result == {"providers": {}, "aliases": {}, "quality_tiers": {}}
+            with pytest.raises(ProviderConfigError):
+                load_provider_config()
 
 
 class TestResolveProviderAlias:
@@ -119,16 +113,14 @@ class TestResolveProviderAlias:
     def test_resolve_direct_alias(self):
         """Test resolving a direct alias to canonical name."""
         mock_config = {
-            "providers": {
-                "openai": {}
-            },
-            "aliases": {
-                "oai": "openai",
-                "chatgpt": "openai"
-            }
+            "providers": {"openai": {}},
+            "aliases": {"oai": "openai", "chatgpt": "openai"},
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = resolve_provider_alias("oai")
             assert result == "openai"
 
@@ -137,15 +129,12 @@ class TestResolveProviderAlias:
 
     def test_resolve_canonical_name(self):
         """Test resolving a name that's already canonical."""
-        mock_config = {
-            "providers": {
-                "openai": {},
-                "anthropic": {}
-            },
-            "aliases": {}
-        }
+        mock_config = {"providers": {"openai": {}, "anthropic": {}}, "aliases": {}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = resolve_provider_alias("openai")
             assert result == "openai"
 
@@ -154,16 +143,12 @@ class TestResolveProviderAlias:
 
     def test_resolve_case_insensitive(self):
         """Test that alias resolution is case-insensitive."""
-        mock_config = {
-            "providers": {
-                "openai": {}
-            },
-            "aliases": {
-                "oai": "openai"
-            }
-        }
+        mock_config = {"providers": {"openai": {}}, "aliases": {"oai": "openai"}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             # Test various cases
             assert resolve_provider_alias("OAI") == "openai"
             assert resolve_provider_alias("Oai") == "openai"
@@ -172,28 +157,24 @@ class TestResolveProviderAlias:
 
     def test_resolve_partial_match(self):
         """Test resolving partial matches in aliases."""
-        mock_config = {
-            "providers": {
-                "openai": {}
-            },
-            "aliases": {
-                "gpt": "openai"
-            }
-        }
+        mock_config = {"providers": {"openai": {}}, "aliases": {"gpt": "openai"}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             # Partial match should resolve
             result = resolve_provider_alias("gpt-4")
             assert result == "openai"
 
     def test_resolve_unknown_provider(self):
         """Test resolving an unknown provider name."""
-        mock_config = {
-            "providers": {},
-            "aliases": {}
-        }
+        mock_config = {"providers": {}, "aliases": {}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = resolve_provider_alias("unknown-provider")
             # Should return the input as-is
             assert result == "unknown-provider"
@@ -202,7 +183,10 @@ class TestResolveProviderAlias:
         """Test resolving empty or None provider name."""
         mock_config = {"providers": {}, "aliases": {}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = resolve_provider_alias("")
             assert result == "unknown"
 
@@ -223,15 +207,18 @@ class TestGetProviderInfo:
                     "description": "Leading AI research organization",
                     "default_capabilities": {
                         "supports_streaming": True,
-                        "supports_system_prompt": True
+                        "supports_system_prompt": True,
                     },
-                    "model_families": ["gpt-3", "gpt-4"]
+                    "model_families": ["gpt-3", "gpt-4"],
                 }
             },
-            "aliases": {}
+            "aliases": {},
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = get_provider_info("openai")
 
         assert result["display_name"] == "OpenAI"
@@ -242,30 +229,26 @@ class TestGetProviderInfo:
     def test_get_provider_info_via_alias(self):
         """Test getting info using an alias."""
         mock_config = {
-            "providers": {
-                "openai": {
-                    "display_name": "OpenAI",
-                    "website": "https://openai.com"
-                }
-            },
-            "aliases": {
-                "oai": "openai"
-            }
+            "providers": {"openai": {"display_name": "OpenAI", "website": "https://openai.com"}},
+            "aliases": {"oai": "openai"},
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = get_provider_info("oai")
 
         assert result["display_name"] == "OpenAI"
 
     def test_get_unknown_provider_info(self):
         """Test getting info for an unknown provider returns defaults."""
-        mock_config = {
-            "providers": {},
-            "aliases": {}
-        }
+        mock_config = {"providers": {}, "aliases": {}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = get_provider_info("unknown-provider")
 
         # Should return default info
@@ -277,15 +260,14 @@ class TestGetProviderInfo:
     def test_get_provider_info_case_insensitive(self):
         """Test that provider info lookup is case-insensitive."""
         mock_config = {
-            "providers": {
-                "openai": {
-                    "display_name": "OpenAI"
-                }
-            },
-            "aliases": {}
+            "providers": {"openai": {"display_name": "OpenAI"}},
+            "aliases": {},
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result1 = get_provider_info("OpenAI")
             result2 = get_provider_info("OPENAI")
             result3 = get_provider_info("openai")
@@ -304,12 +286,15 @@ class TestGetQualityTierInfo:
                 "premium": {
                     "description": "High-quality flagship models",
                     "typical_cost": "High",
-                    "examples": ["gpt-4", "claude-3-opus"]
+                    "examples": ["gpt-4", "claude-3-opus"],
                 }
             }
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = get_quality_tier_info("premium")
 
         assert result["description"] == "High-quality flagship models"
@@ -318,11 +303,12 @@ class TestGetQualityTierInfo:
 
     def test_get_unknown_tier_info(self):
         """Test getting info for an unknown quality tier returns defaults."""
-        mock_config = {
-            "quality_tiers": {}
-        }
+        mock_config = {"quality_tiers": {}}
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             result = get_quality_tier_info("unknown-tier")
 
         # Should return default info
@@ -337,17 +323,20 @@ class TestGetQualityTierInfo:
                 "premium": {
                     "description": "Premium models",
                     "typical_cost": "High",
-                    "examples": ["gpt-4"]
+                    "examples": ["gpt-4"],
                 },
                 "budget": {
                     "description": "Budget models",
                     "typical_cost": "Low",
-                    "examples": ["gpt-3.5-turbo"]
-                }
+                    "examples": ["gpt-3.5-turbo"],
+                },
             }
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             premium = get_quality_tier_info("premium")
             budget = get_quality_tier_info("budget")
 
@@ -365,27 +354,27 @@ class TestProviderConfigIntegration:
                 "openai": {
                     "display_name": "OpenAI",
                     "website": "https://openai.com",
-                    "model_families": ["gpt"]
+                    "model_families": ["gpt"],
                 },
                 "anthropic": {
                     "display_name": "Anthropic",
                     "website": "https://anthropic.com",
-                    "model_families": ["claude"]
-                }
+                    "model_families": ["claude"],
+                },
             },
-            "aliases": {
-                "oai": "openai",
-                "ant": "anthropic"
-            },
+            "aliases": {"oai": "openai", "ant": "anthropic"},
             "quality_tiers": {
                 "premium": {
                     "description": "Premium tier",
-                    "examples": ["gpt-4", "claude-3"]
+                    "examples": ["gpt-4", "claude-3"],
                 }
-            }
+            },
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             # Resolve alias
             canonical = resolve_provider_alias("oai")
             assert canonical == "openai"
@@ -403,10 +392,13 @@ class TestProviderConfigIntegration:
         mock_config = {
             "providers": {"openai": {"display_name": "OpenAI"}},
             "aliases": {"oai": "openai"},
-            "quality_tiers": {}
+            "quality_tiers": {},
         }
 
-        with patch("openrouter_mcp.config.providers.load_provider_config", return_value=mock_config):
+        with patch(
+            "openrouter_mcp.config.providers.load_provider_config",
+            return_value=mock_config,
+        ):
             # Multiple calls should return same results
             for _ in range(5):
                 assert resolve_provider_alias("oai") == "openai"

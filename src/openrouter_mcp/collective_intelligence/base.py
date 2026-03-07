@@ -5,16 +5,17 @@ This module defines the core abstractions and protocols that all CI components
 must implement to ensure consistency and interoperability.
 """
 
+import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, Union
 from datetime import datetime
-import uuid
+from enum import Enum
+from typing import Any, Dict, List, Optional, Protocol
 
 
 class TaskType(Enum):
     """Types of tasks that can be processed by the collective intelligence system."""
+
     REASONING = "reasoning"
     ANALYSIS = "analysis"
     CREATIVE = "creative"
@@ -28,6 +29,7 @@ class TaskType(Enum):
 
 class ModelCapability(Enum):
     """Model capabilities for task assignment."""
+
     REASONING = "reasoning"
     CREATIVITY = "creativity"
     ACCURACY = "accuracy"
@@ -41,6 +43,7 @@ class ModelCapability(Enum):
 @dataclass
 class ModelInfo:
     """Information about a model including its capabilities and metrics."""
+
     model_id: str
     name: str
     provider: str
@@ -56,6 +59,7 @@ class ModelInfo:
 @dataclass
 class TaskContext:
     """Context information for a task to be processed."""
+
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     task_type: TaskType = TaskType.REASONING
     content: str = ""
@@ -69,6 +73,7 @@ class TaskContext:
 @dataclass
 class ProcessingResult:
     """Result from processing a task."""
+
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     model_id: str = "unknown"
     content: str = ""
@@ -82,16 +87,13 @@ class ProcessingResult:
 
 class ModelProvider(Protocol):
     """Protocol for model providers that can process tasks."""
-    
+
     async def process_task(
-        self, 
-        task: TaskContext, 
-        model_id: str,
-        **kwargs
+        self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
         """Process a task using the specified model."""
         ...
-    
+
     async def get_available_models(self) -> List[ModelInfo]:
         """Get list of available models."""
         ...
@@ -100,12 +102,12 @@ class ModelProvider(Protocol):
 class CollectiveIntelligenceComponent(ABC):
     """Base class for all collective intelligence components."""
 
-    def __init__(self, model_provider: ModelProvider):
+    def __init__(self, model_provider: ModelProvider) -> None:
         self.model_provider = model_provider
         self.metrics: Dict[str, Any] = {}
 
     @abstractmethod
-    async def process(self, task: TaskContext, **kwargs) -> Any:
+    async def process(self, *args: Any, **kwargs: Any) -> Any:
         """Process a task using this component."""
         pass
 
@@ -121,51 +123,77 @@ class CollectiveIntelligenceComponent(ABC):
 @dataclass
 class QualityMetrics:
     """Quality metrics for evaluating results."""
+
     accuracy: float = 0.0
     consistency: float = 0.0
     completeness: float = 0.0
     relevance: float = 0.0
     confidence: float = 0.0
     coherence: float = 0.0
-    
+
     def overall_score(self) -> float:
         """Calculate overall quality score."""
         metrics = [
-            self.accuracy, self.consistency, self.completeness,
-            self.relevance, self.confidence, self.coherence
+            self.accuracy,
+            self.consistency,
+            self.completeness,
+            self.relevance,
+            self.confidence,
+            self.coherence,
         ]
         return sum(metrics) / len(metrics)
+
+
+def build_quality_metrics(
+    *,
+    accuracy: float,
+    consistency: float,
+    completeness: float,
+    relevance: float,
+    confidence: float,
+    coherence: float,
+) -> QualityMetrics:
+    """Construct a normalized QualityMetrics value in one place."""
+    return QualityMetrics(
+        accuracy=accuracy,
+        consistency=consistency,
+        completeness=completeness,
+        relevance=relevance,
+        confidence=confidence,
+        coherence=coherence,
+    )
 
 
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for system monitoring."""
+
     response_time: float = 0.0
     throughput: float = 0.0
     success_rate: float = 0.0
     error_rate: float = 0.0
     cost_efficiency: float = 0.0
     resource_utilization: float = 0.0
-    
+
     def overall_performance(self) -> float:
         """Calculate overall performance score."""
         # Weight different metrics based on importance
         weights = {
-            'response_time': 0.2,
-            'throughput': 0.15,
-            'success_rate': 0.3,
-            'error_rate': -0.2,  # Negative weight
-            'cost_efficiency': 0.15,
-            'resource_utilization': 0.1
+            "response_time": 0.2,
+            "throughput": 0.15,
+            "success_rate": 0.3,
+            "error_rate": -0.2,  # Negative weight
+            "cost_efficiency": 0.15,
+            "resource_utilization": 0.1,
         }
-        
+
         score = (
-            weights['response_time'] * min(1.0, 10.0 / max(self.response_time, 0.1)) +
-            weights['throughput'] * min(1.0, self.throughput / 100.0) +
-            weights['success_rate'] * self.success_rate +
-            weights['error_rate'] * (1.0 - self.error_rate) +
-            weights['cost_efficiency'] * self.cost_efficiency +
-            weights['resource_utilization'] * self.resource_utilization
+            weights["response_time"] * min(1.0, 10.0 / max(self.response_time, 0.1))
+            + weights["throughput"] * min(1.0, self.throughput / 100.0)
+            + weights["success_rate"] * self.success_rate
+            + weights["error_rate"] * (1.0 - self.error_rate)
+            + weights["cost_efficiency"] * self.cost_efficiency
+            + weights["resource_utilization"] * self.resource_utilization
         )
-        
+
         return max(0.0, min(1.0, score))

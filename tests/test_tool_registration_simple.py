@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Simple Tool Registration Tests
+Tool Registration & Quality Tests
 
-These tests verify tool registration WITHOUT async/await complexities.
-They directly check the tool manager state.
+Verify tool registration, description quality, and parameter schemas
+via the public create_app() + list_tools() API.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,149 +17,258 @@ src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
+# Ensure a dummy API key is set so create_app() passes validation
+os.environ.setdefault("OPENROUTER_API_KEY", "sk-or-test-dummy")
 
-class TestToolRegistrationSimple:
-    """Simple tests that verify tools are registered."""
 
-    def test_chat_handler_has_tools(self):
-        """Verify chat handler registers tools."""
-        from openrouter_mcp.handlers.chat import mcp
+@pytest.fixture(scope="module")
+def tools():
+    """Load all registered tools once via the public API."""
+    import asyncio
 
-        # Access the tool manager directly
-        assert hasattr(mcp, '_tool_manager')
-        tool_manager = mcp._tool_manager
+    from openrouter_mcp.server import create_app
 
-        # Get tool registry
-        assert hasattr(tool_manager, '_tools')
-        tools = tool_manager._tools
+    app = create_app()
+    return asyncio.run(app.list_tools())
 
-        # Verify tools are registered
-        assert len(tools) > 0, "No chat tools registered!"
 
-        # Expected tool names
-        expected_tools = [
-            "chat_with_model",
-            "list_available_models",
-            "get_usage_stats"
-        ]
+def _tool_names(tools):
+    return [t.name for t in tools]
 
-        tool_names = list(tools.keys())
 
-        for expected in expected_tools:
-            assert expected in tool_names, \
-                f"Tool '{expected}' not found. Registered: {tool_names}"
+class TestToolRegistration:
+    """Verify expected tools are registered."""
 
-        print(f"[OK] Chat tools registered: {tool_names}")
+    def test_chat_tools_registered(self, tools):
+        expected = ["chat_with_model", "list_available_models", "get_usage_stats"]
+        names = _tool_names(tools)
+        for name in expected:
+            assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
-    def test_benchmark_handler_has_tools(self):
-        """Verify benchmark handler registers tools."""
-        from openrouter_mcp.handlers.mcp_benchmark import mcp
-
-        tool_manager = mcp._tool_manager
-        tools = tool_manager._tools
-
-        assert len(tools) > 0, "No benchmark tools registered!"
-
-        expected_tools = [
+    def test_benchmark_tools_registered(self, tools):
+        expected = [
             "benchmark_models",
             "get_benchmark_history",
             "compare_model_categories",
             "export_benchmark_report",
-            "compare_model_performance"
+            "compare_model_performance",
         ]
+        names = _tool_names(tools)
+        for name in expected:
+            assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
-        tool_names = list(tools.keys())
-
-        for expected in expected_tools:
-            assert expected in tool_names, \
-                f"Tool '{expected}' not found. Registered: {tool_names}"
-
-        print(f"[OK] Benchmark tools registered: {tool_names}")
-
-    def test_collective_intelligence_has_tools(self):
-        """Verify collective intelligence handler registers tools."""
-        from openrouter_mcp.handlers.collective_intelligence import mcp
-
-        tool_manager = mcp._tool_manager
-        tools = tool_manager._tools
-
-        assert len(tools) > 0, "No CI tools registered!"
-
-        expected_tools = [
+    def test_ci_tools_registered(self, tools):
+        expected = [
             "collective_chat_completion",
             "ensemble_reasoning",
             "adaptive_model_selection",
             "cross_model_validation",
-            "collaborative_problem_solving"
+            "collaborative_problem_solving",
         ]
+        names = _tool_names(tools)
+        for name in expected:
+            assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
-        tool_names = list(tools.keys())
+    def test_no_zero_tools_regression(self, tools):
+        assert len(tools) >= 13, f"Expected at least 13 tools, got {len(tools)}"
 
-        for expected in expected_tools:
-            assert expected in tool_names, \
-                f"Tool '{expected}' not found. Registered: {tool_names}"
 
-        print(f"[OK] Collective intelligence tools registered: {tool_names}")
+CI_TOOLS = {
+    "collective_chat_completion",
+    "ensemble_reasoning",
+    "adaptive_model_selection",
+    "cross_model_validation",
+    "collaborative_problem_solving",
+}
 
-    def test_no_zero_tools_regression(self):
-        """
-        CRITICAL REGRESSION TEST
+BENCHMARK_TOOLS = {
+    "benchmark_models",
+    "get_benchmark_history",
+    "compare_model_categories",
+    "export_benchmark_report",
+    "compare_model_performance",
+}
 
-        Ensures we never have zero registered tools.
-        This catches the "0 tools" bug that was found in code review.
-        """
-        from openrouter_mcp.handlers.chat import mcp as chat_mcp
-        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
-        from openrouter_mcp.handlers.collective_intelligence import mcp as ci_mcp
 
-        chat_count = len(chat_mcp._tool_manager._tools)
-        benchmark_count = len(benchmark_mcp._tool_manager._tools)
-        ci_count = len(ci_mcp._tool_manager._tools)
+class TestToolDescriptionQuality:
+    """Verify tool descriptions are meaningful and in English."""
 
-        # CRITICAL: These should NEVER be zero
-        assert chat_count > 0, \
-            "REGRESSION: Chat tools count is ZERO!"
-        assert benchmark_count > 0, \
-            "REGRESSION: Benchmark tools count is ZERO!"
-        assert ci_count > 0, \
-            "REGRESSION: Collective intelligence tools count is ZERO!"
+    def test_all_tools_have_descriptions(self, tools):
+        for tool in tools:
+            assert tool.description, f"Tool '{tool.name}' has empty description"
+            assert len(tool.description) > 20, f"Tool '{tool.name}' description too short"
 
-        total = chat_count + benchmark_count + ci_count
+    def test_ci_tools_no_wrapper_description(self, tools):
+        for tool in tools:
+            if tool.name in CI_TOOLS:
+                assert (
+                    "wrapper" not in tool.description.lower()
+                ), f"CI tool '{tool.name}' still has 'wrapper' in description"
 
-        print(f"\n[OK] Tool counts verified:")
-        print(f"  Chat: {chat_count}")
-        print(f"  Benchmark: {benchmark_count}")
-        print(f"  Collective Intelligence: {ci_count}")
-        print(f"  Total: {total}")
+    def test_benchmark_tools_no_korean(self, tools):
+        for tool in tools:
+            if tool.name in BENCHMARK_TOOLS:
+                has_korean = any("\uac00" <= c <= "\ud7a3" for c in tool.description)
+                assert not has_korean, f"Benchmark tool '{tool.name}' has Korean in description"
 
-        # Verify we have at least the expected minimum
-        assert total >= 13, \
-            f"Expected at least 13 tools total, got {total}"
 
-    def test_all_tools_have_descriptions(self):
-        """Verify all registered tools have non-empty descriptions."""
-        from openrouter_mcp.handlers.chat import mcp as chat_mcp
-        from openrouter_mcp.handlers.mcp_benchmark import mcp as benchmark_mcp
+class TestParameterDescriptions:
+    """Verify all tool parameters expose descriptions in the schema."""
 
-        # Check chat tools
-        for name, tool in chat_mcp._tool_manager._tools.items():
-            assert hasattr(tool, 'description'), \
-                f"Tool '{name}' missing description"
-            assert tool.description, \
-                f"Tool '{name}' has empty description"
-            assert len(tool.description) > 20, \
-                f"Tool '{name}' description too short"
+    def test_benchmark_params_have_descriptions(self, tools):
+        for tool in tools:
+            if tool.name not in BENCHMARK_TOOLS:
+                continue
+            props = tool.parameters.get("properties", {})
+            for param_name, param_schema in props.items():
+                assert (
+                    "description" in param_schema
+                ), f"{tool.name}.{param_name} missing description"
 
-        # Check benchmark tools
-        for name, tool in benchmark_mcp._tool_manager._tools.items():
-            assert hasattr(tool, 'description'), \
-                f"Tool '{name}' missing description"
-            assert tool.description, \
-                f"Tool '{name}' has empty description"
-            assert len(tool.description) > 20, \
-                f"Tool '{name}' description too short"
+    def test_ci_params_have_descriptions(self, tools):
+        for tool in tools:
+            if tool.name not in CI_TOOLS:
+                continue
+            # CI tools wrap params in a "request" Pydantic model
+            top_props = tool.parameters.get("properties", {})
+            if "request" in top_props:
+                props = top_props["request"].get("properties", {})
+            else:
+                props = top_props
+            for param_name, param_schema in props.items():
+                assert (
+                    "description" in param_schema
+                ), f"{tool.name}.{param_name} missing description"
 
-        print("[OK] All tools have proper descriptions")
+    def test_benchmark_metric_has_enum(self, tools):
+        tool = next(t for t in tools if t.name == "compare_model_categories")
+        metric_schema = tool.parameters["properties"]["metric"]
+        assert (
+            "enum" in metric_schema or "anyOf" in metric_schema
+        ), "compare_model_categories.metric should expose allowed values"
+
+    def test_benchmark_format_has_enum(self, tools):
+        tool = next(t for t in tools if t.name == "export_benchmark_report")
+        format_schema = tool.parameters["properties"]["format"]
+        assert (
+            "enum" in format_schema or "anyOf" in format_schema
+        ), "export_benchmark_report.format should expose allowed values"
+
+    def test_ci_strategy_has_enum(self, tools):
+        tool = next(t for t in tools if t.name == "collective_chat_completion")
+        request_props = tool.parameters["properties"]["request"]["properties"]
+        strategy_schema = request_props["strategy"]
+        assert (
+            "enum" in strategy_schema or "anyOf" in strategy_schema
+        ), "collective_chat_completion.strategy should expose allowed values"
+
+
+class TestCIParameterPassthrough:
+    """Verify CI tool parameters are wired through to implementation."""
+
+    def test_max_tokens_in_requirements(self):
+        from openrouter_mcp.handlers.collective_intelligence import _build_requirements
+
+        reqs = _build_requirements(max_tokens=512)
+        assert reqs["max_tokens"] == 512
+
+    def test_max_tokens_none_omitted(self):
+        from openrouter_mcp.handlers.collective_intelligence import _build_requirements
+
+        reqs = _build_requirements(max_tokens=None)
+        assert "max_tokens" not in reqs
+
+    def test_system_prompt_in_requirements(self):
+        from openrouter_mcp.handlers.collective_intelligence import _build_requirements
+
+        reqs = _build_requirements(extras={"system_prompt": "Be concise"})
+        assert reqs["system_prompt"] == "Be concise"
+
+    def test_create_task_context_rejects_invalid_task_type(self):
+        from openrouter_mcp.handlers.collective_intelligence import create_task_context
+
+        with pytest.raises(ValueError, match="Invalid task_type"):
+            create_task_context(content="test", task_type="invalid_type")
+
+    def test_create_task_context_accepts_valid_task_types(self):
+        from openrouter_mcp.handlers.collective_intelligence import create_task_context
+
+        valid_types = [
+            "reasoning",
+            "analysis",
+            "creative",
+            "factual",
+            "code_generation",
+            "summarization",
+            "translation",
+            "math",
+            "classification",
+        ]
+        for task_type in valid_types:
+            ctx = create_task_context(content="test", task_type=task_type)
+            assert ctx.task_type.value == task_type
+
+    def test_consensus_config_receives_confidence_threshold(self):
+        from openrouter_mcp.collective_intelligence import ConsensusConfig
+
+        config = ConsensusConfig(confidence_threshold=0.95)
+        assert config.confidence_threshold == 0.95
+
+    def test_collaborative_solver_reads_max_iterations_from_requirements(self):
+        """Verify _solve_iterative reads max_iterations from task.requirements."""
+        import ast
+        import inspect
+        import textwrap
+
+        from openrouter_mcp.collective_intelligence.collaborative_solver import CollaborativeSolver
+
+        source = textwrap.dedent(inspect.getsource(CollaborativeSolver._solve_iterative))
+        tree = ast.parse(source)
+        # Find the assignment: max_iterations = task.requirements.get("max_iterations", 3)
+        found = any(
+            "max_iterations" in ast.dump(node) and "requirements" in ast.dump(node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+        )
+        assert found, "_solve_iterative should read max_iterations from task.requirements"
+
+    def test_validation_threshold_in_requirements(self):
+        from openrouter_mcp.handlers.collective_intelligence import _build_requirements
+
+        reqs = _build_requirements(extras={"validation_threshold": 0.85})
+        assert reqs["validation_threshold"] == 0.85
+
+    def test_cross_validator_determine_validity_uses_task_threshold(self):
+        """Verify _determine_validity respects task-level validation_threshold."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from openrouter_mcp.collective_intelligence.base import TaskContext, TaskType
+        from openrouter_mcp.collective_intelligence.cross_validator import (
+            CrossValidator,
+            ValidationConfig,
+            ValidationReport,
+        )
+
+        provider = AsyncMock()
+        # Config threshold is 0.7 (default), but task says 0.3
+        validator = CrossValidator(provider, config=ValidationConfig(confidence_threshold=0.7))
+
+        report = MagicMock(spec=ValidationReport)
+        report.issues = []
+        report.overall_score = 0.5  # Fails 0.7 config, passes 0.3 task threshold
+        report.consensus_level = 1.0
+        report.validator_models = []
+
+        task = TaskContext(
+            task_type=TaskType.ANALYSIS,
+            content="test",
+            requirements={"validation_threshold": 0.3},
+        )
+
+        # Without task context, should fail (0.5 < 0.7)
+        assert validator._determine_validity(report) is False
+        # With task context override, should pass (0.5 >= 0.3)
+        assert validator._determine_validity(report, task) is True
 
 
 if __name__ == "__main__":

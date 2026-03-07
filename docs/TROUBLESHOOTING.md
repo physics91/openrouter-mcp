@@ -70,11 +70,11 @@ python -m pip install -r requirements.txt
 **Solution**:
 ```bash
 # macOS/Linux: Use sudo
-sudo npm install -g openrouter-mcp
+sudo npm install -g @physics91/openrouter-mcp
 
 # Windows: Run as Administrator
 # Or use npx instead of global install
-npx openrouter-mcp start
+npx @physics91/openrouter-mcp@latest start
 ```
 
 ## Configuration Problems
@@ -88,7 +88,7 @@ npx openrouter-mcp start
 1. **Verify API key**:
 ```bash
 # Re-run initialization
-npx openrouter-mcp init
+npx @physics91/openrouter-mcp@latest init
 
 # Check .env file
 cat .env | grep OPENROUTER_API_KEY
@@ -130,7 +130,7 @@ export OPENROUTER_API_KEY="your-key-here"
 
 1. **Use different port**:
 ```bash
-npx openrouter-mcp start --port 9000
+npx @physics91/openrouter-mcp@latest start --port 9000
 ```
 
 2. **Find and kill process**:
@@ -162,7 +162,7 @@ python -m src.openrouter_mcp.server
 python -m py_compile src/openrouter_mcp/server.py
 
 # 4. Enable debug mode
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 ```
 
 ### Memory Issues
@@ -188,7 +188,7 @@ print(cache.get_cache_stats())
 2. **Increase memory limit**:
 ```bash
 # Set Node.js memory limit
-NODE_OPTIONS="--max-old-space-size=4096" npx openrouter-mcp start
+NODE_OPTIONS="--max-old-space-size=4096" npx @physics91/openrouter-mcp@latest start
 ```
 
 ### Async Errors
@@ -350,7 +350,7 @@ cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python -m
 3. **Test server independently**:
 ```bash
 # Start server manually
-npx openrouter-mcp start --verbose
+npx @physics91/openrouter-mcp@latest start --verbose
 
 # Should see: "Server started on localhost:8000"
 ```
@@ -371,7 +371,7 @@ claude "test connection"
 2. **Update configuration**:
 ```bash
 # Re-run setup
-npx openrouter-mcp install-claude-code
+npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
 ## Debug Mode
@@ -380,23 +380,24 @@ npx openrouter-mcp install-claude-code
 
 ```bash
 # Start with debug logging
-npx openrouter-mcp start --debug
+npx @physics91/openrouter-mcp@latest start --debug
 
 # Set log level in .env
 LOG_LEVEL=debug
 
 # Python debug mode
-PYTHONDEBUG=1 npx openrouter-mcp start
+PYTHONDEBUG=1 npx @physics91/openrouter-mcp@latest start
 ```
 
 ### Diagnostic Commands
 
 ```bash
 # Check server status
-npx openrouter-mcp status
+npx @physics91/openrouter-mcp@latest status
 
 # Verify Python environment
-npx openrouter-mcp check-env
+python --version
+python -c "import fastmcp, httpx, pydantic; print('Python dependencies OK')"
 
 # Test API connection
 curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
@@ -422,7 +423,7 @@ tail -n 50 server.log
 
 | Error Message | Cause | Solution |
 |--------------|-------|----------|
-| `Connection refused` | Server not running | Start server with `npx openrouter-mcp start` |
+| `Connection refused` | Server not running | Start server with `npx @physics91/openrouter-mcp@latest start` |
 | `Invalid JSON` | Malformed request | Check request format and parameters |
 | `Timeout error` | Slow network/model | Increase timeout or use faster model |
 | `Insufficient credits` | No API credits | Add credits on OpenRouter dashboard |
@@ -453,7 +454,9 @@ When reporting issues, include:
 
 1. **Environment information**:
 ```bash
-npx openrouter-mcp status --diagnostic
+npx @physics91/openrouter-mcp@latest status
+node --version
+python --version
 ```
 
 2. **Error messages**:
@@ -484,4 +487,4 @@ For enterprise support:
 ---
 
 **Last Updated**: 2025-01-12
-**Version**: 1.0.0
+**Version**: 1.4.0

@@ -357,10 +357,7 @@ const newMasterKey = await cryptoManager.rotateMasterKey();
    openrouter-mcp rotate-key
    ```
 
-5. **Backup master key**: Export and store securely offline
-   ```bash
-   openrouter-mcp export-key
-   ```
+5. **Record the post-migration state**: Keep the security audit output and encrypted file backup until verification is complete
 
 ### For Developers
 

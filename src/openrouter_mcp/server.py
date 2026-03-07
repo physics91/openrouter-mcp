@@ -19,67 +19,37 @@ Usage:
     then run this server with FastMCP.
 """
 
-import os
-import logging
-import signal
 import asyncio
 import inspect
+import logging
+import signal
 from typing import Any
-from pathlib import Path
 
-import uvicorn
-from fastmcp import FastMCP
 from dotenv import load_dotenv
+
+from .collective_intelligence import shutdown_lifecycle_manager
 from .config.constants import EnvVars, LoggingConfig
+from .handlers import register_handlers
+from .mcp_registry import cleanup_shared_client, mcp
 from .utils.env import get_env_value
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(
-    level=LoggingConfig.DEFAULT_LEVEL,
-    format=LoggingConfig.FORMAT,
-    datefmt=LoggingConfig.DATE_FORMAT,
-)
-
 logger = logging.getLogger(__name__)
+_LOGGING_CONFIGURED = False
 
-# Import shared MCP instance from registry
-# This must be imported before handlers to ensure proper registration
-try:
-    from .mcp_registry import mcp, cleanup_shared_client
-except ImportError:
-    # Fallback for direct execution
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.mcp_registry import mcp, cleanup_shared_client
 
-# Import handlers to register MCP tools
-# These imports trigger the @mcp.tool() decorators which register tools with the shared instance
-try:
-    from .handlers import chat  # noqa: F401
-    from .handlers import multimodal  # noqa: F401
-    from .handlers import mcp_benchmark  # noqa: F401
-    from .handlers import collective_intelligence  # noqa: F401
-    from .handlers import free_chat  # noqa: F401
-except ImportError:
-    # Fallback for direct execution
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.handlers import chat  # noqa: F401
-    from openrouter_mcp.handlers import multimodal  # noqa: F401
-    from openrouter_mcp.handlers import mcp_benchmark  # noqa: F401
-    from openrouter_mcp.handlers import collective_intelligence  # noqa: F401
-    from openrouter_mcp.handlers import free_chat  # noqa: F401
+def configure_logging() -> None:
+    """Configure server logging when the executable entrypoint runs."""
+    global _LOGGING_CONFIGURED
 
-# Import lifecycle shutdown at module level for patching in tests
-try:
-    from .collective_intelligence import shutdown_lifecycle_manager
-except ImportError:
-    import sys
-    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-    from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
+    if _LOGGING_CONFIGURED:
+        return
+
+    logging.basicConfig(
+        level=LoggingConfig.DEFAULT_LEVEL,
+        format=LoggingConfig.FORMAT,
+        datefmt=LoggingConfig.DATE_FORMAT,
+    )
+    _LOGGING_CONFIGURED = True
 
 
 def validate_environment() -> None:
@@ -99,19 +69,22 @@ def validate_environment() -> None:
     logger.info("Environment validation successful")
 
 
-def create_app():
+def create_app() -> Any:
     """Create and configure the FastMCP application."""
+    load_dotenv()
     logger.info("Initializing OpenRouter MCP Server...")
-    
+
+    register_handlers()
+
     # Validate environment
     validate_environment()
-    
+
     logger.info("OpenRouter MCP Server initialized successfully")
-    
+
     return mcp
 
 
-async def shutdown_handler():
+async def shutdown_handler() -> None:
     """Cleanup handler for server shutdown."""
     logger.info("Server shutdown initiated, cleaning up resources...")
 
@@ -123,6 +96,17 @@ async def shutdown_handler():
         logger.error(f"Error cleaning up shared client: {e}", exc_info=True)
 
     try:
+        # Persist free model metrics before shutdown
+        from .handlers.free_chat import _get_metrics_for_shutdown
+
+        metrics = _get_metrics_for_shutdown()
+        if metrics is not None:
+            metrics.save()
+            logger.info("Free model metrics saved successfully")
+    except Exception as e:
+        logger.error(f"Error saving free model metrics: {e}", exc_info=True)
+
+    try:
         # Shutdown lifecycle manager
         await shutdown_lifecycle_manager()
         logger.info("Collective intelligence components shutdown successfully")
@@ -130,7 +114,7 @@ async def shutdown_handler():
         logger.error(f"Error during lifecycle manager shutdown: {e}", exc_info=True)
 
 
-def _run_shutdown():
+def _run_shutdown() -> None:
     """Run shutdown handler safely, avoiding un-awaited coroutine warnings."""
     try:
         loop = asyncio.get_running_loop()
@@ -148,15 +132,16 @@ def _run_shutdown():
                 coro.close()
 
 
-def main():
+def main() -> None:
     """Main entry point for the server."""
     try:
+        configure_logging()
         app = create_app()
 
         logger.info("Starting OpenRouter MCP Server via stdio")
 
         # Register shutdown handler for graceful cleanup
-        def signal_handler(sig, frame):
+        def signal_handler(sig: int, frame: object) -> None:
             logger.info(f"Received signal {sig}, shutting down...")
             raise KeyboardInterrupt()
 
