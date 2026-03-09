@@ -6,6 +6,11 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const {
+  getMissingPythonMessage,
+  getUnsupportedPythonMessage,
+  resolveSupportedPythonCommand,
+} = require('./python-version');
 
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
@@ -29,16 +34,16 @@ program
   .option('-h, --host <host>', 'Host to bind the server to', 'localhost')
   .action(async (options) => {
     console.log(chalk.blue('🚀 Starting OpenRouter MCP Server...'));
-    
+
     const pythonCommand = await checkPythonRequirements();
     if (!pythonCommand) {
       process.exit(1);
     }
-    
+
     if (!await checkApiKey()) {
       console.log(chalk.yellow('⚠️  No OpenRouter API key found. Run "openrouter-mcp init" to configure.'));
     }
-    
+
     await startServer(options, pythonCommand);
   });
 
@@ -116,17 +121,24 @@ program
 
 async function checkPythonRequirements() {
   console.log(chalk.blue('🐍 Checking Python environment...'));
-  
+
   try {
     // Check Python version
-    const pythonInfo = await resolvePythonCommand();
-    if (!pythonInfo) {
+    const pythonInfo = await resolveSupportedPythonCommand(runCommand);
+    if (pythonInfo.status === 'missing') {
       console.log(chalk.red('✗ Python not found or not accessible'));
-      console.log(chalk.blue('Please install Python 3.9+ and ensure "python" or "python3" is in your PATH'));
+      console.log(chalk.blue(getMissingPythonMessage()));
       return null;
     }
+
+    if (pythonInfo.status === 'unsupported') {
+      console.log(chalk.red('✗ Unsupported Python version'));
+      console.log(chalk.blue(getUnsupportedPythonMessage(pythonInfo.version)));
+      return null;
+    }
+
     console.log(chalk.green(`✓ Python found: ${pythonInfo.version} (${pythonInfo.command})`));
-    
+
     // Check if in virtual environment
     const isVenv = process.env.VIRTUAL_ENV || process.env.CONDA_DEFAULT_ENV;
     if (isVenv) {
@@ -134,7 +146,7 @@ async function checkPythonRequirements() {
     } else {
       console.log(chalk.yellow('⚠️  No virtual environment detected. Consider using one.'));
     }
-    
+
     // Check required packages
     try {
       await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
@@ -143,7 +155,7 @@ async function checkPythonRequirements() {
     } catch (error) {
       console.log(chalk.red('✗ Missing required Python packages'));
       console.log(chalk.blue('Installing Python dependencies...'));
-      
+
       try {
         await runCommand(
           pythonInfo.command,
@@ -157,10 +169,10 @@ async function checkPythonRequirements() {
         return null;
       }
     }
-    
+
   } catch (error) {
     console.log(chalk.red('✗ Python not found or not accessible'));
-    console.log(chalk.blue('Please install Python 3.9+ and ensure "python" or "python3" is in your PATH'));
+    console.log(chalk.blue(getMissingPythonMessage()));
     return null;
   }
 }
@@ -530,24 +542,28 @@ LOG_LEVEL=info
 
 async function checkStatus() {
   console.log(chalk.blue('Environment:'));
-  
+
   // Python check
-  const pythonInfo = await resolvePythonCommand();
-  if (pythonInfo) {
+  const pythonInfo = await resolveSupportedPythonCommand(runCommand);
+  if (pythonInfo.status === 'supported') {
     console.log(chalk.green(`  ✓ Python: ${pythonInfo.version} (${pythonInfo.command})`));
+  } else if (pythonInfo.status === 'unsupported') {
+    console.log(chalk.red(`  ✗ Python: ${pythonInfo.version}`));
+    console.log(chalk.yellow(`    ${getUnsupportedPythonMessage(pythonInfo.version)}`));
   } else {
     console.log(chalk.red('  ✗ Python: Not found'));
+    console.log(chalk.yellow(`    ${getMissingPythonMessage()}`));
   }
-  
+
   // API key check
   if (await checkApiKey()) {
     console.log(chalk.green('  ✓ OpenRouter API Key: Configured'));
   } else {
     console.log(chalk.red('  ✗ OpenRouter API Key: Not configured'));
   }
-  
+
   // Dependencies check
-  if (pythonInfo) {
+  if (pythonInfo.status === 'supported') {
     try {
       await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
       console.log(chalk.green('  ✓ Python Dependencies: Installed'));
@@ -557,7 +573,7 @@ async function checkStatus() {
   } else {
     console.log(chalk.yellow('  ⚠ Python Dependencies: Not checked (Python unavailable)'));
   }
-  
+
   console.log(chalk.blue('\nConfiguration:'));
   const envPath = path.join(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
@@ -1199,24 +1215,6 @@ function runCommand(command, args) {
       }
     });
   });
-}
-
-async function resolvePythonCommand() {
-  const candidates = ['python', 'python3'];
-
-  for (const command of candidates) {
-    try {
-      const version = await runCommand(command, ['--version']);
-      return {
-        command,
-        version: version || 'Unknown version'
-      };
-    } catch {
-      // Try next candidate
-    }
-  }
-
-  return null;
 }
 
 // Parse command line arguments

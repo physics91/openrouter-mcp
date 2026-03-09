@@ -44,7 +44,7 @@ Over 200 models including:
 - **OS**: Windows, macOS, or Linux
 
 ### Do I need to install Python separately?
-Yes, Python 3.9+ must be installed on your system. The Node.js package manages the Python server but doesn't include Python itself.
+Yes, Python 3.10+ must be installed on your system. The Node.js package manages the Python server but doesn't include Python itself.
 
 ### How do I get an OpenRouter API key?
 1. Visit [OpenRouter.ai](https://openrouter.ai)

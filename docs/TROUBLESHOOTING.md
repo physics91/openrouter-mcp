@@ -27,8 +27,8 @@ python3 --version
 
 # If not installed, download from python.org
 # Windows: Add Python to PATH during installation
-# macOS: brew install python@3.9
-# Linux: sudo apt-get install python3.9
+# macOS: brew install python@3.11
+# Linux: sudo apt-get install python3.11
 ```
 
 ### Node.js Version Issues

@@ -140,7 +140,7 @@ File Cache (JSON)
 ## Technology Stack
 
 ### Core Technologies
-- **Python 3.9+**: Server implementation
+- **Python 3.10+**: Server implementation
 - **Node.js 16+**: CLI and package management
 - **FastMCP**: MCP framework
 - **httpx**: Async HTTP client
@@ -155,7 +155,7 @@ File Cache (JSON)
 ### Dependencies
 ```
 Production:
-├── fastmcp>=0.1.0
+├── fastmcp>=3.1.0,<3.2
 ├── httpx>=0.24.0
 ├── Pillow>=10.0.0
 ├── python-dotenv>=1.0.0

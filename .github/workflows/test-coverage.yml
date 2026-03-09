@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout code
@@ -98,6 +98,9 @@ jobs:
           pytest tests/test_tool_registration_simple.py \
             tests/test_models_cache.py \
             -v --tb=short
+
+      - name: Run runtime tests
+        run: npm run test:runtime
 
       - name: Run security tests
         run: npm run test:security
