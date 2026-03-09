@@ -48,6 +48,7 @@ class MCPServerConfig:
 
     name: str
     command: str
+    transport_type: Optional[str] = None
     args: List[str] = field(default_factory=list)
     cwd: Optional[str] = None
     env: Dict[str, str] = field(default_factory=dict)
@@ -55,6 +56,9 @@ class MCPServerConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format for JSON."""
         config: Dict[str, Any] = {"command": self.command, "args": self.args}
+
+        if self.transport_type:
+            config["type"] = self.transport_type
 
         if self.cwd:
             config["cwd"] = self.cwd
@@ -69,6 +73,7 @@ class MCPServerConfig:
         """Create configuration from dictionary."""
         return cls(
             name=name,
+            transport_type=data.get("type"),
             command=data.get("command", ""),
             args=data.get("args", []),
             cwd=data.get("cwd"),
@@ -81,9 +86,9 @@ class MCPManager:
 
     # Default config paths for different platforms
     DEFAULT_CONFIG_PATHS = {
-        "Windows": Path.home() / ".claude" / "claude_code_config.json",
-        "Darwin": Path.home() / ".claude" / "claude_code_config.json",  # macOS
-        "Linux": Path.home() / ".claude" / "claude_code_config.json",
+        "Windows": Path.home() / ".claude.json",
+        "Darwin": Path.home() / ".claude.json",  # macOS
+        "Linux": Path.home() / ".claude.json",
     }
 
     # Preset configurations for common MCP servers
@@ -91,10 +96,11 @@ class MCPManager:
         "openrouter": {
             "command": "cmd" if sys.platform == "win32" else "npx",
             "args": (
-                ["/c", "npx", "@physics91/openrouter-mcp"]
+                ["/c", "npx", "@physics91/openrouter-mcp", "start"]
                 if sys.platform == "win32"
-                else ["@physics91/openrouter-mcp"]
+                else ["@physics91/openrouter-mcp", "start"]
             ),
+            "type": "stdio",
             "env": {
                 # SECURITY: Never store API keys in config files
                 # API key MUST be set as environment variable: export OPENROUTER_API_KEY=sk-or-...
@@ -290,6 +296,7 @@ class MCPManager:
         return {
             "name": config.name,
             "installed": True,
+            "type": config.transport_type,
             "command": config.command,
             "args": config.args,
             "cwd": config.cwd,
@@ -484,6 +491,7 @@ class MCPManager:
         # Create server config from preset
         config = MCPServerConfig(
             name=preset_name,
+            transport_type=preset.get("type"),
             command=preset["command"],
             args=preset.get("args", []),
             cwd=preset.get("cwd"),

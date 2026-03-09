@@ -1,10 +1,44 @@
+const os = require('os');
+const path = require('path');
+
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
 function buildClaudeCodeServerConfig(packageName) {
   return {
+    type: 'stdio',
     command: 'npx',
     args: [packageName, 'start']
   };
+}
+
+function buildClaudeCodeInstallCommand(packageName, scope = 'user') {
+  return {
+    command: 'claude',
+    args: [
+      'mcp',
+      'add',
+      '-t',
+      'stdio',
+      '-s',
+      scope,
+      'openrouter',
+      '--',
+      'npx',
+      packageName,
+      'start'
+    ]
+  };
+}
+
+function buildClaudeCodeRemoveCommand(name = 'openrouter', scope = 'user') {
+  return {
+    command: 'claude',
+    args: ['mcp', 'remove', '-s', scope, name]
+  };
+}
+
+function getClaudeCodeUserConfigPath(homeDir = os.homedir()) {
+  return path.join(homeDir, '.claude.json');
 }
 
 function configContainsPlaintextOpenRouterKey(config) {
@@ -34,6 +68,9 @@ function configContainsPlaintextOpenRouterKey(config) {
 }
 
 module.exports = {
+  buildClaudeCodeInstallCommand,
+  buildClaudeCodeRemoveCommand,
   buildClaudeCodeServerConfig,
   configContainsPlaintextOpenRouterKey,
+  getClaudeCodeUserConfigPath,
 };

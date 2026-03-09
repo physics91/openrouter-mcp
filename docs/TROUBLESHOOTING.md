@@ -361,17 +361,20 @@ npx @physics91/openrouter-mcp@latest start --verbose
 
 1. **Check configuration**:
 ```bash
-# Verify config file
-cat ~/.claude/claude_code_config.json
+# List configured MCP servers
+claude mcp list
 
-# Test MCP connection
-claude "test connection"
+# Inspect the OpenRouter entry
+claude mcp get openrouter
+
+# If using project scope, inspect .mcp.json
+cat .mcp.json | python -m json.tool
 ```
 
 2. **Update configuration**:
 ```bash
-# Re-run setup
-npx @physics91/openrouter-mcp@latest install-claude-code
+# Re-register in Claude Code user scope
+claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
 ```
 
 ## Debug Mode

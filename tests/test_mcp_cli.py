@@ -32,6 +32,7 @@ class TestMCPServerConfig:
         """Test creating a server configuration."""
         config = MCPServerConfig(
             name="openrouter",
+            transport_type="stdio",
             command="python",
             args=["-m", "src.openrouter_mcp.server"],
             cwd="/path/to/project",
@@ -39,6 +40,7 @@ class TestMCPServerConfig:
         )
 
         assert config.name == "openrouter"
+        assert config.transport_type == "stdio"
         assert config.command == "python"
         assert config.args == ["-m", "src.openrouter_mcp.server"]
         assert config.cwd == "/path/to/project"
@@ -48,13 +50,16 @@ class TestMCPServerConfig:
         """Test converting server config to dictionary."""
         config = MCPServerConfig(
             name="openrouter",
+            transport_type="stdio",
             command="python",
             args=["-m", "src.openrouter_mcp.server"],
         )
 
         config_dict = config.to_dict()
+        assert "type" in config_dict
         assert "command" in config_dict
         assert "args" in config_dict
+        assert config_dict["type"] == "stdio"
         assert config_dict["command"] == "python"
         assert config_dict["args"] == ["-m", "src.openrouter_mcp.server"]
 
@@ -69,10 +74,24 @@ class TestMCPServerConfig:
 
         config = MCPServerConfig.from_dict("test-server", data)
         assert config.name == "test-server"
+        assert config.transport_type is None
         assert config.command == "node"
         assert config.args == ["server.js"]
         assert config.cwd == "/project"
         assert config.env["API_KEY"] == "secret"
+
+    def test_server_config_from_dict_with_transport_type(self):
+        """Test creating server config from dictionary with transport type."""
+        data = {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["@physics91/openrouter-mcp", "start"],
+        }
+
+        config = MCPServerConfig.from_dict("openrouter", data)
+        assert config.transport_type == "stdio"
+        assert config.command == "npx"
+        assert config.args == ["@physics91/openrouter-mcp", "start"]
 
 
 class TestMCPManager:
@@ -100,6 +119,11 @@ class TestMCPManager:
         """Test MCPManager initialization."""
         assert manager.config_path == temp_config_file
         assert manager.config == {"mcpServers": {}}
+
+    def test_default_config_path_uses_current_claude_user_settings(self):
+        """Test default config path uses current Claude Code user settings file."""
+        manager = MCPManager()
+        assert manager.config_path.name == ".claude.json"
 
     def test_add_mcp_server_success(self, manager):
         """Test successfully adding an MCP server."""
@@ -279,6 +303,8 @@ class TestMCPManager:
         manager.add_server_from_preset("openrouter", api_key="test-key")
 
         assert "openrouter" in manager.config["mcpServers"]
+        assert manager.config["mcpServers"]["openrouter"]["type"] == "stdio"
+        assert manager.config["mcpServers"]["openrouter"]["args"][-1] == "start"
         # API keys should not be persisted to config for security
         env = manager.config["mcpServers"]["openrouter"].get("env", {})
         assert "OPENROUTER_API_KEY" not in env
@@ -408,6 +434,7 @@ class TestCLIIntegration:
             mock_manager.get_server_status.return_value = {
                 "name": "openrouter",
                 "installed": True,
+                "type": "stdio",
                 "command": "python",
                 "args": [],
                 "cwd": None,

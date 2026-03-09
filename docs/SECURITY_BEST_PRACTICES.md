@@ -197,8 +197,11 @@ chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
 # Windows (Claude Desktop)
 icacls "%APPDATA%\Claude\claude_desktop_config.json" /inheritance:r /grant:r "%USERNAME%:(F)"
 
-# Claude Code (All platforms)
-chmod 600 ~/.claude/claude_code_config.json
+# Claude Code user scope
+chmod 600 ~/.claude.json
+
+# Claude Code project scope
+chmod 600 .mcp.json
 ```
 
 ---

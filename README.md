@@ -8,7 +8,7 @@
 [![assurance required](https://github.com/physics91/openrouter-mcp/actions/workflows/assurance-required.yml/badge.svg?branch=develop)](https://github.com/physics91/openrouter-mcp/actions/workflows/assurance-required.yml?query=branch%3Adevelop)
 [![last commit](https://img.shields.io/github/last-commit/physics91/openrouter-mcp)](https://github.com/physics91/openrouter-mcp/commits/develop)
 
-A Model Context Protocol (MCP) server for OpenRouter. Use OpenRouter models from MCP clients (Claude Desktop, Claude Code, etc.) with chat, vision, benchmarking, and collective-intelligence tools.
+A Model Context Protocol (MCP) server for OpenRouter. Register it in MCP-compatible clients that can launch a local stdio server to use OpenRouter models for chat, vision, benchmarking, and collective-intelligence workflows.
 
 ## Features
 - MCP tools: chat, model listing, usage stats, vision chat, vision model listing, free chat, free model listing, free model metrics
@@ -29,6 +29,24 @@ npm install -g @physics91/openrouter-mcp
 openrouter-mcp init
 openrouter-mcp start
 ```
+
+## MCP client setup
+Client config formats differ, but the launch information is usually the same:
+- `command`: `npx`
+- `args`: `["@physics91/openrouter-mcp", "start"]`
+- `env`:
+  Use only when the client cannot rely on `openrouter-mcp init` or inherited environment variables.
+
+Recommended credential flow:
+- Run `npx @physics91/openrouter-mcp init`
+- Let `openrouter-mcp start` resolve the API key from secure storage or runtime environment
+
+Client-specific examples:
+- Claude Desktop: `mcpServers` in `claude_desktop_config.json`
+- Claude Code: `claude mcp add ...` or project `.mcp.json`
+- VS Code: `servers` in `.vscode/mcp.json`
+
+See `docs/MCP_CLIENT_GUIDE.md` for the common flow and client-specific examples.
 
 ## Prerequisites
 - Node.js 16+
@@ -89,12 +107,14 @@ Commands:
 Global options: `--verbose`, `--debug`
 `start` options: `--host`, `--port`
 
-## Integrations
-- Claude Desktop: `openrouter-mcp install-claude`
-- Claude Code CLI: `openrouter-mcp install-claude-code`
-- Generated integration config uses: `npx @physics91/openrouter-mcp start`
+## MCP client integration
+- Common MCP client setup: `docs/MCP_CLIENT_GUIDE.md`
+- Claude Desktop shortcut: `openrouter-mcp install-claude`
+- Claude Code CLI shortcut: `openrouter-mcp install-claude-code`
+- Generated server entries use: `npx @physics91/openrouter-mcp start`
 
 See:
+- `docs/MCP_CLIENT_GUIDE.md`
 - `docs/CLAUDE_DESKTOP_GUIDE.md`
 - `docs/CLAUDE_CODE_GUIDE.md`
 
@@ -104,6 +124,7 @@ See:
 
 ## Documentation
 - `docs/INSTALLATION.md`
+- `docs/MCP_CLIENT_GUIDE.md`
 - `docs/CLAUDE_DESKTOP_GUIDE.md`
 - `docs/CLAUDE_CODE_GUIDE.md`
 - `docs/API.md`

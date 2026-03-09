@@ -11,14 +11,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Add the project to the path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from src.openrouter_mcp.cli.commands import (
-    add_mcp_server,
-    get_mcp_server_status,
-    list_mcp_servers,
-)
+from src.openrouter_mcp.cli.commands import add_mcp_server, get_mcp_server_status, list_mcp_servers
 
 
 def test_mcp_cli_integration():
@@ -52,9 +45,7 @@ def test_mcp_cli_integration():
 
     # Test 5: Add another preset server (filesystem)
     print("\n5️⃣ Adding filesystem MCP server:")
-    success = add_mcp_server(
-        "filesystem", directories=[str(Path.home() / "Desktop")], force=True
-    )
+    success = add_mcp_server("filesystem", directories=[str(Path.home() / "Desktop")], force=True)
 
     if success:
         print("✅ Filesystem server added successfully!")
@@ -68,11 +59,11 @@ def test_mcp_cli_integration():
     print("\n" + "=" * 60)
     print("✅ MCP CLI Integration Test Complete!")
     print("\nNow you can use these commands in Claude Code CLI:")
-    print("  claude mcp add openrouter --api-key YOUR_KEY")
+    print("  export OPENROUTER_API_KEY=sk-or-...")
+    print("  claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start")
     print("  claude mcp list")
-    print("  claude mcp status openrouter")
+    print("  claude mcp get openrouter")
     print("  claude mcp remove openrouter")
-    print("  claude mcp config openrouter --env OPENROUTER_API_KEY=NEW_KEY")
 
 
 def demonstrate_cli_syntax():
@@ -83,21 +74,21 @@ def demonstrate_cli_syntax():
     print("=" * 60)
 
     examples = [
-        ("Add OpenRouter server", "claude mcp add openrouter --api-key sk-or-xxx"),
-        ("Add GitHub server", "claude mcp add github --token ghp_xxx"),
-        ("Add filesystem server", "claude mcp add filesystem --args /path/to/dir"),
-        ("List all servers", "claude mcp list"),
-        ("List with details", "claude mcp list --verbose"),
-        ("Get server status", "claude mcp status openrouter"),
+        ("Export API key", "export OPENROUTER_API_KEY=sk-or-xxx"),
         (
-            "Update API key",
-            "claude mcp config openrouter --env OPENROUTER_API_KEY=new-key",
+            "Add OpenRouter server",
+            "claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start",
         ),
+        (
+            "Add project-scoped OpenRouter server",
+            "claude mcp add -s project openrouter -- npx @physics91/openrouter-mcp start",
+        ),
+        ("List all servers", "claude mcp list"),
+        ("Get server status", "claude mcp get openrouter"),
         ("Remove server", "claude mcp remove openrouter"),
-        ("Force add (overwrite)", "claude mcp add openrouter --api-key xxx --force"),
         (
             "Custom server",
-            "claude mcp add myserver --command python --args server.py --cwd /project",
+            "claude mcp add myserver -- python server.py --flag value",
         ),
     ]
 

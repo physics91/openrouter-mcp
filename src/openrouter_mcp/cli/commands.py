@@ -39,8 +39,9 @@ def configure_cli_logging() -> None:
 def _print_openrouter_next_steps() -> None:
     """Print post-install instructions for the OpenRouter preset."""
     click.echo("\n📝 Next steps:")
-    click.echo("1. Restart Claude Code CLI")
-    click.echo("2. The OpenRouter MCP tools will be available")
+    click.echo("1. Configure credentials with 'openrouter-mcp init' or OPENROUTER_API_KEY")
+    click.echo("2. Start a new Claude Code session")
+    click.echo("3. The OpenRouter MCP tools will be available")
     click.echo("\nExample commands:")
     click.echo("  - 'list available models'")
     click.echo("  - 'compare gpt-4 and claude-3'")
@@ -197,6 +198,8 @@ def list_mcp_servers(verbose: bool = False) -> List[str]:
             if verbose:
                 status = manager.get_server_status(server)
                 click.echo(f"\n🔹 {server}")
+                if status.get("type"):
+                    click.echo(f"   Type: {status['type']}")
                 click.echo(f"   Command: {status['command']}")
                 if status["args"]:
                     click.echo(f"   Args: {' '.join(status['args'])}")
@@ -230,6 +233,8 @@ def get_mcp_server_status(server_name: str) -> Dict[str, Any]:
 
         click.echo(f"📊 Status for MCP server: {server_name}")
         click.echo(f"  Installed: {'✅ Yes' if status['installed'] else '❌ No'}")
+        if status.get("type"):
+            click.echo(f"  Type: {status['type']}")
         click.echo(f"  Command: {status['command']}")
 
         if status.get("args"):
