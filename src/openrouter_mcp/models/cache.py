@@ -150,7 +150,7 @@ class ModelCache:
         self,
         ttl_hours: float = CacheConfig.DEFAULT_TTL_HOURS,
         max_memory_items: int = 1000,
-        cache_file: str = CacheConfig.MODEL_CACHE_FILE,
+        cache_file: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
@@ -160,13 +160,14 @@ class ModelCache:
         Args:
             ttl_hours: Time-to-live for cache in hours (supports fractional values, e.g., 0.0833 for 5 minutes)
             max_memory_items: Maximum items to keep in memory
-            cache_file: Path to cache file for persistence
+            cache_file: Path to cache file for persistence. Defaults to the
+                current CacheConfig.MODEL_CACHE_FILE value at runtime.
             api_key: Optional API key for fetching models (falls back to env var)
             base_url: Optional base URL for API (falls back to env var)
         """
         self.ttl_seconds = int(ttl_hours * 3600)
         self.max_memory_items = max_memory_items
-        self.cache_file = cache_file
+        self.cache_file = str(cache_file or CacheConfig.MODEL_CACHE_FILE)
 
         # Store credentials for API calls (with fallback to environment)
         self._api_key = api_key

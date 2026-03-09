@@ -114,9 +114,7 @@ def mock_stream_response() -> List[Dict[str, Any]]:
             "model": "openai/gpt-4",
             "object": "chat.completion.chunk",
             "created": 1692901234,
-            "choices": [
-                {"index": 0, "delta": {}, "logprobs": None, "finish_reason": "stop"}
-            ],
+            "choices": [{"index": 0, "delta": {}, "logprobs": None, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
         },
     ]
@@ -145,3 +143,20 @@ def mock_httpx_client():
 def create_response():
     """Factory fixture for creating mock responses."""
     return create_mock_response
+
+
+@pytest.fixture(autouse=True)
+def isolate_default_cache_files(tmp_path, monkeypatch):
+    """Keep tests from mutating the developer's real cache files."""
+    from src.openrouter_mcp.config.constants import CacheConfig, FreeChatConfig
+
+    monkeypatch.setattr(
+        CacheConfig,
+        "MODEL_CACHE_FILE",
+        str(tmp_path / "openrouter_model_cache.json"),
+    )
+    monkeypatch.setattr(
+        FreeChatConfig,
+        "METRICS_CACHE_FILE",
+        str(tmp_path / "free_metrics.json"),
+    )
