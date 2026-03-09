@@ -13,13 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.9', '3.10', '3.11', '3.12']
-        exclude:
-          # Reduce matrix size for efficiency
-          - os: macos-latest
-            python-version: '3.9'
-          - os: windows-latest
-            python-version: '3.9'
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v4
@@ -206,7 +200,7 @@ jobs:
         import datetime
         with open('benchmark-results.json', 'r') as f:
             data = json.load(f)
-        
+
         with open('benchmark-summary.md', 'w') as f:
             f.write('# Benchmark Results\\n\\n')
             f.write(f'Generated: {datetime.datetime.now().isoformat()}\\n\\n')

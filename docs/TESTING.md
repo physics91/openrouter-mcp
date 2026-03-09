@@ -133,29 +133,29 @@ from src.openrouter_mcp.client import OpenRouterClient
 
 class TestOpenRouterClient:
     """Test suite for OpenRouter client."""
-    
+
     @pytest.fixture
     def client(self):
         """Create a test client instance."""
         return OpenRouterClient(api_key="test-key")
-    
+
     def test_client_initialization(self, client):
         """Test client initializes with correct configuration."""
         assert client.api_key == "test-key"
         assert client.base_url == "https://openrouter.ai/api/v1"
-    
+
     @pytest.mark.asyncio
     async def test_chat_completion(self, client, mock_response):
         """Test chat completion request."""
         # Arrange
         messages = [{"role": "user", "content": "Hello"}]
-        
+
         # Act
         response = await client.chat_completion(
             model="openai/gpt-4",
             messages=messages
         )
-        
+
         # Assert
         assert response["choices"][0]["message"]["content"]
         assert response["model"] == "openai/gpt-4"
@@ -232,18 +232,18 @@ def test_invalid_api_key():
     with pytest.raises(AuthenticationError) as exc_info:
         client = OpenRouterClient(api_key="invalid")
         client.validate_key()
-    
+
     assert "Invalid API key" in str(exc_info.value)
 
 def test_rate_limit_handling():
     """Test rate limit error handling."""
     client = OpenRouterClient()
-    
+
     with pytest.raises(RateLimitError) as exc_info:
         # Simulate rate limit scenario
         for _ in range(100):
             client.make_request()
-    
+
     assert exc_info.value.retry_after > 0
 ```
 
@@ -255,13 +255,13 @@ async def test_benchmark_performance():
     """Test benchmarking system performance."""
     models = ["openai/gpt-4", "anthropic/claude-3"]
     prompt = "Test prompt"
-    
+
     results = await benchmark_models(
         models=models,
         prompt=prompt,
         runs=3
     )
-    
+
     assert len(results["results"]) == len(models)
     assert all(r["metrics"]["total_time"] > 0 for r in results["results"])
     assert results["rankings"]["by_speed"]
@@ -273,26 +273,26 @@ async def test_benchmark_performance():
 @pytest.mark.integration
 class TestMCPIntegration:
     """Integration tests for MCP server."""
-    
+
     @pytest.fixture
     async def mcp_server(self):
         """Start MCP server for testing."""
         server = await start_test_server()
         yield server
         await server.shutdown()
-    
+
     async def test_full_chat_flow(self, mcp_server):
         """Test complete chat flow through MCP."""
         # Connect to server
         client = MCPClient(server_url=mcp_server.url)
-        
+
         # Send chat request
         response = await client.call_tool(
             "chat_with_model",
             model="openai/gpt-4",
             messages=[{"role": "user", "content": "Hello"}]
         )
-        
+
         # Verify response
         assert response["choices"]
         assert response["usage"]["total_tokens"] > 0
@@ -318,7 +318,7 @@ asyncio_mode = auto
 
 [coverage:run]
 source = src/openrouter_mcp
-omit = 
+omit =
     */tests/*
     */conftest.py
     */__init__.py
@@ -361,23 +361,23 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, 3.10, 3.11]
-    
+        python-version: [3.10, 3.11, 3.12]
+
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Install dependencies
       run: |
         pip install -r requirements-dev.txt
-    
+
     - name: Run tests
       run: |
         pytest --cov=src/openrouter_mcp --cov-report=xml
-    
+
     - name: Upload coverage
       uses: codecov/codecov-action@v2
 ```

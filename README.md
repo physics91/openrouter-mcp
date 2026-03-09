@@ -32,7 +32,7 @@ openrouter-mcp start
 
 ## Prerequisites
 - Node.js 16+
-- Python 3.9+ (`python` or `python3` must be available in `PATH`)
+- Python 3.10+ (`python` or `python3` must be available in `PATH`)
 - First run attempts dependency install via `<python> -m pip install -r requirements.txt`
 - OpenRouter API key: https://openrouter.ai
 
