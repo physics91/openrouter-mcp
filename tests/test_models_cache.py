@@ -631,6 +631,23 @@ class TestEnsureCacheReady:
                 await cache.ensure_cache_ready()
 
 
+class TestCacheFileConfiguration:
+    """Regression tests for default cache file resolution."""
+
+    @pytest.mark.unit
+    def test_modelcache_uses_runtime_default_cache_path(self, monkeypatch, tmp_path):
+        """ModelCache() should honor CacheConfig.MODEL_CACHE_FILE at runtime."""
+        from src.openrouter_mcp.config.constants import CacheConfig
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        overridden_cache_file = tmp_path / "isolated-model-cache.json"
+        monkeypatch.setattr(CacheConfig, "MODEL_CACHE_FILE", str(overridden_cache_file))
+
+        cache = ModelCache(ttl_hours=1)
+
+        assert cache.cache_file == str(overridden_cache_file)
+
+
 class TestModelCacheIntegration:
     """Integration tests for model cache with OpenRouter client."""
 
