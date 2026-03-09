@@ -15,6 +15,13 @@
 const crypto = require('crypto');
 const chalk = require('chalk');
 const cryptoManager = require('../bin/crypto-manager');
+let claudeConfigUtils = null;
+
+try {
+  claudeConfigUtils = require('../bin/claude-config-utils');
+} catch (error) {
+  claudeConfigUtils = null;
+}
 
 // Test results
 const results = {
@@ -488,6 +495,58 @@ test('Encryption is not vulnerable to timing attacks (constant-time comparison)'
   }
 
   assert(caught1 && caught2, 'Both wrong keys should fail (timing attack resistance not testable here)');
+});
+
+// ============================================================================
+// Test Suite 8: Claude Code Config Security
+// ============================================================================
+
+console.log(chalk.bold('\n📊 Test Suite 8: Claude Code Config Security\n'));
+
+test('Claude Code config template avoids plaintext OPENROUTER_API_KEY', () => {
+  assert(claudeConfigUtils, 'claude-config-utils module should be available');
+
+  const config = claudeConfigUtils.buildClaudeCodeServerConfig('@physics91/openrouter-mcp');
+
+  assertEquals(config.command, 'npx', 'Claude Code config should use npx');
+  assert(Array.isArray(config.args), 'Claude Code config args should be an array');
+  assert(
+    !config.env || !('OPENROUTER_API_KEY' in config.env),
+    'Claude Code config should not inline OPENROUTER_API_KEY'
+  );
+});
+
+test('Claude config plaintext detection only flags explicit key injection', () => {
+  assert(claudeConfigUtils, 'claude-config-utils module should be available');
+
+  const safeConfig = {
+    mcpServers: {
+      openrouter: {
+        command: 'npx',
+        args: ['@physics91/openrouter-mcp', 'start']
+      }
+    }
+  };
+  const unsafeConfig = {
+    mcpServers: {
+      openrouter: {
+        command: 'npx',
+        args: ['@physics91/openrouter-mcp', 'start'],
+        env: {
+          OPENROUTER_API_KEY: 'sk-or-v1-test'
+        }
+      }
+    }
+  };
+
+  assert(
+    !claudeConfigUtils.configContainsPlaintextOpenRouterKey(safeConfig),
+    'Config without inline env key should be treated as safe'
+  );
+  assert(
+    claudeConfigUtils.configContainsPlaintextOpenRouterKey(unsafeConfig),
+    'Config with inline env key should be treated as plaintext storage'
+  );
 });
 
 // ============================================================================

@@ -57,7 +57,7 @@ npx @physics91/openrouter-mcp@latest install-claude-code
 This automatically:
 - Detects Claude Code CLI installation
 - Creates or updates the configuration file
-- Configures the MCP server connection
+- Registers the MCP server command without storing your API key in the config
 
 ## Manual Setup
 
@@ -81,10 +81,7 @@ If the file doesn't exist, create it. If it exists, add to the existing `mcpServ
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "your-openrouter-api-key-here"
-      }
+      "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
@@ -101,7 +98,6 @@ Here's a complete configuration file with multiple MCP servers:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-xxx...",
         "OPENROUTER_APP_NAME": "claude-code",
         "OPENROUTER_HTTP_REFERER": "https://localhost"
       }
@@ -113,6 +109,8 @@ Here's a complete configuration file with multiple MCP servers:
   }
 }
 ```
+
+Before using Claude Code, store the API key with `npx @physics91/openrouter-mcp@latest init` or export `OPENROUTER_API_KEY` in the environment that launches Claude Code.
 
 ### Step 4: Save Configuration
 
@@ -314,7 +312,6 @@ You can customize the server behavior with environment variables in the config:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
       "env": {
-        "OPENROUTER_API_KEY": "your-key",
         "OPENROUTER_APP_NAME": "claude-code-custom",
         "OPENROUTER_HTTP_REFERER": "https://my-domain.com",
         "LOG_LEVEL": "debug",
@@ -328,23 +325,20 @@ You can customize the server behavior with environment variables in the config:
 
 ### Multiple OpenRouter Configurations
 
-You can run multiple OpenRouter instances with different configurations:
+You can run multiple OpenRouter instances with different non-secret settings:
 
 ```json
 {
   "mcpServers": {
     "openrouter-main": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "8000"],
-      "env": {
-        "OPENROUTER_API_KEY": "your-main-key"
-      }
+      "args": ["@physics91/openrouter-mcp", "start", "--port", "8000"]
     },
     "openrouter-experimental": {
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start", "--port", "8001"],
       "env": {
-        "OPENROUTER_API_KEY": "your-experimental-key"
+        "OPENROUTER_APP_NAME": "experimental-profile"
       }
     }
   }
@@ -362,7 +356,6 @@ For development-focused usage:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "your-key",
         "OPENROUTER_APP_NAME": "dev-assistant",
         "LOG_LEVEL": "info"
       }
@@ -390,7 +383,6 @@ For high-volume development usage:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "your-key",
         "LOG_LEVEL": "warning",
         "WORKER_PROCESSES": "2",
         "REQUEST_TIMEOUT": "120"

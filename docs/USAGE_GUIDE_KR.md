@@ -123,29 +123,15 @@ npx @physics91/openrouter-mcp@latest start --port 9000
 **설정 (3분)**:
 
 ```bash
-# 1. 설정 파일 생성
-mkdir -p ~/.claude
+# 1. API 키를 안전하게 초기화
+npx @physics91/openrouter-mcp@latest init
 
-# 2. 설정 추가 (복사해서 붙여넣기)
-cat > ~/.claude/claude_code_config.json << 'EOF'
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
-      }
-    }
-  }
-}
-EOF
+# 2. Claude Code 설정 자동 생성
+npx @physics91/openrouter-mcp@latest install-claude-code
 
-# 3. API 키 교체 (실제 키로 변경)
-nano ~/.claude/claude_code_config.json
-
-# 4. 파일 권한 설정
-chmod 600 ~/.claude/claude_code_config.json
+# 3. Claude Code 재시작
+# 생성된 설정은 MCP 서버 명령만 등록합니다.
+# 실제 실행 시 openrouter-mcp start가 secure storage 또는 환경변수에서 API 키를 읽습니다.
 ```
 
 **사용**:
@@ -182,11 +168,7 @@ claude "List all available AI models"
 list_available_models()
 
 # 필터링
-list_available_models(
-  provider="openai",
-  capability="vision",
-  min_quality_score=0.8
-)
+list_available_models(filter_by="gpt")
 ```
 
 ---
@@ -279,14 +261,13 @@ Verbose 모드:
 
 **이전 (취약)**:
 ```python
-# ❌ 더 이상 작동하지 않음 (보안 취약점)
-img = ImageInput(data="/path/to/image.jpg", type="path")
+# ❌ 더 이상 지원되지 않음: local file path를 직접 전달하던 방식
 ```
 
 **현재 (안전)**:
 ```python
 # ✅ base64로만 가능
-with open("/path/to/image.jpg", "rb") as f:
+with open("image.jpg", "rb") as f:
     img_bytes = f.read()
 
 img = ImageInput(
@@ -296,7 +277,7 @@ img = ImageInput(
 ```
 
 **마이그레이션 필수**:
-- 모든 `type="path"` 코드를 위의 패턴으로 변경
+- 기존 local file 입력 코드를 위의 패턴으로 변경
 - 실패 시 명확한 에러 메시지 표시
 - 자세한 내용: `MULTIMODAL_GUIDE.md`
 
@@ -714,10 +695,7 @@ npx @physics91/openrouter-mcp@latest start
 
 **변경 전**:
 ```python
-# ❌ 작동하지 않음
-from openrouter_mcp.handlers.multimodal import ImageInput
-
-img = ImageInput(data="/path/image.jpg", type="path")
+# ❌ local file path 직접 입력은 더 이상 지원되지 않음
 ```
 
 **변경 후**:
@@ -728,7 +706,7 @@ from openrouter_mcp.handlers.multimodal import (
     encode_image_to_base64
 )
 
-with open("/path/image.jpg", "rb") as f:
+with open("image.jpg", "rb") as f:
     image_bytes = f.read()
 
 img = ImageInput(
@@ -739,12 +717,8 @@ img = ImageInput(
 
 **검증**:
 ```python
-# 에러 발생 시 명확한 메시지
-try:
-    img = ImageInput(data="/path/img.jpg", type="path")
-except ValidationError as e:
-    print(e)
-    # "type must be 'base64' or 'url', not 'path'"
+# 허용 타입은 base64 또는 url 뿐입니다.
+ImageInput(data="https://example.com/image.jpg", type="url")
 ```
 
 #### 3. **Backward Compatibility (하위 호환성)**

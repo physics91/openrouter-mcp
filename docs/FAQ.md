@@ -97,13 +97,13 @@ Use the `chat_with_vision` tool:
 {
   "model": "openai/gpt-4o",
   "messages": [{"role": "user", "content": "What's in this image?"}],
-  "images": [{"data": "/path/to/image.jpg", "type": "path"}]
+  "images": [{"data": "https://example.com/image.jpg", "type": "url"}]
 }
 ```
 
 ### What image formats are supported?
 - **Formats**: JPEG, PNG, GIF, WebP
-- **Sources**: File paths, URLs, base64 strings
+- **Sources**: URLs, base64 strings
 - **Size**: Automatically resized if >20MB
 
 ### How do I enable streaming responses?

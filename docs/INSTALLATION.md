@@ -264,7 +264,7 @@ Create `.env` file in your project directory:
 
 ```env
 # Required
-OPENROUTER_API_KEY=sk-or-v1-your-key-here
+OPENROUTER_API_KEY=sk-or-v1-...
 
 # Optional Server Configuration
 HOST=localhost

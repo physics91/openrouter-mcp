@@ -15,49 +15,22 @@
 
 ## 🚀 빠른 설정 (권장)
 
-### 방법 1: 설정 파일에 직접 (가장 간편) ⭐
+### 방법 1: 자동 설정 + secure storage ⭐
 
 ```bash
-# 1. 설정 파일 생성
-mkdir -p ~/.claude
+# 1. API 키를 secure storage에 저장
+npx @physics91/openrouter-mcp@latest init
 
-# 2. 설정 파일 편집
-nano ~/.claude/claude_code_config.json
-# (Windows: notepad %USERPROFILE%\.claude\claude_code_config.json)
-```
+# 2. Claude Code 설정 자동 생성
+npx @physics91/openrouter-mcp@latest install-claude-code
 
-**설정 내용 (복사해서 붙여넣기)**:
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-your-key-here"
-      }
-    }
-  }
-}
-```
-
-**3. API 키 교체**:
-- `sk-or-v1-your-key-here`를 실제 OpenRouter API 키로 변경
-
-**4. 파일 권한 설정** (중요):
-```bash
-chmod 600 ~/.claude/claude_code_config.json
+# 3. Claude Code 재시작
 ```
 
 **장점**:
-- ✅ 가장 간단하고 명확
-- ✅ 한 곳에 모든 설정
-- ✅ 디버깅 쉬움
-- ✅ 즉시 작동
-
-**보안 주의**:
-- ⚠️ Git에 커밋하지 말 것
-- ⚠️ 파일 권한 제한 필수
+- ✅ 설정 파일에 평문 API 키를 남기지 않음
+- ✅ `openrouter-mcp start`가 secure storage 또는 환경변수에서 키를 읽음
+- ✅ 기본 경로로 가장 안전함
 
 ### 방법 2: 환경변수 참조 (팀 공유 시) ⭐
 
@@ -76,10 +49,7 @@ source ~/.bashrc
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
-      }
+      "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
@@ -88,6 +58,7 @@ source ~/.bashrc
 **장점**:
 - ✅ 설정 파일을 Git에 안전하게 공유 가능
 - ✅ 여러 도구에서 같은 키 사용
+- ✅ API 키를 설정 파일에 직접 저장하지 않음
 - ✅ 팀원마다 다른 키 사용 가능
 
 ### 방법 3: 자동 설치 명령어
@@ -96,7 +67,7 @@ source ~/.bashrc
 npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
-**주의**: 이 명령어는 기본 설정만 생성합니다. API 키는 별도로 설정해야 합니다.
+**주의**: 이 명령어는 MCP 서버 명령만 등록합니다. API 키는 `init` 또는 환경변수로 별도 준비해야 합니다.
 
 ### 3단계: 설정 확인
 
@@ -155,9 +126,9 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
 }
 ```
 
-**전제 조건**: `.env` 파일 또는 OS Keychain에 API 키가 저장되어 있어야 함
+**전제 조건**: `init`으로 secure storage를 구성했거나, Claude Code를 실행하는 환경에 `OPENROUTER_API_KEY`가 설정되어 있어야 함
 
-#### 명시적 API 키 설정
+#### 비밀값 없이 추가 env 설정
 
 ```json
 {
@@ -166,14 +137,15 @@ notepad "$env:USERPROFILE\.claude\claude_code_config.json"
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-your-api-key-here"
+        "OPENROUTER_APP_NAME": "claude-code",
+        "OPENROUTER_HTTP_REFERER": "https://localhost"
       }
     }
   }
 }
 ```
 
-**⚠️ 주의**: API 키를 설정 파일에 직접 넣는 것은 권장하지 않습니다. 대신 OS Keychain을 사용하세요.
+**권장 방식**: 비밀값은 config JSON에 넣지 말고 `init` 또는 환경변수로 제공하세요.
 
 #### 커스텀 포트 설정
 
@@ -448,16 +420,11 @@ claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
 
 ```json
 {
-  "extends": "./.claude/team_config.json",
-  "mcpServers": {
-    "openrouter": {
-      "env": {
-        "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY}"
-      }
-    }
-  }
+  "extends": "./.claude/team_config.json"
 }
 ```
+
+각 사용자는 별도로 `openrouter-mcp init`을 실행하거나, 자신의 shell 환경에 `OPENROUTER_API_KEY`를 설정하세요.
 
 ### 5. Alias 설정
 
@@ -562,17 +529,10 @@ export OPENROUTER_API_KEY="sk-or-v1-..."
 source ~/.bashrc  # 또는 ~/.zshrc
 ```
 
-**방법 3: 설정 파일에 직접 (비권장)**:
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-..."
-      }
-    }
-  }
-}
+**방법 3: 설정 등록 재확인**:
+```bash
+npx @physics91/openrouter-mcp@latest install-claude-code
+claude mcp list
 ```
 
 ### 4. Tools 목록이 비어있음

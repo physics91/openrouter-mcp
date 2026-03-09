@@ -21,15 +21,15 @@
     "cross-validation",
     "collaborative-solving"
   ],
-  "author": "Your Name <your.email@example.com>",
+  "author": "physics91",
   "license": "MIT",
-  "homepage": "https://github.com/yourusername/openrouter-mcp#readme",
+  "homepage": "https://github.com/physics91/openrouter-mcp#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/openrouter-mcp.git"
+    "url": "git+https://github.com/physics91/openrouter-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/openrouter-mcp/issues"
+    "url": "https://github.com/physics91/openrouter-mcp/issues"
   },
   "bin": {
     "openrouter-mcp": "./bin/openrouter-mcp.js"

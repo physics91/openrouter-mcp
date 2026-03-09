@@ -12,6 +12,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.test_tool_expectations import (
+    BENCHMARK_TOOL_NAMES,
+    CHAT_TOOL_NAMES,
+    COLLECTIVE_TOOL_NAMES,
+)
+
 # Add src to path
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
@@ -40,54 +46,26 @@ class TestToolRegistration:
     """Verify expected tools are registered."""
 
     def test_chat_tools_registered(self, tools):
-        expected = ["chat_with_model", "list_available_models", "get_usage_stats"]
         names = _tool_names(tools)
-        for name in expected:
+        for name in CHAT_TOOL_NAMES:
             assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
     def test_benchmark_tools_registered(self, tools):
-        expected = [
-            "benchmark_models",
-            "get_benchmark_history",
-            "compare_model_categories",
-            "export_benchmark_report",
-            "compare_model_performance",
-        ]
         names = _tool_names(tools)
-        for name in expected:
+        for name in BENCHMARK_TOOL_NAMES:
             assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
     def test_ci_tools_registered(self, tools):
-        expected = [
-            "collective_chat_completion",
-            "ensemble_reasoning",
-            "adaptive_model_selection",
-            "cross_model_validation",
-            "collaborative_problem_solving",
-        ]
         names = _tool_names(tools)
-        for name in expected:
+        for name in COLLECTIVE_TOOL_NAMES:
             assert name in names, f"Tool '{name}' not found. Registered: {names}"
 
     def test_no_zero_tools_regression(self, tools):
         assert len(tools) >= 13, f"Expected at least 13 tools, got {len(tools)}"
 
 
-CI_TOOLS = {
-    "collective_chat_completion",
-    "ensemble_reasoning",
-    "adaptive_model_selection",
-    "cross_model_validation",
-    "collaborative_problem_solving",
-}
-
-BENCHMARK_TOOLS = {
-    "benchmark_models",
-    "get_benchmark_history",
-    "compare_model_categories",
-    "export_benchmark_report",
-    "compare_model_performance",
-}
+CI_TOOLS = set(COLLECTIVE_TOOL_NAMES)
+BENCHMARK_TOOLS = set(BENCHMARK_TOOL_NAMES)
 
 
 class TestToolDescriptionQuality:
