@@ -255,8 +255,7 @@ npx @physics91/openrouter-mcp@latest init
 This will prompt you for:
 - OpenRouter API key
 - Server port (default: 8000)
-- Claude Desktop integration
-- Claude Code CLI integration
+- Optional auto-setup for supported MCP clients
 
 #### 2. Manual Configuration
 
@@ -279,7 +278,43 @@ OPENROUTER_HTTP_REFERER=https://myapp.com
 Cache tuning (TTL, memory size, cache file path) is configured programmatically
 via `ModelCache` and `OpenRouterClient` rather than environment variables.
 
-### Claude Desktop Integration
+### MCP Client Integration
+
+#### 1. Common Launch Values
+
+Client config formats differ, but the local stdio launch values are usually the same:
+
+```json
+{
+  "command": "npx",
+  "args": ["@physics91/openrouter-mcp", "start"]
+}
+```
+
+If your client runtime cannot resolve `npx`, install the package globally and use `openrouter-mcp` as the command instead.
+
+#### 2. Credential Options
+
+Preferred:
+- Run `npx @physics91/openrouter-mcp@latest init`
+- Let `openrouter-mcp start` read the API key from secure storage or environment at runtime
+
+If your client only supports inline environment variables, use:
+```json
+{
+  "env": {
+    "OPENROUTER_API_KEY": "your-api-key-here",
+    "OPENROUTER_APP_NAME": "my-mcp-client",
+    "OPENROUTER_HTTP_REFERER": "https://example.com"
+  }
+}
+```
+
+#### 3. Supported Client Shortcuts
+
+Common guidance for any client is in [MCP Client Guide](MCP_CLIENT_GUIDE.md). The project also includes convenience installers for Claude clients.
+
+### Claude Desktop Example
 
 #### Automatic Setup
 ```bash
@@ -321,33 +356,41 @@ Add configuration:
 }
 ```
 
-### Claude Code CLI Integration
+Claude Desktop currently requires storing the API key in its config file for this integration path.
+
+### Claude Code CLI Example
 
 #### Automatic Setup
 ```bash
 npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
-#### Manual Setup
+#### Recommended Native Setup
 ```bash
-# Edit configuration file
-nano ~/.claude/claude_code_config.json
+# Store credentials once
+npx @physics91/openrouter-mcp@latest init
+
+# Register OpenRouter in Claude Code user scope
+claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
 ```
 
-Add configuration:
+#### Project-Scoped Manual Setup
+
+Create `.mcp.json` in the project root:
+
 ```json
 {
   "mcpServers": {
     "openrouter": {
+      "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_API_KEY": "your-api-key-here"
-      }
+      "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
 ```
+
+Claude Code stores user-scoped MCP servers in `~/.claude.json` and project-scoped servers in `.mcp.json`.
 
 ## Verification
 
@@ -455,15 +498,13 @@ rm .cache/openrouter_model_cache.json
 rm -rf logs/
 ```
 
-#### 3. Remove Claude Integration
+#### 3. Remove MCP Client Integration
 
-**Claude Desktop:**
-- Edit `claude_desktop_config.json`
-- Remove the `openrouter` entry from `mcpServers`
+Remove the `openrouter` entry from the client configuration you added or generated.
 
-**Claude Code:**
-- Edit `claude_code_config.json`
-- Remove the `openrouter` entry from `mcpServers`
+Supported client defaults:
+- Claude Desktop: `claude_desktop_config.json`
+- Claude Code CLI: `~/.claude.json` or project `.mcp.json`
 
 #### 4. Clean Python Dependencies (Optional)
 ```bash
@@ -524,11 +565,12 @@ If you encounter issues:
 ## Next Steps
 
 After installation:
+- [MCP Client Guide](MCP_CLIENT_GUIDE.md) - Common MCP integration flow
 - [API Reference](API.md) - Learn about available MCP tools
 - [Benchmarking Guide](BENCHMARK_GUIDE.md) - Compare model performance
 - [FAQ](FAQ.md) - Common questions and answers
-- [Claude Desktop Guide](CLAUDE_DESKTOP_GUIDE.md) - Desktop integration
-- [Claude Code Guide](CLAUDE_CODE_GUIDE.md) - Terminal workflow
+- [Claude Desktop Guide](CLAUDE_DESKTOP_GUIDE.md) - Claude-specific desktop example
+- [Claude Code Guide](CLAUDE_CODE_GUIDE.md) - Claude-specific terminal example
 - [Main README](../README.md) - Project overview and primary documentation entrypoint
 
 ---

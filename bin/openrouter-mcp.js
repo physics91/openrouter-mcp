@@ -15,8 +15,11 @@ const {
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
 const {
+  buildClaudeCodeInstallCommand,
+  buildClaudeCodeRemoveCommand,
   buildClaudeCodeServerConfig,
   configContainsPlaintextOpenRouterKey,
+  getClaudeCodeUserConfigPath,
 } = require('./claude-config-utils');
 const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
@@ -81,9 +84,9 @@ program
 // Install command for Claude Code CLI
 program
   .command('install-claude-code')
-  .description('Install configuration for Claude Code CLI')
+  .description('Register OpenRouter in Claude Code user scope')
   .action(async () => {
-    console.log(chalk.green('💻 Installing Claude Code CLI configuration...'));
+    console.log(chalk.green('💻 Registering OpenRouter in Claude Code user scope...'));
     await installClaudeCodeConfig();
   });
 
@@ -498,7 +501,7 @@ LOG_LEVEL=info
           checked: false
         },
         {
-          name: `Claude Code CLI ${chalk.gray('(reads key from secure storage/env)')}`,
+          name: `Claude Code CLI ${chalk.gray('(registers via claude mcp add)')}`,
           value: 'code',
           checked: false
         }
@@ -652,49 +655,48 @@ async function installClaudeConfig(apiKey = null) {
 }
 
 async function installClaudeCodeConfig() {
-  const configPath = secureCredentials.getClaudeCodeConfigPath();
   const keyResult = await secureCredentials.getApiKey();
+  const installCommand = buildClaudeCodeInstallCommand(MCP_PACKAGE_NAME);
+  const removeCommand = buildClaudeCodeRemoveCommand();
+  const configPath = getClaudeCodeUserConfigPath();
 
-  // Create directory if it doesn't exist
-  const configDir = path.dirname(configPath);
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
-  }
-
-  // Read existing config or create new one
-  let config = { mcpServers: {} };
-  if (fs.existsSync(configPath)) {
+  try {
     try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      await runCommand(removeCommand.command, removeCommand.args);
+      console.log(chalk.gray('ℹ️  Replacing existing Claude Code user-scope OpenRouter entry'));
     } catch (error) {
-      console.log(chalk.yellow('⚠️  Existing config file is invalid, creating new one'));
+      // Ignore if the server is not already registered.
     }
+
+    await runCommand(installCommand.command, installCommand.args);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      console.log(chalk.red('✗ Claude Code CLI not found in PATH'));
+      console.log(chalk.blue('Install Claude Code first, then rerun this command.'));
+    } else {
+      console.log(chalk.red(`✗ Failed to configure Claude Code CLI: ${error.message}`));
+    }
+
+    console.log(chalk.blue('\nRun this command manually in Claude Code-enabled shell:'));
+    console.log(chalk.gray(`  ${formatCommand(installCommand.command, installCommand.args)}`));
+    return;
   }
 
-  // Add OpenRouter MCP server
-  config.mcpServers = config.mcpServers || {};
-  config.mcpServers.openrouter = buildClaudeCodeServerConfig(MCP_PACKAGE_NAME);
-
-  // Write config with secure permissions
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
-  secureCredentials.setSecurePermissions(configPath);
+  if (fs.existsSync(configPath)) {
+    secureCredentials.setSecurePermissions(configPath);
+  }
 
   console.log(chalk.green(`✓ Claude Code CLI configuration updated: ${configPath}`));
-  console.log(chalk.blue('💡 OpenRouter tools are now available in Claude Code CLI'));
-  console.log(chalk.blue('💡 Claude Code config stores only the MCP command, not your API key.'));
+  console.log(chalk.blue('💡 Installed via native "claude mcp add" user-scope flow.'));
+  console.log(chalk.blue('💡 Claude Code stores only the MCP command, not your API key.'));
   console.log(chalk.blue('💡 openrouter-mcp start resolves the key from secure storage or environment at runtime.'));
   if (!keyResult.key) {
     console.log(chalk.yellow('⚠️  No API key is configured yet. Run "openrouter-mcp init" or export OPENROUTER_API_KEY before use.'));
   }
   console.log(chalk.blue('💡 Use commands like: "List available AI models using OpenRouter"'));
 
-  // Show configuration example
-  console.log(chalk.cyan('\n📝 Configuration added:'));
-  console.log(chalk.gray(JSON.stringify({
-    mcpServers: {
-      openrouter: buildClaudeCodeServerConfig(MCP_PACKAGE_NAME)
-    }
-  }, null, 2)));
+  console.log(chalk.cyan('\n📝 Claude Code registration command:'));
+  console.log(chalk.gray(`  ${formatCommand(installCommand.command, installCommand.args)}`));
 }
 
 async function rotateApiKey() {
@@ -1214,6 +1216,17 @@ function runCommand(command, args) {
       }
     });
   });
+}
+
+function formatCommand(command, args) {
+  return [command, ...args]
+    .map((part) => {
+      if (/[\s"]/u.test(part)) {
+        return `"${part.replace(/"/g, '\\"')}"`;
+      }
+      return part;
+    })
+    .join(' ');
 }
 
 // Parse command line arguments

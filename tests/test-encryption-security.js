@@ -516,6 +516,44 @@ test('Claude Code config template avoids plaintext OPENROUTER_API_KEY', () => {
   );
 });
 
+test('Claude Code installer command uses native claude mcp add flow', () => {
+  assert(claudeConfigUtils, 'claude-config-utils module should be available');
+  assert(
+    typeof claudeConfigUtils.buildClaudeCodeInstallCommand === 'function',
+    'buildClaudeCodeInstallCommand should be exported'
+  );
+
+  const command = claudeConfigUtils.buildClaudeCodeInstallCommand('@physics91/openrouter-mcp');
+
+  assertEquals(command.command, 'claude', 'Claude Code installer should invoke Claude Code CLI');
+  assert(Array.isArray(command.args), 'Installer args should be an array');
+  assertEquals(command.args[0], 'mcp', 'Installer should call claude mcp');
+  assertEquals(command.args[1], 'add', 'Installer should add an MCP server');
+  assert(
+    command.args.includes('openrouter'),
+    'Installer command should register the openrouter server name'
+  );
+  assert(
+    command.args.includes('@physics91/openrouter-mcp'),
+    'Installer command should reference the package name'
+  );
+});
+
+test('Claude Code config path matches current user-scope settings file', () => {
+  assert(claudeConfigUtils, 'claude-config-utils module should be available');
+  assert(
+    typeof claudeConfigUtils.getClaudeCodeUserConfigPath === 'function',
+    'getClaudeCodeUserConfigPath should be exported'
+  );
+
+  const configPath = claudeConfigUtils.getClaudeCodeUserConfigPath('/home/tester');
+  assertEquals(
+    configPath,
+    '/home/tester/.claude.json',
+    'Claude Code user config should use ~/.claude.json'
+  );
+});
+
 test('Claude config plaintext detection only flags explicit key injection', () => {
   assert(claudeConfigUtils, 'claude-config-utils module should be available');
 

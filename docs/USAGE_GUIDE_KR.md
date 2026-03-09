@@ -32,13 +32,33 @@ npx @physics91/openrouter-mcp start
 npx @physics91/openrouter-mcp@latest status
 ```
 
-### Claude Desktop 연동
+### MCP 클라이언트 연결
 
+클라이언트마다 설정 파일 구조는 다르지만, 공통으로 필요한 실행 정보는 거의 같습니다.
+
+```json
+{
+  "command": "npx",
+  "args": ["@physics91/openrouter-mcp", "start"]
+}
+```
+
+권장 방식:
+- `npx @physics91/openrouter-mcp@latest init`로 API 키를 안전 저장
+- MCP 클라이언트는 `openrouter-mcp start`를 실행만 하도록 구성
+
+대표적인 클라이언트별 형식:
+- Claude Desktop: `mcpServers`
+- Claude Code: `claude mcp add ...` 또는 `.mcp.json`
+- VS Code: `.vscode/mcp.json`의 `servers`
+
+지원되는 자동 설정 예시:
 ```bash
 # Claude Desktop 자동 설정
 npx @physics91/openrouter-mcp@latest install-claude
 
-# Claude Desktop 재시작 후 사용 가능
+# Claude Code CLI 자동 설정
+npx @physics91/openrouter-mcp@latest install-claude-code
 ```
 
 ---
@@ -102,15 +122,10 @@ npx @physics91/openrouter-mcp@latest start --debug
 npx @physics91/openrouter-mcp@latest start --port 9000
 ```
 
-### Claude Desktop에서 사용
+### MCP 클라이언트에서 사용
 
-1. **설치**:
-   ```bash
-   npx @physics91/openrouter-mcp@latest install-claude
-   ```
-
-2. **Claude Desktop 재시작**
-
+1. **클라이언트 설정에 `openrouter` 서버 등록**
+2. **클라이언트 재시작 또는 새 세션 시작**
 3. **사용 예시**:
    ```
    사용자: "OpenRouter로 사용 가능한 AI 모델 목록 보여줘"
@@ -118,7 +133,9 @@ npx @physics91/openrouter-mcp@latest start --port 9000
    사용자: "Claude Opus와 GPT-4를 비교해서 답변해줘" (Collective Intelligence)
    ```
 
-### Claude Code CLI에서 사용
+공통 설정 상세는 `MCP_CLIENT_GUIDE.md`를 참고하세요.
+
+### Claude Code CLI 자동 설정 예시
 
 **설정 (3분)**:
 
@@ -126,12 +143,11 @@ npx @physics91/openrouter-mcp@latest start --port 9000
 # 1. API 키를 안전하게 초기화
 npx @physics91/openrouter-mcp@latest init
 
-# 2. Claude Code 설정 자동 생성
-npx @physics91/openrouter-mcp@latest install-claude-code
+# 2. Claude Code에 MCP 서버 등록
+claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
 
 # 3. Claude Code 재시작
-# 생성된 설정은 MCP 서버 명령만 등록합니다.
-# 실제 실행 시 openrouter-mcp start가 secure storage 또는 환경변수에서 API 키를 읽습니다.
+# 또는 새 Claude Code 세션 시작
 ```
 
 **사용**:
@@ -145,7 +161,7 @@ claude "Use Claude Opus to write a Python script"
 claude "List all available AI models"
 ```
 
-**자세한 설정**: `CLAUDE_CODE_SETUP_KR.md` 참조
+**자세한 설정**: 공통 설정은 `MCP_CLIENT_GUIDE.md`, Claude Code 상세는 `CLAUDE_CODE_SETUP_KR.md` 참조
 
 ### 기본 MCP 툴 사용
 

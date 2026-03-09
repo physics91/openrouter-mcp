@@ -444,8 +444,8 @@ client = OpenRouterClient(
 ```bash
 # Configuration files
 chmod 600 ~/.env
-chmod 600 ~/.claude/claude_code_config.json
-chmod 700 ~/.claude/
+chmod 600 ~/.claude.json
+chmod 600 .mcp.json
 
 # On macOS (Claude Desktop)
 chmod 600 ~/Library/Application\ Support/Claude/claude_desktop_config.json
@@ -456,7 +456,7 @@ chmod 700 ~/Library/Application\ Support/Claude/
 
 ```powershell
 # Remove inherited permissions and grant only current user
-$path = "$env:USERPROFILE\.claude\claude_code_config.json"
+$path = "$env:USERPROFILE\.claude.json"
 $acl = Get-Acl $path
 $acl.SetAccessRuleProtection($true, $false)
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(

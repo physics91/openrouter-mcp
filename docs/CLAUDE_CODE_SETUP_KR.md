@@ -1,720 +1,108 @@
 # Claude Code MCP 설정 가이드
 
-> Claude Code CLI에서 OpenRouter MCP를 사용하는 완벽 가이드
+Claude Code에서 OpenRouter MCP를 붙이는 최신 권장 흐름은 `claude mcp add` 또는 프로젝트 `.mcp.json`을 사용하는 방식입니다.
 
-## 📋 목차
+## 권장 설정
 
-1. [자동 설정 (권장)](#자동-설정-권장)
-2. [수동 설정](#수동-설정)
-3. [설정 확인](#설정-확인)
-4. [사용 예시](#사용-예시)
-5. [고급 설정](#고급-설정)
-6. [문제 해결](#문제-해결)
+1. API 키를 한 번 안전하게 저장합니다.
 
----
-
-## 🚀 빠른 설정 (권장)
-
-### 방법 1: 자동 설정 + secure storage ⭐
-
-```bash
-# 1. API 키를 secure storage에 저장
-npx @physics91/openrouter-mcp@latest init
-
-# 2. Claude Code 설정 자동 생성
-npx @physics91/openrouter-mcp@latest install-claude-code
-
-# 3. Claude Code 재시작
-```
-
-**장점**:
-- ✅ 설정 파일에 평문 API 키를 남기지 않음
-- ✅ `openrouter-mcp start`가 secure storage 또는 환경변수에서 키를 읽음
-- ✅ 기본 경로로 가장 안전함
-
-### 방법 2: 환경변수 참조 (팀 공유 시) ⭐
-
-**1. 환경변수 설정**:
-```bash
-# .bashrc 또는 .zshrc에 추가
-export OPENROUTER_API_KEY="sk-or-v1-your-actual-key"
-
-# 적용
-source ~/.bashrc
-```
-
-**2. 설정 파일**:
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
-    }
-  }
-}
-```
-
-**장점**:
-- ✅ 설정 파일을 Git에 안전하게 공유 가능
-- ✅ 여러 도구에서 같은 키 사용
-- ✅ API 키를 설정 파일에 직접 저장하지 않음
-- ✅ 팀원마다 다른 키 사용 가능
-
-### 방법 3: 자동 설치 명령어
-
-```bash
-npx @physics91/openrouter-mcp@latest install-claude-code
-```
-
-**주의**: 이 명령어는 MCP 서버 명령만 등록합니다. API 키는 `init` 또는 환경변수로 별도 준비해야 합니다.
-
-### 3단계: 설정 확인
-
-```bash
-# Claude Code 버전 확인
-claude --version
-
-# MCP 서버 상태 확인
-claude mcp list
-```
-
-**출력 예시**:
-```
-Available MCP servers:
-- openrouter (running)
-  Tools: 18
-  Status: ✓ Connected
-```
-
----
-
-## 🔧 수동 설정
-
-자동 설정이 작동하지 않거나 커스터마이징이 필요한 경우:
-
-### 1단계: 설정 파일 위치 확인
-
-**설정 파일 경로**:
-- **macOS/Linux**: `~/.claude/claude_code_config.json`
-- **Windows**: `%USERPROFILE%\.claude\claude_code_config.json`
-
-### 2단계: 설정 파일 생성/편집
-
-```bash
-# macOS/Linux
-mkdir -p ~/.claude
-nano ~/.claude/claude_code_config.json
-
-# Windows (PowerShell)
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.claude"
-notepad "$env:USERPROFILE\.claude\claude_code_config.json"
-```
-
-### 3단계: 설정 내용 추가
-
-#### 기본 설정 (환경변수 사용)
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
-    }
-  }
-}
-```
-
-**전제 조건**: `init`으로 secure storage를 구성했거나, Claude Code를 실행하는 환경에 `OPENROUTER_API_KEY`가 설정되어 있어야 함
-
-#### 비밀값 없이 추가 env 설정
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_APP_NAME": "claude-code",
-        "OPENROUTER_HTTP_REFERER": "https://localhost"
-      }
-    }
-  }
-}
-```
-
-**권장 방식**: 비밀값은 config JSON에 넣지 말고 `init` 또는 환경변수로 제공하세요.
-
-#### 커스텀 포트 설정
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
-      "env": {
-        "LOG_LEVEL": "DEBUG"
-      }
-    }
-  }
-}
-```
-
-#### 여러 MCP 서버 등록
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
-    },
-    "other-server": {
-      "command": "node",
-      "args": ["/path/to/other-server.js"]
-    }
-  }
-}
-```
-
----
-
-## ✅ 설정 확인
-
-### 방법 1: MCP 서버 목록 확인
-
-```bash
-claude mcp list
-```
-
-**정상 출력**:
-```
-Available MCP servers:
-┌─────────────┬──────────┬───────┬──────────────┐
-│ Name        │ Status   │ Tools │ Connected    │
-├─────────────┼──────────┼───────┼──────────────┤
-│ openrouter  │ running  │ 15    │ ✓            │
-└─────────────┴──────────┴───────┴──────────────┘
-```
-
-### 방법 2: 툴 목록 확인
-
-```bash
-claude mcp tools openrouter
-```
-
-**출력 예시**:
-```
-OpenRouter MCP Tools:
-1. chat_with_model - Chat with any OpenRouter model
-2. list_available_models - List all available models
-3. chat_with_vision - Vision-capable chat
-4. list_vision_models - List vision models
-5. collective_chat_completion - Multi-model consensus
-6. ensemble_reasoning - Ensemble reasoning
-7. adaptive_model_selection - Adaptive model selection
-8. cross_model_validation - Cross-model validation
-9. collaborative_problem_solving - Collaborative solving
-10. benchmark_models - Benchmark models
-... (18 tools total)
-```
-
-### 방법 3: 간단한 쿼리 테스트
-
-```bash
-claude "List all available AI models from OpenRouter"
-```
-
-**성공 시**: 모델 목록이 표시됨
-**실패 시**: 아래 문제 해결 섹션 참조
-
----
-
-## 💡 사용 예시
-
-### 기본 채팅
-
-```bash
-# 기본 모델로 질문
-claude "양자 컴퓨팅이 뭐야?"
-
-# 특정 모델 지정
-claude "Use GPT-4 to explain quantum computing"
-claude "Use Claude Opus to write a Python function"
-claude "Use Gemini Pro to analyze this code"
-```
-
-### 모델 발견
-
-```bash
-# 전체 모델 목록
-claude "List all available AI models"
-
-# 필터링
-claude "Show me vision-capable models"
-claude "List OpenAI models only"
-claude "What are the cheapest models available?"
-```
-
-### 코드 작업
-
-```bash
-# 코드 리뷰
-claude "Use Claude Opus to review the code in this directory"
-
-# 코드 생성
-claude "Use GPT-4 to write a binary search tree in Python"
-
-# 리팩토링
-claude "Use Claude Sonnet to refactor this function for better performance"
-```
-
-### Collective Intelligence 활용
-
-```bash
-# 다중 모델 합의
-claude "Use consensus from 3 models to explain AI ethics"
-
-# 복잡한 문제 해결
-claude "Use ensemble reasoning to solve this algorithm problem"
-
-# 검증
-claude "Use cross-model validation to verify this answer"
-```
-
-### 이미지 분석
-
-```bash
-# 현재 디렉토리의 이미지
-claude "Use GPT-4 Vision to analyze diagram.png"
-
-# 스크린샷 분석
-claude "Use Claude 3 Opus to describe screenshot.jpg"
-```
-
-### 비용 및 사용량 추적
-
-```bash
-# 사용량 확인
-claude "Show my OpenRouter usage for this month"
-
-# 비용 비교
-claude "Compare costs of GPT-4 vs Claude Opus"
-
-# 모델 통계
-claude "Which models am I using most?"
-```
-
----
-
-## ⚙️ 고급 설정
-
-### 1. 환경별 설정 분리
-
-#### 개발 환경
-
-**파일**: `~/.claude/claude_code_config.dev.json`
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--debug"],
-      "env": {
-        "LOG_LEVEL": "DEBUG",
-        "OPENROUTER_VERBOSE_LOGGING": "true"
-      }
-    }
-  }
-}
-```
-
-사용:
-```bash
-claude --config ~/.claude/claude_code_config.dev.json "테스트 쿼리"
-```
-
-#### 프로덕션 환경
-
-**파일**: `~/.claude/claude_code_config.prod.json`
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "LOG_LEVEL": "WARNING"
-      }
-    }
-  }
-}
-```
-
-### 2. 보안 강화 설정
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "OPENROUTER_VERBOSE_LOGGING": "false",
-        "LOG_LEVEL": "WARNING"
-      }
-    }
-  },
-  "security": {
-    "requireConfirmation": true,
-    "logAllQueries": true,
-    "auditLogPath": "~/.claude/audit.log"
-  }
-}
-```
-
-### 3. 성능 최적화 설정
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "env": {
-        "LOG_LEVEL": "INFO"
-      }
-    }
-  }
-}
-```
-
-캐시 튜닝(TTL/메모리/파일 경로)은 환경변수가 아니라 코드에서 `ModelCache`로 조정합니다.
-
-### 4. 팀 공유 설정
-
-**`.claude/team_config.json`** (버전 관리에 추가 가능):
-
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
-      "description": "Team OpenRouter MCP Server",
-      "env": {
-        "OPENROUTER_APP_NAME": "TeamProject",
-        "OPENROUTER_HTTP_REFERER": "https://team.example.com"
-      }
-    }
-  }
-}
-```
-
-**개인 설정** (`~/.claude/claude_code_config.json`):
-
-```json
-{
-  "extends": "./.claude/team_config.json"
-}
-```
-
-각 사용자는 별도로 `openrouter-mcp init`을 실행하거나, 자신의 shell 환경에 `OPENROUTER_API_KEY`를 설정하세요.
-
-### 5. Alias 설정
-
-**`.bashrc` 또는 `.zshrc`에 추가**:
-
-```bash
-# 자주 쓰는 명령어 alias
-alias cc="claude-code"
-alias cc-gpt4="claude-code 'Use GPT-4 to'"
-alias cc-opus="claude-code 'Use Claude Opus to'"
-alias cc-models="claude-code 'List all available models'"
-alias cc-consensus="claude-code 'Use consensus from 3 models to'"
-
-# 사용 예시
-cc-gpt4 "explain this code"
-cc-opus "review my Python function"
-cc-models
-cc-consensus "analyze this business problem"
-```
-
----
-
-## 🔍 문제 해결
-
-### 1. "MCP server not found" 에러
-
-**증상**:
-```
-Error: MCP server 'openrouter' not found
-```
-
-**해결**:
-```bash
-# 1. 설정 파일 존재 확인
-ls ~/.claude/claude_code_config.json
-
-# 2. 설정 파일 내용 검증 (JSON 문법 오류 확인)
-cat ~/.claude/claude_code_config.json | python -m json.tool
-
-# 3. 재설치
-npx @physics91/openrouter-mcp@latest install-claude-code
-
-# 4. Claude Code 재시작
-```
-
-### 2. "Server failed to start" 에러
-
-**증상**:
-```
-Error: MCP server 'openrouter' failed to start
-```
-
-**해결**:
-```bash
-# 1. 수동으로 서버 시작해보기
-npx @physics91/openrouter-mcp@latest start --debug
-
-# 2. Python 설치 확인
-python --version  # 3.9+ 필요
-
-# 3. 의존성 재설치
-cd ~/.npm-global/lib/node_modules/@physics91/openrouter-mcp
-pip install -r requirements.txt
-
-# 4. 포트 충돌 확인
-lsof -i :8000  # 기본 포트
-# 충돌 시 다른 포트 사용
-```
-
-**설정 파일에서 포트 변경**:
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"]
-    }
-  }
-}
-```
-
-### 3. API 키 인식 안 됨
-
-**증상**:
-```
-Error: OPENROUTER_API_KEY not found
-```
-
-**해결**:
-
-**방법 1: 초기화**:
 ```bash
 npx @physics91/openrouter-mcp@latest init
 ```
 
-**방법 2: 환경변수**:
-```bash
-# .bashrc 또는 .zshrc에 추가
-export OPENROUTER_API_KEY="sk-or-v1-..."
+2. Claude Code 사용자 범위에 MCP 서버를 등록합니다.
 
-# 적용
-source ~/.bashrc  # 또는 ~/.zshrc
+```bash
+claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
 ```
 
-**방법 3: 설정 등록 재확인**:
+3. 등록 상태를 확인합니다.
+
 ```bash
-npx @physics91/openrouter-mcp@latest install-claude-code
 claude mcp list
+claude mcp get openrouter
 ```
 
-### 4. Tools 목록이 비어있음
+이 방식에서는 Claude Code 설정에 API 키를 직접 넣지 않아도 됩니다. 실제 실행 시 `openrouter-mcp start`가 secure storage 또는 환경변수에서 키를 읽습니다.
 
-**증상**:
-```bash
-claude mcp tools openrouter
-# No tools found
-```
+## 프로젝트 범위 설정
 
-**해결**:
-```bash
-# 1. 서버 재시작
-npx @physics91/openrouter-mcp@latest start --debug
+저장소에 함께 두고 싶다면 프로젝트 루트에 `.mcp.json`을 만드세요.
 
-# 2. 로그 확인
-tail -f ~/.openrouter-mcp/logs/server.log
-
-# 3. 수동 등록 확인
-claude mcp reload openrouter
-```
-
-### 5. 설정 파일이 무시됨
-
-**증상**: 설정을 변경해도 적용되지 않음
-
-**해결**:
-```bash
-# 1. 설정 파일 위치 확인
-claude config --show
-
-# 2. 캐시 삭제
-rm -rf ~/.claude/cache
-
-# 3. 명시적 설정 파일 지정
-claude --config ~/.claude/claude_code_config.json "테스트"
-
-# 4. Claude Code 완전 재시작
-pkill claude
-claude --version  # 재시작
-```
-
-### 6. Windows에서 npx 명령 실행 안 됨
-
-**증상**:
-```
-'npx' is not recognized as an internal or external command
-```
-
-**해결**:
-
-**방법 1: Node.js 재설치**:
-```powershell
-# Node.js 최신 버전 설치
-# https://nodejs.org/
-
-# 설치 후 확인
-npx --version
-```
-
-**방법 2: 전체 경로 사용**:
 ```json
 {
   "mcpServers": {
     "openrouter": {
-      "command": "C:\\Program Files\\nodejs\\npx.cmd",
+      "type": "stdio",
+      "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"]
     }
   }
 }
 ```
 
-**방법 3: 글로벌 설치 후 직접 실행**:
-```powershell
-npm install -g @physics91/openrouter-mcp
+현재 Claude Code 기준:
+- 사용자 범위 MCP 서버: `~/.claude.json`
+- 프로젝트 범위 MCP 서버: `.mcp.json`
+
+## 대안
+
+### Claude Desktop에서 가져오기
+
+이미 Claude Desktop에 등록돼 있다면:
+
+```bash
+claude mcp add-from-claude-desktop
 ```
 
-```json
-{
-  "mcpServers": {
-    "openrouter": {
-      "command": "openrouter-mcp",
-      "args": ["start"]
-    }
-  }
-}
+확인:
+
+```bash
+claude mcp list
 ```
 
----
+### 패키지 단축 명령
 
-## 📊 설정 검증 체크리스트
+이 패키지는 아래 명령도 제공합니다.
 
-설정 후 다음 항목들을 확인하세요:
+```bash
+npx @physics91/openrouter-mcp@latest install-claude-code
+```
 
-- [ ] 설정 파일이 올바른 위치에 있음
-  ```bash
-  ls ~/.claude/claude_code_config.json
-  ```
+다만 최신 Claude Code 네이티브 흐름 기준으로는 `claude mcp add ...` 또는 `.mcp.json` 방식을 우선 권장합니다.
 
-- [ ] JSON 문법이 올바름
-  ```bash
-  cat ~/.claude/claude_code_config.json | python -m json.tool
-  ```
+## 사용 예시
 
-- [ ] MCP 서버가 목록에 표시됨
-  ```bash
-  claude mcp list
-  ```
+```bash
+claude "List available AI models using OpenRouter"
+claude "Show my OpenRouter usage for today"
+claude "Compare GPT-4 and Claude Opus using OpenRouter tools"
+```
 
-- [ ] Tools가 정상적으로 로드됨
-  ```bash
-  claude mcp tools openrouter
-  ```
+## 문제 해결
 
-- [ ] 간단한 쿼리가 작동함
-  ```bash
-  claude "List available models"
-  ```
+### 서버가 안 보일 때
 
-- [ ] API 키가 인식됨
-  ```bash
-  npx @physics91/openrouter-mcp@latest status
-  ```
+```bash
+claude mcp list
+claude mcp get openrouter
+```
 
----
+없다면 다시 등록합니다.
 
-## 🎯 Best Practices
+```bash
+claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+```
 
-### 1. 보안
+### 인증 문제가 있을 때
 
-✅ **DO**:
-- OS Keychain 또는 환경변수 사용
-- 설정 파일 권한 제한 (`chmod 600`)
-- 주기적인 API 키 로테이션
+- `npx @physics91/openrouter-mcp@latest init` 재실행
+- 또는 Claude Code를 실행하는 셸에 `OPENROUTER_API_KEY` 설정
+- `npx @physics91/openrouter-mcp@latest status`로 상태 확인
 
-❌ **DON'T**:
-- 설정 파일에 API 키 직접 저장
-- 설정 파일을 Git에 커밋
-- Verbose 로깅을 프로덕션에서 활성화
+## 함께 볼 문서
 
-### 2. 성능
-
-✅ **DO**:
-- 캐시 TTL 적절히 설정
-- 자주 쓰는 alias 만들기
-- 불필요한 verbose 로깅 비활성화
-
-❌ **DON'T**:
-- 매번 서버 재시작
-- 과도하게 많은 MCP 서버 등록
-- 너무 짧은 캐시 TTL 설정
-
-### 3. 워크플로우
-
-✅ **DO**:
-- 팀 설정과 개인 설정 분리
-- 환경별 설정 파일 사용
-- 자주 쓰는 프롬프트를 alias로
-
-❌ **DON'T**:
-- 하나의 설정으로 모든 환경 사용
-- 테스트 없이 프로덕션 설정 변경
-
----
-
-## 📚 추가 리소스
-
-- **전체 사용 가이드**: `docs/USAGE_GUIDE_KR.md`
-- **프로젝트 개요 및 시작점**: `README.md`
-- **보안 가이드**: `docs/SECURITY.md`
-- **Claude Code 공식 문서**: https://docs.anthropic.com/claude-code
-- **OpenRouter 문서**: https://openrouter.ai/docs
-
----
-
-## 💬 도움이 필요하신가요?
-
-- **GitHub Issues**: https://github.com/physics91/openrouter-mcp/issues
-- **보안 문제**: `SECURITY.md` 참조
-- **일반 질문**: Discussions 탭 이용
-
----
-
-**마지막 업데이트**: 2025-11-18
-**버전**: 1.4.0
+- `MCP_CLIENT_GUIDE.md`
+- `INSTALLATION.md`
+- `CLAUDE_CODE_GUIDE.md`
+- `SECURITY.md`

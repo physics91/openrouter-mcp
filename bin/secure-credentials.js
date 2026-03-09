@@ -24,6 +24,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const chalk = require('chalk');
+const { getClaudeCodeUserConfigPath } = require('./claude-config-utils');
 
 // Try to load keytar for OS keychain support
 let keytar = null;
@@ -638,8 +639,7 @@ function getClaudeDesktopConfigPath() {
  * Get Claude Code config path
  */
 function getClaudeCodeConfigPath() {
-  const homeDir = os.homedir();
-  return path.join(homeDir, '.claude', 'claude_code_config.json');
+  return getClaudeCodeUserConfigPath();
 }
 
 /**

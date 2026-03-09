@@ -263,7 +263,7 @@ Yes! The project is open source. See [Contributing Guide](../CONTRIBUTING.md) fo
 4. Submit a pull request
 
 ### Can I use this with other MCP clients?
-Yes, the server follows MCP standards and should work with any MCP-compatible client.
+Yes. It should work with MCP clients that can launch a compatible local stdio server or supported MCP transport. The exact config wrapper is client-specific, so see [MCP Client Guide](MCP_CLIENT_GUIDE.md).
 
 ### How do I run tests?
 ```bash
