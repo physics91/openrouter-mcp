@@ -166,6 +166,16 @@ CATEGORY_PATTERNS = {
 }
 
 
+def _coerce_non_negative_int(value: Any, default: int = 0) -> int:
+    """Coerce nullable numeric values from API payloads into safe integers."""
+    try:
+        if value is None:
+            return default
+        return max(default, int(float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def extract_provider_from_id(model_id: str) -> ModelProvider:
     """
     Extract provider from model ID using pattern matching.
@@ -232,7 +242,7 @@ def determine_model_category(model_data: Dict[str, Any]) -> ModelCategory:
     model_name = model_data.get("name", "").lower()
 
     # Check architecture modality
-    architecture = model_data.get("architecture", {})
+    architecture = model_data.get("architecture") or {}
     modality = architecture.get("modality", "").lower()
 
     # Modality-based categorization
@@ -275,9 +285,9 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
         ModelCapabilities object
     """
     model_id = model_data.get("id", "").lower()
-    architecture = model_data.get("architecture", {})
+    architecture = model_data.get("architecture") or {}
     modality = architecture.get("modality", "").lower()
-    top_provider = model_data.get("top_provider", {})
+    top_provider = model_data.get("top_provider") or {}
 
     # Vision capability
     supports_vision = (
@@ -313,8 +323,10 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     )
 
     # Token limits
-    max_tokens = model_data.get("context_length", 0)
-    max_output = top_provider.get("max_completion_tokens", 4096)
+    max_tokens = _coerce_non_negative_int(model_data.get("context_length"), default=0)
+    raw_max_output = top_provider.get("max_completion_tokens")
+    max_output_default = 4096 if "max_completion_tokens" not in top_provider else 0
+    max_output = _coerce_non_negative_int(raw_max_output, default=max_output_default)
 
     # Multiple images support (for vision models)
     supports_multiple_images = supports_vision and provider in [
@@ -361,9 +373,7 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
     version_parts = []
 
     # Look for release stage
-    stage_match = re.search(
-        r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE
-    )
+    stage_match = re.search(r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE)
     if stage_match:
         version_parts.append(stage_match.group(1).lower())
 
@@ -417,18 +427,14 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
     release_date = None
     if created_timestamp:
         try:
-            release_date = datetime.fromtimestamp(created_timestamp).strftime(
-                "%Y-%m-%d"
-            )
+            release_date = datetime.fromtimestamp(created_timestamp).strftime("%Y-%m-%d")
         except (ValueError, OSError, OverflowError):
             pass
 
     # Check if date is in ID
     date_match = re.search(r"(\d{4})-?(\d{2})-?(\d{2})", model_id)
     if date_match:
-        release_date = (
-            f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
-        )
+        release_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
 
     # Determine if latest (heuristic based on known latest models)
     latest_models = [
@@ -485,7 +491,7 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
     score = 5.0  # Base score
 
     # Context length factor
-    context_length = model_data.get("context_length", 0)
+    context_length = _coerce_non_negative_int(model_data.get("context_length"), default=0)
     if context_length >= 200000:
         score += 2.0
     elif context_length >= 100000:
@@ -496,8 +502,8 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
         score += 0.5
 
     # Output length factor
-    top_provider = model_data.get("top_provider", {})
-    max_output = top_provider.get("max_completion_tokens", 0)
+    top_provider = model_data.get("top_provider") or {}
+    max_output = _coerce_non_negative_int(top_provider.get("max_completion_tokens"), default=0)
     if max_output >= 8192:
         score += 1.0
     elif max_output >= 4096:
@@ -524,7 +530,7 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
         score += 0.5
 
     # Multimodal bonus
-    architecture = model_data.get("architecture", {})
+    architecture = model_data.get("architecture") or {}
     modality = architecture.get("modality", "")
     if "image" in modality or "audio" in modality:
         score += 0.5
@@ -617,15 +623,11 @@ def enhance_model_metadata(model_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Add provider information (store as string value, not enum)
     provider = extract_provider_from_id(model_data.get("id", ""))
-    enhanced["provider"] = (
-        provider.value if hasattr(provider, "value") else str(provider)
-    )
+    enhanced["provider"] = provider.value if hasattr(provider, "value") else str(provider)
 
     # Add category (store as string value, not enum)
     category = determine_model_category(model_data)
-    enhanced["category"] = (
-        category.value if hasattr(category, "value") else str(category)
-    )
+    enhanced["category"] = category.value if hasattr(category, "value") else str(category)
 
     # Add capabilities
     capabilities = extract_model_capabilities(model_data)

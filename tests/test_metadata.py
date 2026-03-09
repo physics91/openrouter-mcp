@@ -124,10 +124,7 @@ class TestModelMetadataExtraction:
         version_info = get_model_version_info(model_data)
 
         # Version should contain turbo and date
-        assert (
-            "turbo" in version_info["version"]
-            or "2024-04-09" in version_info["version"]
-        )
+        assert "turbo" in version_info["version"] or "2024-04-09" in version_info["version"]
         assert version_info["release_date"] == "2024-04-09"
         assert version_info["is_latest"] in [
             True,
@@ -236,9 +233,7 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(
-            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
-        ):
+        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
             models = await cache.get_models(force_refresh=True)
 
             # Check that we got enhanced models
@@ -263,9 +258,7 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(
-            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
-        ):
+        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
             await cache.get_models(force_refresh=True)
 
             # Filter chat models
@@ -287,9 +280,7 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(
-            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
-        ):
+        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
             await cache.get_models(force_refresh=True)
 
             # Filter OpenAI models
@@ -314,9 +305,7 @@ class TestModelCacheMetadataIntegration:
             await cache.get_models()
 
             # Filter vision-capable models
-            vision_models = cache.filter_models_by_metadata(
-                capabilities={"supports_vision": True}
-            )
+            vision_models = cache.filter_models_by_metadata(capabilities={"supports_vision": True})
             assert isinstance(vision_models, list)  # Should return a list
 
             # Filter high-context models (>100k tokens)
@@ -345,9 +334,7 @@ class TestModelCacheMetadataIntegration:
             assert "economy" in models_by_tier
 
             # Check that tiers have some models
-            all_models = sum(
-                len(tier_models) for tier_models in models_by_tier.values()
-            )
+            all_models = sum(len(tier_models) for tier_models in models_by_tier.values())
             assert all_models > 0  # Should have some models distributed across tiers
 
     @pytest.mark.asyncio
@@ -393,9 +380,7 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models([old_model])
 
-        with patch.object(
-            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
-        ):
+        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
             models = await cache.get_models(force_refresh=True)
 
             # Should still work and add basic metadata
@@ -512,6 +497,23 @@ class TestMetadataQualityScoring:
         }
         score = calculate_quality_score(free_model)
         assert score < 5.0  # Should be lower quality
+
+    def test_enhance_model_metadata_handles_null_numeric_fields(self):
+        """Null numeric fields from the API should not break metadata enrichment."""
+        null_numeric_model = {
+            "id": "openai/gpt-null-test",
+            "name": "GPT Null Test",
+            "context_length": None,
+            "pricing": {"prompt": "0.000001", "completion": "0.000002"},
+            "architecture": {"modality": "text+image->text"},
+            "top_provider": {"max_completion_tokens": None},
+        }
+
+        enhanced = enhance_model_metadata(null_numeric_model)
+
+        assert enhanced["capabilities"]["max_tokens"] == 0
+        assert enhanced["capabilities"]["max_output_tokens"] == 0
+        assert isinstance(enhanced["quality_score"], float)
 
 
 if __name__ == "__main__":
