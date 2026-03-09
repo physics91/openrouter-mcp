@@ -67,10 +67,11 @@ class TestCreateApp:
         """Should raise ValueError when API key is missing."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
-        from openrouter_mcp.server import create_app
+        with patch("openrouter_mcp.server.load_dotenv", return_value=False):
+            from openrouter_mcp.server import create_app
 
-        with pytest.raises(ValueError):
-            create_app()
+            with pytest.raises(ValueError):
+                create_app()
 
 
 class TestShutdownHandler:
@@ -192,18 +193,17 @@ class TestServerInitialization:
 
             create_app()
 
-        assert any(
-            "initialized successfully" in record.message for record in caplog.records
-        )
+        assert any("initialized successfully" in record.message for record in caplog.records)
 
     def test_initialization_validates_first(self, monkeypatch):
         """Should validate environment before initializing."""
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
-        from openrouter_mcp.server import create_app
+        with patch("openrouter_mcp.server.load_dotenv", return_value=False):
+            from openrouter_mcp.server import create_app
 
-        with pytest.raises(ValueError) as exc_info:
-            create_app()
+            with pytest.raises(ValueError) as exc_info:
+                create_app()
 
         assert "environment variable" in str(exc_info.value).lower()
 
