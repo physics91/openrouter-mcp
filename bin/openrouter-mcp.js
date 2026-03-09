@@ -14,6 +14,10 @@ const {
 
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
+const {
+  buildClaudeCodeServerConfig,
+  configContainsPlaintextOpenRouterKey,
+} = require('./claude-config-utils');
 const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
 program
@@ -494,7 +498,7 @@ LOG_LEVEL=info
           checked: false
         },
         {
-          name: `Claude Code CLI ${chalk.gray('(stores API key in config file)')}`,
+          name: `Claude Code CLI ${chalk.gray('(reads key from secure storage/env)')}`,
           value: 'code',
           checked: false
         }
@@ -503,31 +507,28 @@ LOG_LEVEL=info
   ]);
 
   if (integrations.length > 0) {
-    console.log(chalk.yellow('\n⚠️  Claude integrations require storing the API key in configuration files.'));
-    console.log(chalk.yellow('These files will contain your API key in PLAINTEXT.\n'));
+    if (integrations.includes('desktop')) {
+      console.log(chalk.yellow('\n⚠️  Claude Desktop stores the API key in its configuration file.'));
+      console.log(chalk.yellow('The Claude Desktop config will contain your API key in PLAINTEXT.\n'));
 
-    const { confirmClaudeConfigs } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirmClaudeConfigs',
-        message: 'Do you consent to storing your API key in Claude configuration files?',
-        default: false
-      }
-    ]);
+      const { confirmClaudeDesktopConfig } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmClaudeDesktopConfig',
+          message: 'Do you consent to storing your API key in Claude Desktop config?',
+          default: false
+        }
+      ]);
 
-    if (confirmClaudeConfigs) {
-      if (integrations.includes('desktop')) {
+      if (confirmClaudeDesktopConfig) {
         await installClaudeConfig(answers.apiKey);
+      } else {
+        console.log(chalk.blue('Skipping Claude Desktop integration.'));
       }
+    }
 
-      if (integrations.includes('code')) {
-        await installClaudeCodeConfig(answers.apiKey);
-      }
-    } else {
-      console.log(chalk.blue('Skipping Claude integrations.'));
-      console.log(chalk.gray('You can configure these later using:'));
-      console.log(chalk.gray('  openrouter-mcp install-claude'));
-      console.log(chalk.gray('  openrouter-mcp install-claude-code'));
+    if (integrations.includes('code')) {
+      await installClaudeCodeConfig();
     }
   }
 
@@ -650,38 +651,9 @@ async function installClaudeConfig(apiKey = null) {
   console.log(chalk.blue('💡 Restart Claude Desktop to use OpenRouter tools'));
 }
 
-async function installClaudeCodeConfig(apiKey = null) {
-  const inquirer = (await import('inquirer')).default;
-
-  // Get API key if not provided
-  if (!apiKey) {
-    const keyResult = await secureCredentials.getApiKey();
-    if (!keyResult.key) {
-      console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp init" first.'));
-      return;
-    }
-    apiKey = keyResult.key;
-
-    // Show security warning and get consent
-    console.log(chalk.yellow('\n⚠️  Claude Code CLI requires storing the API key in a configuration file.'));
-    console.log(chalk.yellow('The API key will be stored in PLAINTEXT.\n'));
-
-    const { confirmInstall } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirmInstall',
-        message: 'Do you consent to storing your API key in Claude Code config?',
-        default: false
-      }
-    ]);
-
-    if (!confirmInstall) {
-      console.log(chalk.blue('Installation cancelled.'));
-      return;
-    }
-  }
-
+async function installClaudeCodeConfig() {
   const configPath = secureCredentials.getClaudeCodeConfigPath();
+  const keyResult = await secureCredentials.getApiKey();
 
   // Create directory if it doesn't exist
   const configDir = path.dirname(configPath);
@@ -701,13 +673,7 @@ async function installClaudeCodeConfig(apiKey = null) {
 
   // Add OpenRouter MCP server
   config.mcpServers = config.mcpServers || {};
-  config.mcpServers.openrouter = {
-    command: "npx",
-    args: [MCP_PACKAGE_NAME, "start"],
-    env: {
-      OPENROUTER_API_KEY: apiKey
-    }
-  };
+  config.mcpServers.openrouter = buildClaudeCodeServerConfig(MCP_PACKAGE_NAME);
 
   // Write config with secure permissions
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
@@ -715,19 +681,18 @@ async function installClaudeCodeConfig(apiKey = null) {
 
   console.log(chalk.green(`✓ Claude Code CLI configuration updated: ${configPath}`));
   console.log(chalk.blue('💡 OpenRouter tools are now available in Claude Code CLI'));
+  console.log(chalk.blue('💡 Claude Code config stores only the MCP command, not your API key.'));
+  console.log(chalk.blue('💡 openrouter-mcp start resolves the key from secure storage or environment at runtime.'));
+  if (!keyResult.key) {
+    console.log(chalk.yellow('⚠️  No API key is configured yet. Run "openrouter-mcp init" or export OPENROUTER_API_KEY before use.'));
+  }
   console.log(chalk.blue('💡 Use commands like: "List available AI models using OpenRouter"'));
 
   // Show configuration example
   console.log(chalk.cyan('\n📝 Configuration added:'));
   console.log(chalk.gray(JSON.stringify({
     mcpServers: {
-      openrouter: {
-        command: "npx",
-        args: [MCP_PACKAGE_NAME, "start"],
-        env: {
-          OPENROUTER_API_KEY: "***"
-        }
-      }
+      openrouter: buildClaudeCodeServerConfig(MCP_PACKAGE_NAME)
     }
   }, null, 2)));
 }
@@ -929,8 +894,25 @@ async function securityAudit() {
   const claudeDesktopPath = secureCredentials.getClaudeDesktopConfigPath();
   if (fs.existsSync(claudeDesktopPath)) {
     const stats = fs.statSync(claudeDesktopPath);
-    console.log(chalk.yellow('  ⚠  Claude Desktop: Config contains API key (plaintext)'));
-    warnings.push('⚠ Claude Desktop config contains plaintext API key');
+    let claudeDesktopConfig = null;
+    let claudeDesktopParseFailed = false;
+
+    try {
+      claudeDesktopConfig = JSON.parse(fs.readFileSync(claudeDesktopPath, 'utf8'));
+    } catch (error) {
+      claudeDesktopParseFailed = true;
+    }
+
+    if (claudeDesktopParseFailed) {
+      warnings.push('⚠ Claude Desktop config could not be parsed for secret audit');
+      console.log(chalk.yellow('  ⚠  Claude Desktop: Config exists but could not be parsed for secret audit'));
+    } else if (configContainsPlaintextOpenRouterKey(claudeDesktopConfig)) {
+      console.log(chalk.yellow('  ⚠  Claude Desktop: Config contains API key (plaintext)'));
+      warnings.push('⚠ Claude Desktop config contains plaintext API key');
+    } else {
+      console.log(chalk.green('  ✓ Claude Desktop: No inline OpenRouter API key detected'));
+      good.push('✓ Claude Desktop config does not inline OpenRouter API key');
+    }
 
     if (os.platform() !== 'win32') {
       const mode = stats.mode & parseInt('777', 8);
@@ -949,8 +931,25 @@ async function securityAudit() {
   const claudeCodePath = secureCredentials.getClaudeCodeConfigPath();
   if (fs.existsSync(claudeCodePath)) {
     const stats = fs.statSync(claudeCodePath);
-    console.log(chalk.yellow('  ⚠  Claude Code: Config contains API key (plaintext)'));
-    warnings.push('⚠ Claude Code config contains plaintext API key');
+    let claudeCodeConfig = null;
+    let claudeCodeParseFailed = false;
+
+    try {
+      claudeCodeConfig = JSON.parse(fs.readFileSync(claudeCodePath, 'utf8'));
+    } catch (error) {
+      claudeCodeParseFailed = true;
+    }
+
+    if (claudeCodeParseFailed) {
+      warnings.push('⚠ Claude Code config could not be parsed for secret audit');
+      console.log(chalk.yellow('  ⚠  Claude Code: Config exists but could not be parsed for secret audit'));
+    } else if (configContainsPlaintextOpenRouterKey(claudeCodeConfig)) {
+      console.log(chalk.yellow('  ⚠  Claude Code: Config contains API key (plaintext)'));
+      warnings.push('⚠ Claude Code config contains plaintext API key');
+    } else {
+      console.log(chalk.green('  ✓ Claude Code: No inline OpenRouter API key detected'));
+      good.push('✓ Claude Code config does not inline OpenRouter API key');
+    }
 
     if (os.platform() !== 'win32') {
       const mode = stats.mode & parseInt('777', 8);

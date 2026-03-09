@@ -779,6 +779,120 @@ class TestMCPBenchmarkTools:
             assert handler.results_dir is not None
 
     @pytest.mark.asyncio
+    async def test_export_benchmark_report_tool(self):
+        """Test export_benchmark_report MCP tool with a saved benchmark file."""
+        import src.openrouter_mcp.handlers.mcp_benchmark as benchmark_module
+
+        with patch.object(benchmark_module, "get_benchmark_handler") as mock_handler:
+            handler = MagicMock()
+            handler.results_dir = tempfile.mkdtemp()
+            mock_handler.return_value = handler
+
+            benchmark_file = os.path.join(handler.results_dir, "benchmark_test.json")
+            with open(benchmark_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "results": {
+                            "model-a": {
+                                "success": True,
+                                "response": "ok",
+                                "metrics": {
+                                    "avg_response_time": 1.2,
+                                    "avg_cost": 0.001,
+                                    "quality_score": 0.8,
+                                    "throughput": 45.0,
+                                },
+                            }
+                        }
+                    },
+                    f,
+                )
+
+            result = await benchmark_module.export_benchmark_report(
+                "benchmark_test.json",
+                format="markdown",
+            )
+
+            assert result["format"] == "markdown"
+            assert result["models_included"] == ["model-a"]
+            assert os.path.exists(result["output_path"])
+
+    @pytest.mark.asyncio
+    async def test_compare_model_performance_tool(self):
+        """Test compare_model_performance MCP tool with weighted ranking output."""
+        import src.openrouter_mcp.handlers.mcp_benchmark as benchmark_module
+
+        with patch.object(benchmark_module, "get_benchmark_handler") as mock_handler:
+            handler = MagicMock()
+            handler.benchmark_models = AsyncMock(
+                return_value={
+                    "model-fast": EnhancedBenchmarkResult(
+                        model_id="model-fast",
+                        success=True,
+                        response="fast",
+                        error_message=None,
+                        metrics=EnhancedBenchmarkMetrics(
+                            avg_response_time=1.0,
+                            min_response_time=1.0,
+                            max_response_time=1.0,
+                            avg_cost=0.002,
+                            min_cost=0.002,
+                            max_cost=0.002,
+                            avg_prompt_tokens=20.0,
+                            avg_completion_tokens=30.0,
+                            avg_total_tokens=50.0,
+                            quality_score=0.8,
+                            throughput=55.0,
+                            success_rate=1.0,
+                            speed_score=0.95,
+                            cost_score=0.5,
+                            throughput_score=0.9,
+                        ),
+                        timestamp=datetime.now(timezone.utc),
+                    ),
+                    "model-cheap": EnhancedBenchmarkResult(
+                        model_id="model-cheap",
+                        success=True,
+                        response="cheap",
+                        error_message=None,
+                        metrics=EnhancedBenchmarkMetrics(
+                            avg_response_time=1.6,
+                            min_response_time=1.6,
+                            max_response_time=1.6,
+                            avg_cost=0.0005,
+                            min_cost=0.0005,
+                            max_cost=0.0005,
+                            avg_prompt_tokens=18.0,
+                            avg_completion_tokens=24.0,
+                            avg_total_tokens=42.0,
+                            quality_score=0.75,
+                            throughput=40.0,
+                            success_rate=1.0,
+                            speed_score=0.6,
+                            cost_score=0.95,
+                            throughput_score=0.65,
+                        ),
+                        timestamp=datetime.now(timezone.utc),
+                    ),
+                }
+            )
+            mock_handler.return_value = handler
+
+            result = await benchmark_module.compare_model_performance(
+                ["model-fast", "model-cheap"],
+                weights={"speed": 0.5, "cost": 0.2, "quality": 0.2, "throughput": 0.1},
+                include_cost_analysis=True,
+            )
+
+            assert result["ranking"][0]["model_id"] == "model-fast"
+            assert set(result["detailed_metrics"].keys()) == {
+                "model-fast",
+                "model-cheap",
+            }
+            assert result["analysis"]["cost_efficiency"]["most_cost_efficient"] == "model-cheap"
+            assert result["recommendations"]
+
+    @pytest.mark.asyncio
     async def test_utility_functions(self):
         """Test utility functions in mcp_benchmark."""
         from src.openrouter_mcp.handlers.mcp_benchmark import (
