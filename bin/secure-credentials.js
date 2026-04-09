@@ -397,6 +397,48 @@ function addToGitignore(filePath) {
   }
 }
 
+function removeApiKeyFromEnvFile(envPath) {
+  if (!fs.existsSync(envPath)) {
+    return false;
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  const lines = envContent.split(/\r?\n/u);
+  const filteredLines = lines.filter((line) => !line.startsWith('OPENROUTER_API_KEY='));
+
+  if (filteredLines.length === lines.length) {
+    return false;
+  }
+
+  const newContent = `${filteredLines.join('\n').replace(/\n{3,}/gu, '\n\n').trimEnd()}\n`;
+  fs.writeFileSync(envPath, newContent, { mode: 0o600 });
+  setSecurePermissions(envPath);
+  return true;
+}
+
+function removeApiKeyFromConfig(configPath) {
+  if (!fs.existsSync(configPath)) {
+    return false;
+  }
+
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const serverConfig = config?.mcpServers?.openrouter;
+  const serverEnv = serverConfig?.env;
+
+  if (!serverEnv || !Object.prototype.hasOwnProperty.call(serverEnv, 'OPENROUTER_API_KEY')) {
+    return false;
+  }
+
+  delete serverEnv.OPENROUTER_API_KEY;
+  if (Object.keys(serverEnv).length === 0) {
+    delete serverConfig.env;
+  }
+
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  setSecurePermissions(configPath);
+  return true;
+}
+
 /**
  * Retrieve API key from environment
  */
@@ -575,39 +617,28 @@ async function deleteAllCredentials() {
 
   // Delete .env file
   const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
-    fs.unlinkSync(envPath);
+  if (removeApiKeyFromEnvFile(envPath)) {
     auditLog('key-deleted', { method: 'env-file' });
     locations.push('.env file');
   }
 
   // Remove from Claude configs (just the API key, not the entire config)
   const claudeDesktopPath = getClaudeDesktopConfigPath();
-  if (fs.existsSync(claudeDesktopPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(claudeDesktopPath, 'utf8'));
-      if (config.mcpServers?.openrouter) {
-        delete config.mcpServers.openrouter;
-        fs.writeFileSync(claudeDesktopPath, JSON.stringify(config, null, 2));
-        locations.push('Claude Desktop config');
-      }
-    } catch (error) {
-      // Ignore
+  try {
+    if (removeApiKeyFromConfig(claudeDesktopPath)) {
+      locations.push('Claude Desktop config');
     }
+  } catch (error) {
+    // Ignore
   }
 
   const claudeCodePath = getClaudeCodeConfigPath();
-  if (fs.existsSync(claudeCodePath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(claudeCodePath, 'utf8'));
-      if (config.mcpServers?.openrouter) {
-        delete config.mcpServers.openrouter;
-        fs.writeFileSync(claudeCodePath, JSON.stringify(config, null, 2));
-        locations.push('Claude Code config');
-      }
-    } catch (error) {
-      // Ignore
+  try {
+    if (removeApiKeyFromConfig(claudeCodePath)) {
+      locations.push('Claude Code config');
     }
+  } catch (error) {
+    // Ignore
   }
 
   if (locations.length > 0) {
