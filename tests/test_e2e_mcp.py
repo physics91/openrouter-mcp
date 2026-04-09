@@ -43,6 +43,9 @@ EXPECTED_TOOLS = {
     "collaborative_problem_solving",
 }
 
+LOW_COST_CONSENSUS_MAX_TOKENS = 16
+LOW_COST_VALIDATION_MAX_TOKENS = 32
+
 
 def _skip_without_api_key():
     if not os.getenv("OPENROUTER_API_KEY"):
@@ -181,11 +184,12 @@ class TestCollectiveIntelligenceTools:
                 "collective_chat_completion",
                 {
                     "request": {
-                        "prompt": "What is 2+2?",
+                        "prompt": "Answer with only the digit 4.",
                         "strategy": "majority_vote",
                         "min_models": 2,
                         "max_models": 2,
                         "temperature": 0.0,
+                        "max_tokens": LOW_COST_CONSENSUS_MAX_TOKENS,
                     }
                 },
             )
@@ -219,6 +223,7 @@ class TestCollectiveIntelligenceTools:
                     "request": {
                         "content": "Python is a high-level programming language.",
                         "threshold": 0.7,
+                        "max_tokens": LOW_COST_VALIDATION_MAX_TOKENS,
                     }
                 },
             )
