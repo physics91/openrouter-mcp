@@ -1,0 +1,3 @@
+interface:
+  display_name: "build"
+  short_description: "Use when checking code quality, running linting, formatting code, or verifying static analysis gates before PR or publish."
