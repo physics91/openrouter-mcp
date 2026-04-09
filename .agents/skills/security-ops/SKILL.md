@@ -23,7 +23,6 @@ It standardizes safe defaults, audit commands, and documentation checks before s
 - `bin/openrouter-mcp.js`
 - `docs/SECURITY.md`
 - `docs/SECURITY_BEST_PRACTICES.md`
-- `docs/SECURITY_QUICKSTART.md`
 - `README.md`
 
 ## Standard Runbook
@@ -56,7 +55,7 @@ It standardizes safe defaults, audit commands, and documentation checks before s
 Run this when security docs or release docs were touched:
 
 ```
-rg -n "yourproject.com|your-domain-here|security@" SECURITY.md docs/SECURITY.md docs/SECURITY_BEST_PRACTICES.md docs/SECURITY_QUICKSTART.md
+rg -n "yourproject.com|your-domain-here|security@" SECURITY.md docs/SECURITY.md docs/SECURITY_BEST_PRACTICES.md
 ```
 
 If the repository still contains placeholder security contacts, call that out explicitly.

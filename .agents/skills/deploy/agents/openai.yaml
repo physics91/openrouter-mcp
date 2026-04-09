@@ -1,0 +1,3 @@
+interface:
+  display_name: "deploy"
+  short_description: "Use when publishing or releasing openrouter-mcp to npm, or preparing a version for distribution with metadata and release checks"

@@ -1,0 +1,3 @@
+interface:
+  display_name: "test"
+  short_description: "Use when running tests, reproducing the repository's assurance gate locally, checking failures, or verifying coverage for openrouter-mcp"

@@ -1,3 +1,3 @@
 interface:
-  display_name: "Resilience Policy"
-  short_description: "High-risk policy changes for concurrency, quota, and cleanup"
+  display_name: "resilience-policy"
+  short_description: "Use when changing concurrency limits, quota rules, circuit breakers, cleanup behavior, or other high-risk resilience policies in the collective-intelligence paths"

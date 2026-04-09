@@ -1,3 +1,3 @@
 interface:
-  display_name: "Security Ops"
-  short_description: "API key audit, rotation, and secure-storage workflows"
+  display_name: "security-ops"
+  short_description: "Use when handling API key setup, credential rotation or deletion, security-audit runs, shared-environment risk checks, or security-document hygiene in openrouter-mcp"

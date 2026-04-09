@@ -1,3 +1,3 @@
 interface:
-  display_name: "Git Worktree Ops"
-  short_description: "Safe linked-worktree workflow and recovery"
+  display_name: "git-worktree"
+  short_description: "Use when the user asks to continue with additional tasks while keeping current work in progress, or needs parallel branch development, hotfix interruption handling, and review sandboxes without extra clones. Use when tasks involve `git worktree add/list/remove/prune/lock/repair`, resolving branch-in-use conflicts across worktrees, configuring per-worktree settings (`git config --worktree`, `extensions.worktreeConfig`), or writing scripts that must resolve worktree paths safely with `git rev-parse`."
