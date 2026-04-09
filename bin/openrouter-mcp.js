@@ -23,6 +23,10 @@ const {
 } = require('./claude-config-utils');
 const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
+function isInteractiveSession() {
+  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
 program
   .name('openrouter-mcp')
   .description('OpenRouter MCP Server - Access multiple AI models through a unified interface')
@@ -838,7 +842,7 @@ async function securityAudit() {
   }
 
   // Check encrypted file
-  const encryptedKey = secureCredentials.getFromEncryptedFile();
+  const encryptedKey = await secureCredentials.getFromEncryptedFile();
   if (encryptedKey) {
     good.push('✓ API key stored in encrypted file');
     console.log(chalk.green('  ✓ Encrypted File: API key found (AES-256-GCM)'));
@@ -1029,21 +1033,26 @@ async function securityAudit() {
     console.log(chalk.yellow('\nPermission issues detected. Would you like to fix them automatically?'));
     console.log(chalk.gray('This will set file permissions to 600 (owner read/write only)\n'));
 
-    const inquirer = (await import('inquirer')).default;
-    const { fixPerms } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'fixPerms',
-        message: 'Fix file permissions now?',
-        default: true
-      }
-    ]);
+    if (!isInteractiveSession()) {
+      console.log(chalk.yellow('Non-interactive session detected. Skipping automatic permission fix.'));
+      console.log(chalk.gray('Rerun this command in a TTY to apply fixes automatically.'));
+    } else {
+      const inquirer = (await import('inquirer')).default;
+      const { fixPerms } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'fixPerms',
+          message: 'Fix file permissions now?',
+          default: true
+        }
+      ]);
 
-    if (fixPerms) {
-      const fixed = secureCredentials.fixPermissions();
-      if (fixed.length > 0) {
-        console.log(chalk.green('\n✓ Fixed permissions for:'));
-        fixed.forEach(f => console.log(chalk.gray(`  - ${f.path}`)));
+      if (fixPerms) {
+        const fixed = secureCredentials.fixPermissions();
+        if (fixed.length > 0) {
+          console.log(chalk.green('\n✓ Fixed permissions for:'));
+          fixed.forEach(f => console.log(chalk.gray(`  - ${f.path}`)));
+        }
       }
     }
   }
