@@ -11,6 +11,7 @@ const {
   getUnsupportedPythonMessage,
   resolveSupportedPythonCommand,
 } = require('./python-version');
+const { resolveApiKeyForStart } = require('./start-runtime');
 
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
@@ -25,6 +26,18 @@ const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
 function isInteractiveSession() {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+function writeStartInfo(message) {
+  if (!isInteractiveSession()) {
+    return;
+  }
+
+  process.stderr.write(`${message}\n`);
+}
+
+function writeStartError(message) {
+  process.stderr.write(`${message}\n`);
 }
 
 program
@@ -44,18 +57,25 @@ program
   .option('-p, --port <port>', 'Port to run the server on', '8000')
   .option('-h, --host <host>', 'Host to bind the server to', 'localhost')
   .action(async (options) => {
-    console.log(chalk.blue('🚀 Starting OpenRouter MCP Server...'));
+    writeStartInfo(chalk.blue('🚀 Starting OpenRouter MCP Server...'));
 
     const pythonCommand = await checkPythonRequirements();
     if (!pythonCommand) {
       process.exit(1);
     }
 
-    if (!await checkApiKey()) {
-      console.log(chalk.yellow('⚠️  No OpenRouter API key found. Run "openrouter-mcp init" to configure.'));
+    let keyResult;
+    try {
+      keyResult = await resolveApiKeyForStart({
+        env: process.env,
+        secureCredentials,
+      });
+    } catch (error) {
+      writeStartError(chalk.red(`✗ ${error.message}`));
+      process.exit(1);
     }
 
-    await startServer(options, pythonCommand);
+    await startServer(options, pythonCommand, keyResult);
   });
 
 // Init command
@@ -131,59 +151,61 @@ program
   });
 
 async function checkPythonRequirements() {
-  console.log(chalk.blue('🐍 Checking Python environment...'));
+  writeStartInfo(chalk.blue('🐍 Checking Python environment...'));
 
   try {
     // Check Python version
     const pythonInfo = await resolveSupportedPythonCommand(runCommand);
     if (pythonInfo.status === 'missing') {
-      console.log(chalk.red('✗ Python not found or not accessible'));
-      console.log(chalk.blue(getMissingPythonMessage()));
+      writeStartError(chalk.red('✗ Python not found or not accessible'));
+      writeStartError(chalk.blue(getMissingPythonMessage()));
       return null;
     }
 
     if (pythonInfo.status === 'unsupported') {
-      console.log(chalk.red('✗ Unsupported Python version'));
-      console.log(chalk.blue(getUnsupportedPythonMessage(pythonInfo.version)));
+      writeStartError(chalk.red('✗ Unsupported Python version'));
+      writeStartError(chalk.blue(getUnsupportedPythonMessage(pythonInfo.version)));
       return null;
     }
 
-    console.log(chalk.green(`✓ Python found: ${pythonInfo.version} (${pythonInfo.command})`));
+    writeStartInfo(chalk.green(`✓ Python found: ${pythonInfo.version} (${pythonInfo.command})`));
 
     // Check if in virtual environment
     const isVenv = process.env.VIRTUAL_ENV || process.env.CONDA_DEFAULT_ENV;
     if (isVenv) {
-      console.log(chalk.green(`✓ Virtual environment: ${isVenv}`));
+      writeStartInfo(chalk.green(`✓ Virtual environment: ${isVenv}`));
     } else {
-      console.log(chalk.yellow('⚠️  No virtual environment detected. Consider using one.'));
+      writeStartInfo(chalk.yellow('⚠️  No virtual environment detected. Consider using one.'));
     }
 
     // Check required packages
     try {
       await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
-      console.log(chalk.green('✓ Required Python packages are installed'));
+      writeStartInfo(chalk.green('✓ Required Python packages are installed'));
       return pythonInfo.command;
     } catch (error) {
-      console.log(chalk.red('✗ Missing required Python packages'));
-      console.log(chalk.blue('Installing Python dependencies...'));
+      writeStartError(chalk.red('✗ Missing required Python packages'));
+      writeStartInfo(chalk.blue('Installing Python dependencies...'));
 
       try {
         await runCommand(
           pythonInfo.command,
           ['-m', 'pip', 'install', '-r', path.join(__dirname, '..', 'requirements.txt')]
         );
-        console.log(chalk.green('✓ Python dependencies installed successfully'));
+        writeStartInfo(chalk.green('✓ Python dependencies installed successfully'));
         return pythonInfo.command;
       } catch (installError) {
-        console.log(chalk.red('✗ Failed to install Python dependencies'));
-        console.log(chalk.blue(`Please run: ${pythonInfo.command} -m pip install -r requirements.txt`));
+        writeStartError(chalk.red('✗ Failed to install Python dependencies'));
+        writeStartError(
+          chalk.blue(`Please run: ${pythonInfo.command} -m pip install -r requirements.txt`)
+        );
         return null;
       }
     }
 
   } catch (error) {
-    console.log(chalk.red('✗ Python not found or not accessible'));
-    console.log(chalk.blue(getMissingPythonMessage()));
+    writeStartError(chalk.red('✗ Python not found or not accessible'));
+    writeStartError(chalk.blue(getMissingPythonMessage()));
     return null;
   }
 }
@@ -202,7 +224,7 @@ async function checkApiKey() {
   return false;
 }
 
-async function startServer(options, pythonCommand) {
+async function startServer(options, pythonCommand, keyResult) {
   const projectRoot = path.join(__dirname, '..');
   const srcPath = path.join(projectRoot, 'src');
   const mergedPythonPath = [srcPath, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
@@ -215,32 +237,18 @@ async function startServer(options, pythonCommand) {
     LOG_LEVEL: program.opts().debug ? 'debug' : (program.opts().verbose ? 'info' : 'warning')
   };
 
-  // Retrieve API key from secure storage if not already in environment
-  if (!env.OPENROUTER_API_KEY) {
-    console.log(chalk.blue('🔑 Retrieving API key from secure storage...'));
+  env.OPENROUTER_API_KEY = keyResult.apiKey;
+  const maskedKey = secureCredentials.maskApiKey(keyResult.apiKey);
 
-    const keyResult = await secureCredentials.getApiKey();
-
-    if (keyResult.key) {
-      env.OPENROUTER_API_KEY = keyResult.key;
-      const maskedKey = secureCredentials.maskApiKey(keyResult.key);
-      console.log(chalk.green(`✓ API key loaded from ${keyResult.source}`));
-      console.log(chalk.gray(`  Masked key: ${maskedKey}`));
-
-      // Audit log for security tracking
-      secureCredentials.auditLog('key-loaded-for-server', { source: keyResult.source });
-    } else {
-      console.log(chalk.yellow('⚠️  No API key found in secure storage'));
-      console.log(chalk.blue('💡 To configure API key, run: openrouter-mcp init'));
-      console.log(chalk.gray('   Server will start but API calls will fail without a valid key\n'));
-    }
+  if (keyResult.source === 'environment-variable') {
+    writeStartInfo(chalk.green('✓ Using API key from environment variable'));
   } else {
-    console.log(chalk.green('✓ Using API key from environment variable'));
-    const maskedKey = secureCredentials.maskApiKey(env.OPENROUTER_API_KEY);
-    console.log(chalk.gray(`  Masked key: ${maskedKey}`));
+    writeStartInfo(chalk.green(`✓ API key loaded from ${keyResult.source}`));
+    secureCredentials.auditLog('key-loaded-for-server', { source: keyResult.source });
   }
+  writeStartInfo(chalk.gray(`  Masked key: ${maskedKey}`));
 
-  console.log(chalk.blue(`Starting server on ${options.host}:${options.port}`));
+  writeStartInfo(chalk.blue(`Starting server on ${options.host}:${options.port}`));
 
   const python = spawn(pythonCommand, ['-m', 'openrouter_mcp.server'], {
     env,
@@ -248,21 +256,25 @@ async function startServer(options, pythonCommand) {
     cwd: projectRoot
   });
 
-  python.on('close', (code) => {
+  python.on('close', (code, signalName) => {
+    if (signalName) {
+      return;
+    }
+
     if (code !== 0) {
-      console.log(chalk.red(`Server exited with code ${code}`));
-      process.exit(code);
+      writeStartError(chalk.red(`Server exited with code ${code}`));
+      process.exit(code ?? 1);
     }
   });
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
-    console.log(chalk.yellow('\n🛑 Shutting down server...'));
+    writeStartInfo(chalk.yellow('🛑 Shutting down server...'));
     python.kill('SIGINT');
   });
 
   process.on('SIGTERM', () => {
-    console.log(chalk.yellow('\n🛑 Shutting down server...'));
+    writeStartInfo(chalk.yellow('🛑 Shutting down server...'));
     python.kill('SIGTERM');
   });
 }
