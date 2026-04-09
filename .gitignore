@@ -34,6 +34,8 @@ MANIFEST
 .coverage.*
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .tox/
 .hypothesis/
 coverage.xml
@@ -145,8 +147,3 @@ docs/*_COMPARISON.md
 docs/CHANGES_SUMMARY.md
 IMPLEMENTATION_SUMMARY.md
 SECURITY_FIX_*.md
-
-# Test coverage reports
-.coverage.*
-htmlcov/
-coverage.xml
