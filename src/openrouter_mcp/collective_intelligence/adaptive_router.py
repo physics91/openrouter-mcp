@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..runtime_thrift.metrics import get_thrift_metrics_snapshot_for_dates
+from ..utils.metadata import extract_provider_from_id
 from .base import (
     CollectiveIntelligenceComponent,
     ModelCapability,
@@ -367,6 +369,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             "exploration_rate": 0.1,  # Rate of trying less optimal models for learning
             "performance_history_weight": 0.7,
             "load_balancing_weight": 0.3,
+            "thrift_feedback_enabled": True,
+            "thrift_feedback_lookback_days": 7,
+            "thrift_penalty_cap": 0.35,
         }
 
     async def process(self, task: TaskContext, **kwargs: Any) -> RoutingDecision:
@@ -392,12 +397,38 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             if not available_models:
                 raise ValueError("No models available for routing")
 
+            routing_policy = self._build_routing_policy(task)
+            routing_metadata = self._build_routing_metadata(routing_policy)
+            eligible_models = self._prefilter_available_models(
+                available_models,
+                routing_policy,
+                routing_metadata,
+            )
+            if not eligible_models:
+                raise ValueError(self._build_constraints_error_message(routing_metadata))
+
+            thrift_feedback_context = self._get_thrift_feedback_context()
+
             # Evaluate all models for this task
-            model_evaluations = await self._evaluate_models(task, available_models, strategy)
+            model_evaluations = await self._evaluate_models(
+                task,
+                eligible_models,
+                strategy,
+                thrift_feedback_context=thrift_feedback_context,
+                routing_policy=routing_policy,
+                routing_metadata=routing_metadata,
+            )
+
+            if not model_evaluations:
+                raise ValueError(self._build_constraints_error_message(routing_metadata))
 
             # Select best model
             selected_model_id, confidence, alternatives = self._select_best_model(
                 model_evaluations, strategy
+            )
+            selected_evaluation = model_evaluations[selected_model_id]
+            routing_metadata["preference_matches"] = selected_evaluation.get(
+                "preference_matches", []
             )
 
             # Create routing decision
@@ -407,16 +438,22 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
                 selected_model_id=selected_model_id,
                 strategy_used=strategy,
                 confidence_score=confidence,
-                expected_performance=model_evaluations[selected_model_id]["metrics"],
+                expected_performance=selected_evaluation["metrics"],
                 alternative_models=alternatives,
                 justification=self._generate_justification(
-                    selected_model_id, model_evaluations[selected_model_id], strategy
+                    selected_model_id, selected_evaluation, strategy
                 ),
                 routing_time=routing_time,
                 metadata={
-                    "total_candidates": len(available_models),
+                    "total_candidates": len(eligible_models),
                     "evaluation_time": routing_time,
                     "optimization_objective": self.optimization_objective.value,
+                    "thrift_feedback": selected_evaluation.get("thrift_feedback"),
+                    "constraints_applied": routing_metadata["constraints_applied"],
+                    "constraints_unmet": routing_metadata["constraints_unmet"],
+                    "filtered_candidates": routing_metadata["filtered_candidates"],
+                    "performance_weights": routing_metadata["performance_weights"],
+                    "preference_matches": routing_metadata["preference_matches"],
                 },
             )
 
@@ -440,6 +477,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         task: TaskContext,
         available_models: List[ModelInfo],
         strategy: RoutingStrategy,
+        thrift_feedback_context: Optional[Dict[str, Any]] = None,
+        routing_policy: Optional[Dict[str, Any]] = None,
+        routing_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Evaluate all available models for the given task."""
 
@@ -447,7 +487,14 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         # Evaluate models concurrently
         evaluation_tasks = [
-            self._evaluate_single_model(task, model, strategy) for model in available_models
+            self._evaluate_single_model(
+                task,
+                model,
+                strategy,
+                thrift_feedback_context=thrift_feedback_context,
+                routing_policy=routing_policy,
+            )
+            for model in available_models
         ]
 
         results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
@@ -457,15 +504,30 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
                 logger.warning(f"Failed to evaluate model {model.model_id}: {str(result)}")
                 continue
 
+            if result.get("filtered"):
+                if routing_metadata is not None:
+                    self._record_filtered_candidate(
+                        routing_metadata,
+                        result.get("filter_reasons", []),
+                    )
+                continue
+
             evaluations[model.model_id] = result
 
         if not evaluations:
+            if routing_metadata and routing_metadata.get("filtered_candidates", 0) > 0:
+                return {}
             raise ValueError("No models could be evaluated")
 
         return evaluations
 
     async def _evaluate_single_model(
-        self, task: TaskContext, model: ModelInfo, strategy: RoutingStrategy
+        self,
+        task: TaskContext,
+        model: ModelInfo,
+        strategy: RoutingStrategy,
+        thrift_feedback_context: Optional[Dict[str, Any]] = None,
+        routing_policy: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Evaluate a single model for the given task."""
 
@@ -485,10 +547,38 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             model, task, performance_history
         )
 
+        filter_reasons = self._get_dynamic_filter_reasons(model, predicted_metrics, routing_policy)
+        if filter_reasons:
+            return {
+                "model": model,
+                "filtered": True,
+                "filter_reasons": filter_reasons,
+            }
+
+        thrift_feedback = self._build_thrift_feedback_for_model(
+            model.model_id,
+            thrift_feedback_context.get("metrics", {}) if thrift_feedback_context else {},
+            window_start=(
+                thrift_feedback_context.get("window_start") if thrift_feedback_context else None
+            ),
+            window_end=(
+                thrift_feedback_context.get("window_end") if thrift_feedback_context else None
+            ),
+            lookback_days=(
+                thrift_feedback_context.get("lookback_days", 0) if thrift_feedback_context else 0
+            ),
+        )
+
         # Calculate strategy-specific score
         strategy_score = self._calculate_strategy_score(
-            model, predicted_metrics, load_status, strategy
+            model,
+            predicted_metrics,
+            load_status,
+            strategy,
+            thrift_feedback if routing_policy is None else thrift_feedback,
+            routing_policy=routing_policy,
         )
+        preference_matches = self._get_preference_matches(model, routing_policy)
 
         # Apply exploration factor
         if self._should_explore(model.model_id):
@@ -500,6 +590,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             "metrics": predicted_metrics,
             "load_status": load_status,
             "performance_history": performance_history,
+            "thrift_feedback": thrift_feedback,
+            "preference_matches": preference_matches,
             "strategy_score": strategy_score,
             "final_score": strategy_score * load_status.availability_score,
         }
@@ -510,6 +602,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         predicted_metrics: Dict[str, float],
         load_status: ModelLoadStatus,
         strategy: RoutingStrategy,
+        thrift_feedback: Optional[Dict[str, Any]] = None,
+        routing_policy: Optional[Dict[str, Any]] = None,
     ) -> float:
         """Calculate score based on the routing strategy."""
 
@@ -522,7 +616,633 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             RoutingStrategy.ADAPTIVE: self._score_adaptive,
         }
         calculator = score_calculators.get(strategy, self._score_adaptive)
-        return calculator(predicted_metrics, load_status)
+        base_score = calculator(predicted_metrics, load_status)
+        weighted_score = self._apply_performance_requirement_weights(
+            base_score,
+            predicted_metrics,
+            load_status,
+            strategy,
+            routing_policy,
+        )
+        preferred_score = self._apply_preference_boost(
+            weighted_score,
+            model,
+            routing_policy,
+        )
+        return self._apply_thrift_feedback_penalty(preferred_score, strategy, thrift_feedback)
+
+    def _build_routing_policy(self, task: TaskContext) -> Dict[str, Any]:
+        """Normalize raw task requirements/constraints into one routing policy."""
+        constraints = task.constraints if isinstance(task.constraints, dict) else {}
+        requirements = task.requirements if isinstance(task.requirements, dict) else {}
+
+        hard_constraints: Dict[str, Any] = {}
+        preferences: Dict[str, str] = {}
+
+        max_cost = self._coerce_float_constraint(constraints, "max_cost")
+        if max_cost is not None:
+            hard_constraints["max_cost"] = max_cost
+
+        excluded_providers = self._normalize_provider_values(constraints.get("excluded_provider"))
+        if excluded_providers:
+            hard_constraints["excluded_provider"] = sorted(excluded_providers)
+
+        required_capabilities = self._normalize_required_capabilities(
+            constraints.get("required_capabilities")
+        )
+        if required_capabilities:
+            hard_constraints["required_capabilities"] = required_capabilities
+
+        min_context_length = self._coerce_int_constraint(constraints, "min_context_length")
+        if min_context_length is not None:
+            hard_constraints["min_context_length"] = min_context_length
+
+        preferred_provider = self._normalize_optional_string(constraints.get("preferred_provider"))
+        if preferred_provider:
+            preferences["preferred_provider"] = preferred_provider
+
+        preferred_model_family = self._normalize_optional_string(
+            constraints.get("preferred_model_family")
+        )
+        if preferred_model_family:
+            preferences["preferred_model_family"] = preferred_model_family
+
+        return {
+            "hard_constraints": hard_constraints,
+            "preferences": preferences,
+            "performance_weights": self._normalize_performance_weights(requirements),
+        }
+
+    def _build_routing_metadata(self, routing_policy: Dict[str, Any]) -> Dict[str, Any]:
+        """Create compact routing metadata scaffold for one decision."""
+        hard_constraints = routing_policy.get("hard_constraints", {})
+        preferences = routing_policy.get("preferences", {})
+        constraints_applied = sorted(list(hard_constraints.keys()) + list(preferences.keys()))
+        return {
+            "constraints_applied": constraints_applied,
+            "constraints_unmet": [],
+            "filtered_candidates": 0,
+            "performance_weights": routing_policy.get("performance_weights", {}),
+            "preference_matches": [],
+            "_filtered_reason_counts": {},
+        }
+
+    def _prefilter_available_models(
+        self,
+        available_models: List[ModelInfo],
+        routing_policy: Dict[str, Any],
+        routing_metadata: Dict[str, Any],
+    ) -> List[ModelInfo]:
+        """Filter candidates using model-only hard constraints."""
+        survivors: List[ModelInfo] = []
+        for model in available_models:
+            reasons = self._get_static_filter_reasons(model, routing_policy)
+            if reasons:
+                self._record_filtered_candidate(routing_metadata, reasons)
+                continue
+            survivors.append(model)
+        return survivors
+
+    def _get_static_filter_reasons(
+        self,
+        model: ModelInfo,
+        routing_policy: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        """Return hard-constraint reasons that do not require predictions."""
+        if not routing_policy:
+            return []
+
+        hard_constraints = routing_policy.get("hard_constraints", {})
+        reasons: List[str] = []
+
+        excluded_providers = hard_constraints.get("excluded_provider", [])
+        if excluded_providers and self._model_provider_matches(model, excluded_providers):
+            reasons.append("excluded_provider")
+
+        required_capabilities = hard_constraints.get("required_capabilities", [])
+        if required_capabilities:
+            missing_capabilities = [
+                capability
+                for capability in required_capabilities
+                if model.capabilities.get(capability, 0.0) <= 0.0
+            ]
+            if missing_capabilities:
+                reasons.append("required_capabilities")
+
+        min_context_length = hard_constraints.get("min_context_length")
+        if min_context_length is not None and model.context_length < min_context_length:
+            reasons.append("min_context_length")
+
+        return reasons
+
+    def _get_dynamic_filter_reasons(
+        self,
+        model: ModelInfo,
+        predicted_metrics: Dict[str, float],
+        routing_policy: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        """Return hard-constraint reasons that depend on predicted metrics."""
+        if not routing_policy:
+            return []
+
+        hard_constraints = routing_policy.get("hard_constraints", {})
+        reasons: List[str] = []
+        max_cost = hard_constraints.get("max_cost")
+        if max_cost is not None and predicted_metrics.get("cost", 0.0) > max_cost:
+            reasons.append("max_cost")
+        return reasons
+
+    def _record_filtered_candidate(
+        self, routing_metadata: Dict[str, Any], reasons: List[str]
+    ) -> None:
+        """Track filtered candidate counts and unmet constraint classes."""
+        routing_metadata["filtered_candidates"] += 1
+        reason_counts = routing_metadata.setdefault("_filtered_reason_counts", {})
+        for reason in reasons:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            if reason not in routing_metadata["constraints_unmet"]:
+                routing_metadata["constraints_unmet"].append(reason)
+
+    def _build_constraints_error_message(self, routing_metadata: Dict[str, Any]) -> str:
+        """Build one explicit routing failure message for hard-constraint exhaustion."""
+        unmet = routing_metadata.get("constraints_unmet") or routing_metadata.get(
+            "constraints_applied", []
+        )
+        suffix = ", ".join(unmet) if unmet else "unknown"
+        return f"No models satisfy routing constraints: {suffix}"
+
+    def _coerce_float_constraint(self, constraints: Dict[str, Any], key: str) -> Optional[float]:
+        """Safely parse positive float constraint values."""
+        raw_value = constraints.get(key)
+        if raw_value is None:
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid routing constraint %s=%r", key, raw_value)
+            return None
+        return value if value > 0 else None
+
+    def _coerce_int_constraint(self, constraints: Dict[str, Any], key: str) -> Optional[int]:
+        """Safely parse positive integer constraint values."""
+        raw_value = constraints.get(key)
+        if raw_value is None:
+            return None
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid routing constraint %s=%r", key, raw_value)
+            return None
+        return value if value > 0 else None
+
+    def _normalize_provider_values(self, raw_value: Any) -> List[str]:
+        """Normalize provider filters from strings or lists."""
+        if raw_value is None:
+            return []
+        if isinstance(raw_value, str):
+            candidates = [raw_value]
+        elif isinstance(raw_value, (list, tuple, set)):
+            candidates = list(raw_value)
+        else:
+            logger.warning("Ignoring invalid routing constraint excluded_provider=%r", raw_value)
+            return []
+
+        return sorted(
+            {
+                normalized
+                for value in candidates
+                if (normalized := self._normalize_optional_string(value)) is not None
+            }
+        )
+
+    def _normalize_required_capabilities(self, raw_value: Any) -> List[ModelCapability]:
+        """Normalize requested capabilities into enum members."""
+        if raw_value is None:
+            return []
+        if isinstance(raw_value, (str, ModelCapability)):
+            candidates = [raw_value]
+        elif isinstance(raw_value, (list, tuple, set)):
+            candidates = list(raw_value)
+        else:
+            logger.warning(
+                "Ignoring invalid routing constraint required_capabilities=%r",
+                raw_value,
+            )
+            return []
+
+        normalized: List[ModelCapability] = []
+        seen = set()
+        for candidate in candidates:
+            capability = self._parse_capability(candidate)
+            if capability is None or capability in seen:
+                continue
+            normalized.append(capability)
+            seen.add(capability)
+        return normalized
+
+    def _parse_capability(self, raw_value: Any) -> Optional[ModelCapability]:
+        """Parse one capability token into a ModelCapability enum."""
+        if isinstance(raw_value, ModelCapability):
+            return raw_value
+
+        normalized = self._normalize_optional_string(raw_value)
+        if normalized is None:
+            logger.warning("Ignoring invalid capability token %r", raw_value)
+            return None
+
+        for capability in ModelCapability:
+            if normalized in {capability.value.lower(), capability.name.lower()}:
+                return capability
+
+        logger.warning("Ignoring unknown required capability %r", raw_value)
+        return None
+
+    def _normalize_optional_string(self, raw_value: Any) -> Optional[str]:
+        """Normalize optional string values to lowercase."""
+        if raw_value is None:
+            return None
+        if not isinstance(raw_value, str):
+            return None
+        normalized = raw_value.strip().lower()
+        return normalized or None
+
+    def _normalize_performance_weights(self, requirements: Dict[str, Any]) -> Dict[str, float]:
+        """Keep only known positive performance weights and normalize them."""
+        aliases = {
+            "accuracy": "accuracy",
+            "quality": "accuracy",
+            "speed": "speed",
+            "latency": "speed",
+            "cost": "cost",
+        }
+        collected: Dict[str, float] = {}
+        for raw_key, raw_value in requirements.items():
+            normalized_key = aliases.get(str(raw_key).lower())
+            if normalized_key is None:
+                continue
+            try:
+                numeric_value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if numeric_value <= 0:
+                continue
+            collected[normalized_key] = collected.get(normalized_key, 0.0) + numeric_value
+
+        total = sum(collected.values())
+        if total <= 0:
+            return {}
+
+        return {key: round(value / total, 4) for key, value in sorted(collected.items())}
+
+    def _model_provider_matches(self, model: ModelInfo, providers: List[str]) -> bool:
+        """Check whether a model matches any normalized provider token."""
+        normalized_providers = {
+            token
+            for token in {
+                self._normalize_optional_string(model.provider),
+                self._normalize_optional_string(extract_provider_from_id(model.model_id).value),
+            }
+            if token is not None
+        }
+        return any(provider in normalized_providers for provider in providers)
+
+    def _get_preference_matches(
+        self,
+        model: ModelInfo,
+        routing_policy: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        """Return soft preferences matched by the candidate."""
+        if not routing_policy:
+            return []
+
+        preferences = routing_policy.get("preferences", {})
+        matches: List[str] = []
+        preferred_provider = preferences.get("preferred_provider")
+        if preferred_provider and self._model_provider_matches(model, [preferred_provider]):
+            matches.append("preferred_provider")
+
+        preferred_model_family = preferences.get("preferred_model_family")
+        if preferred_model_family:
+            family_haystacks = [
+                model.model_id.lower(),
+                model.name.lower(),
+            ]
+            if any(preferred_model_family in haystack for haystack in family_haystacks):
+                matches.append("preferred_model_family")
+
+        return matches
+
+    def _apply_performance_requirement_weights(
+        self,
+        base_score: float,
+        predicted_metrics: Dict[str, float],
+        load_status: ModelLoadStatus,
+        strategy: RoutingStrategy,
+        routing_policy: Optional[Dict[str, Any]],
+    ) -> float:
+        """Override scoring when explicit performance weights are present."""
+        if not routing_policy:
+            return base_score
+
+        weights = routing_policy.get("performance_weights", {})
+        if not weights:
+            return base_score
+
+        if strategy not in {
+            RoutingStrategy.ADAPTIVE,
+            RoutingStrategy.PERFORMANCE_BASED,
+        }:
+            return base_score
+
+        weighted_score = self._calculate_weighted_requirement_score(predicted_metrics, weights)
+        success = predicted_metrics["success_probability"]
+
+        if strategy == RoutingStrategy.PERFORMANCE_BASED:
+            return weighted_score * success
+
+        availability = load_status.availability_score
+        return (weighted_score * 0.85 + success * 0.15) * availability
+
+    def _calculate_weighted_requirement_score(
+        self,
+        predicted_metrics: Dict[str, float],
+        weights: Dict[str, float],
+    ) -> float:
+        """Score predicted metrics using normalized bounded requirement weights."""
+        bounded_metrics = {
+            "accuracy": max(0.0, min(1.0, float(predicted_metrics.get("quality", 0.0) or 0.0))),
+            "speed": 1.0
+            / (1.0 + max(0.0, float(predicted_metrics.get("response_time", 0.0) or 0.0))),
+            "cost": 1.0
+            / (1.0 + (max(0.0, float(predicted_metrics.get("cost", 0.0) or 0.0)) * 1000.0)),
+        }
+        return sum(bounded_metrics[key] * weight for key, weight in weights.items())
+
+    def _apply_preference_boost(
+        self,
+        score: float,
+        model: ModelInfo,
+        routing_policy: Optional[Dict[str, Any]],
+    ) -> float:
+        """Apply bounded soft boosts for preferred provider/family matches."""
+        matches = self._get_preference_matches(model, routing_policy)
+        if not matches:
+            return score
+
+        boost = min(0.35, 0.2 * len(matches))
+        return score * (1.0 + boost)
+
+    def _get_int_config(self, key: str, default: int, *, minimum: Optional[int] = None) -> int:
+        """Read integer config safely with fallback and optional clamping."""
+        raw_value = self.config.get(key, default)
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid adaptive-router config for %s=%r; falling back to %s",
+                key,
+                raw_value,
+                default,
+            )
+            value = default
+
+        if minimum is not None:
+            value = max(minimum, value)
+
+        return value
+
+    def _get_float_config(
+        self, key: str, default: float, *, minimum: Optional[float] = None
+    ) -> float:
+        """Read float config safely with fallback and optional clamping."""
+        raw_value = self.config.get(key, default)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid adaptive-router config for %s=%r; falling back to %s",
+                key,
+                raw_value,
+                default,
+            )
+            value = default
+
+        if minimum is not None:
+            value = max(minimum, value)
+
+        return value
+
+    def _get_thrift_feedback_context(self) -> Dict[str, Any]:
+        """Fetch a recent thrift snapshot once per routing decision."""
+        if not self.config.get("thrift_feedback_enabled", True):
+            return {
+                "metrics": {},
+                "window_start": None,
+                "window_end": None,
+                "lookback_days": 0,
+            }
+
+        lookback_days = self._get_int_config(
+            "thrift_feedback_lookback_days",
+            7,
+            minimum=1,
+        )
+        window_end = datetime.now().date()
+        window_start = window_end - timedelta(days=lookback_days - 1)
+
+        try:
+            metrics = get_thrift_metrics_snapshot_for_dates(
+                window_start.isoformat(),
+                window_end.isoformat(),
+            )
+        except Exception:
+            logger.debug(
+                "Failed to read runtime thrift feedback for adaptive router", exc_info=True
+            )
+            metrics = {}
+
+        return {
+            "metrics": metrics if isinstance(metrics, dict) else {},
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "lookback_days": lookback_days,
+        }
+
+    def _build_thrift_feedback_for_model(
+        self,
+        model_id: str,
+        thrift_metrics: Dict[str, Any],
+        *,
+        window_start: Optional[str],
+        window_end: Optional[str],
+        lookback_days: int,
+    ) -> Dict[str, Any]:
+        """Build machine-readable thrift feedback for a single model."""
+        feedback = {
+            "source": "none",
+            "penalty": 0.0,
+            "lookback_days": max(0, int(lookback_days)),
+            "window_start": window_start,
+            "window_end": window_end,
+            "bucket_summary": None,
+        }
+
+        if not isinstance(thrift_metrics, dict):
+            return feedback
+
+        bucket: Optional[Dict[str, Any]] = None
+        source = "none"
+
+        model_breakdown = thrift_metrics.get("cache_efficiency_by_model")
+        if isinstance(model_breakdown, dict) and isinstance(model_breakdown.get(model_id), dict):
+            bucket = model_breakdown[model_id]
+            source = "model"
+        else:
+            provider_id = extract_provider_from_id(model_id).value
+            provider_breakdown = thrift_metrics.get("cache_efficiency_by_provider")
+            if isinstance(provider_breakdown, dict) and isinstance(
+                provider_breakdown.get(provider_id), dict
+            ):
+                bucket = provider_breakdown[provider_id]
+                source = "provider"
+
+        if bucket is None:
+            return feedback
+
+        try:
+            bucket_summary = self._summarize_thrift_bucket(bucket)
+        except (TypeError, ValueError) as exc:
+            logger.warning(
+                "Ignoring malformed runtime thrift bucket for %s (%s feedback): %s",
+                model_id,
+                source,
+                exc,
+            )
+            return feedback
+
+        feedback["source"] = source
+        feedback["bucket_summary"] = bucket_summary
+        feedback["penalty"] = self._calculate_thrift_penalty(bucket_summary)
+        return feedback
+
+    def _summarize_thrift_bucket(self, bucket: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize raw thrift bucket counters into one compact summary."""
+        observed_requests = max(0, int(bucket.get("observed_requests", 0) or 0))
+        cached_prompt_tokens = max(0, int(bucket.get("cached_prompt_tokens", 0) or 0))
+        cache_write_prompt_tokens = max(0, int(bucket.get("cache_write_prompt_tokens", 0) or 0))
+        cache_hit_requests = max(0, int(bucket.get("cache_hit_requests", 0) or 0))
+        cache_write_requests = max(0, int(bucket.get("cache_write_requests", 0) or 0))
+        saved_cost_usd = round(float(bucket.get("saved_cost_usd", 0.0) or 0.0), 8)
+
+        cache_hit_request_rate_pct = 0.0
+        cache_write_request_rate_pct = 0.0
+        if observed_requests > 0:
+            cache_hit_request_rate_pct = round(
+                (cache_hit_requests / observed_requests) * 100.0,
+                2,
+            )
+            cache_write_request_rate_pct = round(
+                (cache_write_requests / observed_requests) * 100.0,
+                2,
+            )
+
+        reuse_to_write_ratio = None
+        if cache_write_prompt_tokens > 0:
+            reuse_to_write_ratio = round(
+                cached_prompt_tokens / cache_write_prompt_tokens,
+                4,
+            )
+
+        return {
+            "observed_requests": observed_requests,
+            "cached_prompt_tokens": cached_prompt_tokens,
+            "cache_write_prompt_tokens": cache_write_prompt_tokens,
+            "cache_hit_requests": cache_hit_requests,
+            "cache_write_requests": cache_write_requests,
+            "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
+            "cache_write_request_rate_pct": cache_write_request_rate_pct,
+            "reuse_to_write_ratio": reuse_to_write_ratio,
+            "saved_cost_usd": saved_cost_usd,
+        }
+
+    def _calculate_thrift_penalty(self, bucket_summary: Dict[str, Any]) -> float:
+        """Calculate bounded penalty for cache-deadspot behavior."""
+        cache_write_requests = max(0, int(bucket_summary.get("cache_write_requests", 0) or 0))
+        if cache_write_requests <= 0:
+            return 0.0
+
+        cache_hit_requests = max(0, int(bucket_summary.get("cache_hit_requests", 0) or 0))
+        cache_hit_request_rate_pct = max(
+            0.0,
+            float(bucket_summary.get("cache_hit_request_rate_pct", 0.0) or 0.0),
+        )
+        cache_write_request_rate_pct = max(
+            0.0,
+            float(bucket_summary.get("cache_write_request_rate_pct", 0.0) or 0.0),
+        )
+        reuse_to_write_ratio = bucket_summary.get("reuse_to_write_ratio")
+        reuse_to_write_ratio = (
+            0.0
+            if reuse_to_write_ratio is None
+            else max(
+                0.0,
+                float(reuse_to_write_ratio),
+            )
+        )
+
+        if (
+            cache_hit_request_rate_pct >= cache_write_request_rate_pct
+            and reuse_to_write_ratio >= 1.0
+        ):
+            return 0.0
+
+        gap_ratio = max(0.0, cache_write_request_rate_pct - cache_hit_request_rate_pct) / 100.0
+        reuse_penalty = max(0.0, 1.0 - min(reuse_to_write_ratio, 1.0))
+        penalty = (gap_ratio * 0.7) + (reuse_penalty * 0.3)
+
+        if cache_hit_requests == 0:
+            penalty += 0.1
+
+        penalty_cap = self._get_float_config(
+            "thrift_penalty_cap",
+            0.35,
+            minimum=0.0,
+        )
+        return round(min(penalty, penalty_cap), 4)
+
+    def _should_apply_thrift_feedback(
+        self,
+        strategy: RoutingStrategy,
+        thrift_feedback: Optional[Dict[str, Any]],
+    ) -> bool:
+        """Only cost-sensitive strategies should react to thrift deadspots."""
+        if not self.config.get("thrift_feedback_enabled", True):
+            return False
+        if not thrift_feedback:
+            return False
+        if float(thrift_feedback.get("penalty", 0.0) or 0.0) <= 0.0:
+            return False
+        if strategy == RoutingStrategy.COST_OPTIMIZED:
+            return True
+        if strategy == RoutingStrategy.ADAPTIVE:
+            return self.optimization_objective in {
+                OptimizationObjective.MINIMIZE_COST,
+                OptimizationObjective.BALANCE_ALL,
+            }
+        return False
+
+    def _apply_thrift_feedback_penalty(
+        self,
+        score: float,
+        strategy: RoutingStrategy,
+        thrift_feedback: Optional[Dict[str, Any]],
+    ) -> float:
+        """Apply bounded thrift penalty to cost-sensitive strategy scores."""
+        if not self._should_apply_thrift_feedback(strategy, thrift_feedback):
+            return score
+
+        penalty = max(0.0, float(thrift_feedback.get("penalty", 0.0) or 0.0))
+        return max(0.0, score * (1.0 - penalty))
 
     def _score_performance_based(
         self, predicted_metrics: Dict[str, float], load_status: ModelLoadStatus

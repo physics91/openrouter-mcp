@@ -10,6 +10,14 @@ from ..mcp_registry import get_openrouter_client, mcp
 
 # Import centralized configuration constants
 from ..models.requests import BaseChatRequest
+from ..runtime_thrift import (
+    attach_thrift_metadata_from_payload,
+    compact_messages_for_model,
+    enrich_response_with_thrift_metadata,
+    get_request_thrift_metrics_snapshot,
+    get_thrift_metrics_snapshot_for_dates,
+    thrift_request_scope,
+)
 from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
 
@@ -71,49 +79,80 @@ async def chat_with_model(
     """
     logger.info(f"Processing chat completion request for model: {request.model}")
 
-    # Convert Pydantic models to dict format expected by client
-    messages = serialize_messages(request.messages)
+    with thrift_request_scope():
+        # Convert Pydantic models to dict format expected by client
+        messages = serialize_messages(request.messages)
 
-    # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+        # Get shared client (already in async context, no need for 'async with')
+        client = await get_openrouter_client()
+        compaction = await compact_messages_for_model(
+            client,
+            request.model,
+            messages,
+            max_completion_tokens=request.max_tokens,
+        )
+        messages = compaction.messages
 
-    try:
-        if request.stream:
-            logger.info("Initiating streaming chat completion")
-            chunks = cast(
-                List[Dict[str, Any]],
-                await collect_async_iterable(
-                    client.stream_chat_completion(
-                        model=request.model,
-                        messages=messages,
-                        temperature=request.temperature,
-                        max_tokens=request.max_tokens,
-                    )
-                ),
-            )
+        try:
+            if request.stream:
+                logger.info("Initiating streaming chat completion")
+                chunks = cast(
+                    List[Dict[str, Any]],
+                    await collect_async_iterable(
+                        client.stream_chat_completion(
+                            model=request.model,
+                            messages=messages,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                        )
+                    ),
+                )
+                thrift_metrics = get_request_thrift_metrics_snapshot()
+                if chunks:
+                    chunks = [
+                        *chunks[:-1],
+                        await enrich_response_with_thrift_metadata(
+                            client,
+                            request.model,
+                            chunks[-1],
+                            thrift_metrics,
+                            logger=logger,
+                            log_context="chat response",
+                        ),
+                    ]
 
-            logger.info(f"Streaming completed with {len(chunks)} chunks")
-            return chunks
-        else:
-            logger.info("Initiating non-streaming chat completion")
-            response = await client.chat_completion(
-                model=request.model,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                stream=False,
-            )
-            if not isinstance(response, dict):
-                raise ValueError("Invalid response format from chat completion")
+                logger.info(f"Streaming completed with {len(chunks)} chunks")
+                return chunks
+            else:
+                logger.info("Initiating non-streaming chat completion")
+                response = await client.chat_completion(
+                    model=request.model,
+                    messages=messages,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    stream=False,
+                )
+                if not isinstance(response, dict):
+                    raise ValueError("Invalid response format from chat completion")
 
-            logger.info(
-                f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
-            )
-            return response
+                thrift_metrics = get_request_thrift_metrics_snapshot()
+                response = await enrich_response_with_thrift_metadata(
+                    client,
+                    request.model,
+                    response,
+                    thrift_metrics,
+                    logger=logger,
+                    log_context="chat response",
+                )
 
-    except Exception as e:
-        logger.error(f"Chat completion failed: {str(e)}")
-        raise
+                logger.info(
+                    f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
+                )
+                return response
+
+        except Exception as e:
+            logger.error(f"Chat completion failed: {str(e)}")
+            raise
 
 
 @mcp.tool()
@@ -200,6 +239,12 @@ async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
         stats = await client.track_usage(start_date=request.start_date, end_date=request.end_date)
         if not isinstance(stats, dict):
             raise ValueError("Invalid usage stats response format")
+        stats = dict(stats)
+        thrift_metrics = get_thrift_metrics_snapshot_for_dates(
+            request.start_date,
+            request.end_date,
+        )
+        stats = attach_thrift_metadata_from_payload(stats, thrift_metrics)
         logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
         return stats
 

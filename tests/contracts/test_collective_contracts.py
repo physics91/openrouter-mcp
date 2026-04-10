@@ -21,14 +21,32 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _cross_model_validation_impl,
     _ensemble_reasoning_impl,
 )
-from tests.fixtures.collective_payloads import (
-    cleanup_collective_lifecycle,
-    contract_model_pair,
-)
+from openrouter_mcp.utils.metadata import extract_provider_from_id
+from tests.fixtures.collective_payloads import cleanup_collective_lifecycle, contract_model_pair
 from tests.fixtures.mock_clients import MockClientFactory
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
 MODEL_IDS = ["openai/gpt-4", "anthropic/claude-3-opus"]
+
+
+def _build_runtime_thrift_metrics(*model_ids: str) -> dict:
+    """Build provider-level thrift metrics for contract snapshots."""
+    provider_metrics = {}
+    for index, model_id in enumerate(model_ids):
+        provider = extract_provider_from_id(model_id).value
+        provider_metrics[provider] = {
+            "observed_requests": 16 + index,
+            "cached_prompt_tokens": 150 + (index * 30),
+            "cache_write_prompt_tokens": 90,
+            "cache_hit_requests": 4 + index,
+            "cache_write_requests": 6,
+            "saved_cost_usd": round(0.01 + (index * 0.0025), 4),
+        }
+
+    return {
+        "cache_efficiency_by_provider": provider_metrics,
+        "cache_efficiency_by_model": {},
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -43,9 +61,7 @@ def contract_mock_client():
     """Create a deterministic OpenRouter client mock for contract tests."""
     client = MockClientFactory.create_openrouter_client()
     client.list_models = AsyncMock(return_value=contract_model_pair())
-    client.get_model_pricing = AsyncMock(
-        return_value={"prompt": 0.00001, "completion": 0.00002}
-    )
+    client.get_model_pricing = AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002})
     client.chat_completion = AsyncMock(
         return_value={
             "choices": [
@@ -72,9 +88,7 @@ def _assert_schema(instance: dict, schema_file: str) -> None:
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collective_chat_completion_contract(
-    mock_get_client, contract_mock_client
-):
+async def test_collective_chat_completion_contract(mock_get_client, contract_mock_client):
     mock_get_client.return_value = contract_mock_client
 
     response = await _collective_chat_completion_impl(
@@ -114,15 +128,32 @@ async def test_ensemble_reasoning_contract(mock_get_client, contract_mock_client
 async def test_adaptive_model_selection_contract(mock_get_client, contract_mock_client):
     mock_get_client.return_value = contract_mock_client
 
-    response = await _adaptive_model_selection_impl(
-        AdaptiveModelRequest(
-            query="Generate robust Python test code",
-            task_type="code_generation",
-            performance_requirements={"accuracy": 0.9, "speed": 0.7},
+    thrift_metrics = _build_runtime_thrift_metrics(*MODEL_IDS)
+    with patch(
+        "openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+        return_value=thrift_metrics,
+    ):
+        response = await _adaptive_model_selection_impl(
+            AdaptiveModelRequest(
+                query="Generate robust Python test code",
+                task_type="code_generation",
+                performance_requirements={"accuracy": 0.9, "speed": 0.7},
+                constraints={"preferred_provider": "openai"},
+            )
         )
-    )
 
     _assert_schema(response, "adaptive_model_selection.response.schema.json")
+    assert response["routing_metrics"]["constraints_applied"] == ["preferred_provider"]
+    assert response["routing_metrics"]["constraints_unmet"] == []
+    assert response["routing_metrics"]["filtered_candidates"] == 0
+    assert response["routing_metrics"]["performance_weights"]["accuracy"] > 0
+    assert response["routing_metrics"]["performance_weights"]["speed"] > 0
+    assert "preferred_provider" in response["routing_metrics"]["preference_matches"]
+    assert response["routing_metrics"]["thrift_feedback"]["source"] == "provider"
+    assert (
+        response["routing_metrics"]["thrift_feedback"]["bucket_summary"]["cache_write_requests"]
+        == 6
+    )
 
 
 @pytest.mark.asyncio
@@ -146,9 +177,7 @@ async def test_cross_model_validation_contract(mock_get_client, contract_mock_cl
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collaborative_problem_solving_contract(
-    mock_get_client, contract_mock_client
-):
+async def test_collaborative_problem_solving_contract(mock_get_client, contract_mock_client):
     mock_get_client.return_value = contract_mock_client
 
     response = await _collaborative_problem_solving_impl(

@@ -16,7 +16,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
 
-from ..config.constants import BenchmarkDefaults, CacheConfig, EnvVars
+from ..config.constants import BenchmarkDefaults, CacheConfig, EnvVars, ModelDefaults
 
 # Import shared MCP instance from registry to prevent duplicate registration
 from ..mcp_registry import mcp
@@ -586,6 +586,55 @@ async def export_benchmark_report(
         raise BenchmarkError(f"보고서 내보내기 실패: {str(e)}") from e
 
 
+async def export_benchmark_batch(
+    models: Annotated[
+        List[str],
+        Field(description="List of model IDs to export for deferred benchmark execution"),
+    ],
+    prompt: Annotated[
+        str, Field(description="Benchmark prompt to queue for offline execution")
+    ] = BenchmarkDefaults.DEFAULT_PROMPT,
+    runs: Annotated[
+        int, Field(description="Number of deferred runs to enqueue per model")
+    ] = BenchmarkDefaults.DEFAULT_MCP_RUNS,
+    delay_seconds: Annotated[
+        float, Field(description="Advisory delay metadata between requests")
+    ] = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
+    temperature: Annotated[
+        float, Field(description="Sampling temperature for queued requests")
+    ] = ModelDefaults.TEMPERATURE,
+    max_tokens: Annotated[
+        int, Field(description="Maximum completion tokens for queued requests")
+    ] = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+    sla_window_hours: Annotated[
+        int, Field(description="Desired completion window for the deferred batch")
+    ] = 24,
+    target_spend_usd: Annotated[
+        Optional[float], Field(description="Optional target spend cap for the batch")
+    ] = None,
+) -> Dict[str, Any]:
+    """Export benchmark requests into grouped JSONL files for deferred execution."""
+    try:
+        handler = await get_benchmark_handler()
+        export = await handler.export_benchmark_batch(
+            model_ids=models,
+            prompt=prompt,
+            runs=runs,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            delay_between_requests=delay_seconds,
+            sla_window_hours=sla_window_hours,
+            target_spend_usd=target_spend_usd,
+        )
+        return {
+            "message": "Deferred benchmark batch exported successfully.",
+            **export,
+        }
+    except Exception as e:
+        logger.error(f"벤치마크 배치 내보내기 중 오류: {e}")
+        raise BenchmarkError(f"배치 내보내기 실패: {str(e)}") from e
+
+
 async def compare_model_performance(
     models: Annotated[List[str], Field(description="List of model IDs to compare")],
     weights: Annotated[
@@ -986,6 +1035,7 @@ _benchmark_models_tool = mcp.tool(benchmark_models)
 _get_benchmark_history_tool = mcp.tool(get_benchmark_history)
 _compare_model_categories_tool = mcp.tool(compare_model_categories)
 _export_benchmark_report_tool = mcp.tool(export_benchmark_report)
+_export_benchmark_batch_tool = mcp.tool(export_benchmark_batch)
 _compare_model_performance_tool = mcp.tool(compare_model_performance)
 
 logger.info("MCP 벤치마크 도구가 등록되었습니다.")

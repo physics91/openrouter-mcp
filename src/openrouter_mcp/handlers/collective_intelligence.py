@@ -691,6 +691,12 @@ async def _adaptive_model_selection_impl(
                 "expected_performance": decision.expected_performance,
                 "strategy_used": decision.strategy_used.value,
                 "total_candidates": decision.metadata.get("total_candidates", 0),
+                "constraints_applied": decision.metadata.get("constraints_applied", []),
+                "constraints_unmet": decision.metadata.get("constraints_unmet", []),
+                "filtered_candidates": decision.metadata.get("filtered_candidates", 0),
+                "performance_weights": decision.metadata.get("performance_weights", {}),
+                "preference_matches": decision.metadata.get("preference_matches", []),
+                "thrift_feedback": decision.metadata.get("thrift_feedback"),
             },
             "selection_time": decision.routing_time,
         }

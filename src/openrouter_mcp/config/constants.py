@@ -33,6 +33,8 @@ class CacheConfig:
     MIN_TTL_HOURS: float = 0.08334  # 5 minutes minimum
     DEFAULT_TTL_HOURS: float = 1.0
     MODEL_CACHE_FILE: str = ".cache/openrouter_model_cache.json"
+    RUNTIME_THRIFT_METRICS_FILE: str = ".cache/runtime_thrift_metrics.json"
+    RUNTIME_THRIFT_SAVE_INTERVAL: int = 1
     BENCHMARK_CACHE_TTL_HOURS: float = 6.0
     # Pattern list used to heuristically identify "latest" model families.
     # This is intentionally centralized for easier updates.

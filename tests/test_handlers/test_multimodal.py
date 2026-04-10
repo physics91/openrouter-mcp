@@ -25,6 +25,13 @@ from openrouter_mcp.handlers.multimodal import (
     process_image,
     validate_image_format,
 )
+from openrouter_mcp.runtime_thrift import (
+    get_thrift_metrics_snapshot,
+    record_coalesced_savings,
+    record_compaction_savings,
+    record_prompt_cache_activity,
+    reset_thrift_metrics,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -266,10 +273,7 @@ class TestFormatVisionMessage:
         assert len(result["content"]) == 2
         assert result["content"][0]["type"] == "text"
         assert result["content"][1]["type"] == "image_url"
-        assert (
-            "data:image/jpeg;base64,base64data"
-            in result["content"][1]["image_url"]["url"]
-        )
+        assert "data:image/jpeg;base64,base64data" in result["content"][1]["image_url"]["url"]
 
     def test_format_message_with_single_url_image(self):
         """Test formatting message with single URL image."""
@@ -280,9 +284,7 @@ class TestFormatVisionMessage:
         )
 
         assert len(result["content"]) == 2
-        assert (
-            result["content"][1]["image_url"]["url"] == "https://example.com/image.jpg"
-        )
+        assert result["content"][1]["image_url"]["url"] == "https://example.com/image.jpg"
 
     def test_format_message_with_multiple_images(self):
         """Test formatting message with multiple images."""
@@ -508,3 +510,116 @@ class TestImageProcessingEdgeCases:
         assert result[0] == "Model 1"
         assert result[1] == "model2"
         assert result[2] == "Unknown"
+
+
+class TestVisionHandlerThriftMetadata:
+    @pytest.mark.asyncio
+    async def test_chat_with_vision_returns_request_scoped_thrift_metadata(self):
+        reset_thrift_metrics()
+        record_compaction_savings(42)
+        record_coalesced_savings(prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003)
+        record_prompt_cache_activity(
+            cached_prompt_tokens=300,
+            cache_write_prompt_tokens=100,
+            estimated_saved_cost_usd=0.007,
+        )
+
+        mock_response = {
+            "choices": [
+                {
+                    "message": {"role": "assistant", "content": "분석 완료"},
+                }
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20},
+        }
+
+        with patch(
+            "openrouter_mcp.handlers.multimodal.get_openrouter_client",
+            new_callable=AsyncMock,
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+
+            async def chat_completion_with_request_local_thrift(*args, **kwargs):
+                record_compaction_savings(7)
+                record_coalesced_savings(
+                    prompt_tokens=30,
+                    completion_tokens=10,
+                    estimated_cost_usd=0.002,
+                )
+                record_prompt_cache_activity(
+                    cached_prompt_tokens=120,
+                    cache_write_prompt_tokens=40,
+                    estimated_saved_cost_usd=0.004,
+                )
+                return mock_response
+
+            mock_client.chat_completion.side_effect = chat_completion_with_request_local_thrift
+            mock_get_client.return_value = mock_client
+
+            result = await multimodal_module.chat_with_vision(
+                VisionChatRequest(
+                    model="openai/gpt-4o",
+                    messages=[{"role": "user", "content": "이 이미지 뭐냐"}],
+                    images=[ImageInput(data="https://example.com/cat.jpg", type="url")],
+                )
+            )
+
+            assert result["thrift_metrics"]["compacted_tokens"] == 7
+            assert result["thrift_summary"]["saved_cost_usd"] == 0.006
+            assert result["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 120
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"]["coalesced_prompt_tokens"]
+                == 30
+            )
+            assert get_thrift_metrics_snapshot()["compacted_tokens"] == 49
+            assert get_thrift_metrics_snapshot()["saved_cost_usd"] == 0.016
+
+    @pytest.mark.asyncio
+    async def test_chat_with_vision_streaming_attaches_request_scoped_thrift_to_final_chunk(self):
+        reset_thrift_metrics()
+        record_compaction_savings(42)
+        mock_chunks = [
+            {"choices": [{"delta": {"content": "분석"}}]},
+            {"choices": [{"delta": {"content": " 완료"}}]},
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 16, "completion_tokens": 9, "total_tokens": 25},
+            },
+        ]
+
+        with patch(
+            "openrouter_mcp.handlers.multimodal.get_openrouter_client",
+            new_callable=AsyncMock,
+        ) as mock_get_client:
+            mock_client = AsyncMock()
+
+            async def mock_stream_gen():
+                record_compaction_savings(5)
+                record_prompt_cache_activity(
+                    cached_prompt_tokens=80,
+                    cache_write_prompt_tokens=20,
+                    estimated_saved_cost_usd=0.005,
+                )
+                for chunk in mock_chunks:
+                    yield chunk
+
+            mock_client.stream_chat_completion = MagicMock(return_value=mock_stream_gen())
+            mock_get_client.return_value = mock_client
+
+            result = await multimodal_module.chat_with_vision(
+                VisionChatRequest(
+                    model="openai/gpt-4o",
+                    messages=[{"role": "user", "content": "이 이미지 뭐냐"}],
+                    images=[ImageInput(data="https://example.com/cat.jpg", type="url")],
+                    stream=True,
+                )
+            )
+
+            assert len(result) == 3
+            assert "thrift_metrics" not in result[0]
+            assert result[-1]["thrift_metrics"]["compacted_tokens"] == 5
+            assert result[-1]["thrift_summary"]["saved_cost_usd"] == 0.005
+            assert (
+                result[-1]["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 80
+            )
+            assert get_thrift_metrics_snapshot()["compacted_tokens"] == 47

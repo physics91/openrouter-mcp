@@ -15,6 +15,11 @@ from ..mcp_registry import get_openrouter_client, mcp
 
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
+from ..runtime_thrift import (
+    enrich_response_with_thrift_metadata,
+    get_request_thrift_metrics_snapshot,
+    thrift_request_scope,
+)
 from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
 
@@ -345,69 +350,93 @@ async def chat_with_vision(
     """
     logger.info(f"Processing vision chat request for model: {request.model}")
 
-    # Get shared client (already in async context, no need for 'async with')
-    client = await get_openrouter_client()
+    with thrift_request_scope():
+        # Get shared client (already in async context, no need for 'async with')
+        client = await get_openrouter_client()
 
-    try:
-        # Process images and create vision messages
-        base_messages = serialize_messages(request.messages)
-        vision_messages = []
+        try:
+            # Process images and create vision messages
+            base_messages = serialize_messages(request.messages)
+            vision_messages = []
 
-        for i, message_payload in enumerate(base_messages):
-            if i == len(base_messages) - 1:  # Last message, add images
-                # Process images
-                processed_images = []
-                for img in request.images:
-                    if img.type == "base64":
-                        # Process the image (resize if needed)
-                        processed_data, was_resized = process_image(img.data)
-                        if was_resized:
-                            logger.info("Image was resized for API optimization")
-                        processed_images.append({"data": processed_data, "type": "base64"})
-                    else:
-                        processed_images.append({"data": img.data, "type": "url"})
+            for i, message_payload in enumerate(base_messages):
+                if i == len(base_messages) - 1:  # Last message, add images
+                    # Process images
+                    processed_images = []
+                    for img in request.images:
+                        if img.type == "base64":
+                            # Process the image (resize if needed)
+                            processed_data, was_resized = process_image(img.data)
+                            if was_resized:
+                                logger.info("Image was resized for API optimization")
+                            processed_images.append({"data": processed_data, "type": "base64"})
+                        else:
+                            processed_images.append({"data": img.data, "type": "url"})
 
-                # Format vision message
-                vision_message = format_vision_message(
-                    text=message_payload["content"], images=processed_images
-                )
-                vision_messages.append(vision_message)
-            else:
-                vision_messages.append(message_payload)
-
-        if request.stream:
-            logger.info("Initiating streaming vision chat completion")
-            chunks = cast(
-                List[Dict[str, Any]],
-                await collect_async_iterable(
-                    client.stream_chat_completion(
-                        model=request.model,
-                        messages=vision_messages,
-                        temperature=request.temperature,
-                        max_tokens=request.max_tokens,
+                    # Format vision message
+                    vision_message = format_vision_message(
+                        text=message_payload["content"], images=processed_images
                     )
-                ),
-            )
+                    vision_messages.append(vision_message)
+                else:
+                    vision_messages.append(message_payload)
 
-            logger.info(f"Streaming completed with {len(chunks)} chunks")
-            return chunks
-        else:
-            logger.info("Initiating non-streaming vision chat completion")
-            response = await client.chat_completion(
-                model=request.model,
-                messages=vision_messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-            )
-            if not isinstance(response, dict):
-                raise ValueError("Invalid response format from vision chat completion")
+            if request.stream:
+                logger.info("Initiating streaming vision chat completion")
+                chunks = cast(
+                    List[Dict[str, Any]],
+                    await collect_async_iterable(
+                        client.stream_chat_completion(
+                            model=request.model,
+                            messages=vision_messages,
+                            temperature=request.temperature,
+                            max_tokens=request.max_tokens,
+                        )
+                    ),
+                )
+                thrift_metrics = get_request_thrift_metrics_snapshot()
+                if chunks:
+                    chunks = [
+                        *chunks[:-1],
+                        await enrich_response_with_thrift_metadata(
+                            client,
+                            request.model,
+                            chunks[-1],
+                            thrift_metrics,
+                            logger=logger,
+                            log_context="vision response",
+                        ),
+                    ]
 
-            logger.info("Vision chat completion successful")
-            return response
+                logger.info(f"Streaming completed with {len(chunks)} chunks")
+                return chunks
+            else:
+                logger.info("Initiating non-streaming vision chat completion")
+                response = await client.chat_completion(
+                    model=request.model,
+                    messages=vision_messages,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                )
+                if not isinstance(response, dict):
+                    raise ValueError("Invalid response format from vision chat completion")
 
-    except Exception as e:
-        logger.error(f"Vision chat completion failed: {str(e)}")
-        raise
+                thrift_metrics = get_request_thrift_metrics_snapshot()
+                response = await enrich_response_with_thrift_metadata(
+                    client,
+                    request.model,
+                    response,
+                    thrift_metrics,
+                    logger=logger,
+                    log_context="vision response",
+                )
+
+                logger.info("Vision chat completion successful")
+                return response
+
+        except Exception as e:
+            logger.error(f"Vision chat completion failed: {str(e)}")
+            raise
 
 
 @mcp.tool()

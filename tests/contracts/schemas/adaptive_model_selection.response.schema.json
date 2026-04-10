@@ -29,14 +29,74 @@
     },
     "routing_metrics": {
       "type": "object",
-      "required": ["expected_performance", "strategy_used", "total_candidates"],
+      "required": [
+        "expected_performance",
+        "strategy_used",
+        "total_candidates",
+        "constraints_applied",
+        "constraints_unmet",
+        "filtered_candidates",
+        "performance_weights",
+        "preference_matches"
+      ],
       "properties": {
         "expected_performance": {
           "type": "object",
           "additionalProperties": {"type": "number"}
         },
         "strategy_used": {"type": "string", "minLength": 1},
-        "total_candidates": {"type": "integer", "minimum": 0}
+        "total_candidates": {"type": "integer", "minimum": 0},
+        "constraints_applied": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "constraints_unmet": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "filtered_candidates": {"type": "integer", "minimum": 0},
+        "performance_weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number", "minimum": 0}
+        },
+        "preference_matches": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "thrift_feedback": {
+          "type": "object",
+          "required": [
+            "source",
+            "penalty",
+            "lookback_days",
+            "window_start",
+            "window_end",
+            "bucket_summary"
+          ],
+          "properties": {
+            "source": {"type": "string", "minLength": 1},
+            "penalty": {"type": "number", "minimum": 0},
+            "lookback_days": {"type": "integer", "minimum": 0},
+            "window_start": {"type": ["string", "null"]},
+            "window_end": {"type": ["string", "null"]},
+            "bucket_summary": {
+              "type": ["object", "null"],
+              "properties": {
+                "observed_requests": {"type": "integer", "minimum": 0},
+                "cached_prompt_tokens": {"type": "integer", "minimum": 0},
+                "cache_write_prompt_tokens": {"type": "integer", "minimum": 0},
+                "cache_hit_requests": {"type": "integer", "minimum": 0},
+                "cache_write_requests": {"type": "integer", "minimum": 0},
+                "cache_hit_request_rate_pct": {"type": "number", "minimum": 0},
+                "cache_write_request_rate_pct": {"type": "number", "minimum": 0},
+                "reuse_to_write_ratio": {"type": ["number", "null"], "minimum": 0},
+                "saved_cost_usd": {"type": "number", "minimum": 0}
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     },
