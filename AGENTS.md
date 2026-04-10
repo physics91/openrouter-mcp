@@ -19,7 +19,9 @@
 - `security-ops`: API key 저장/회전/삭제, `security-audit`, 보안 문서 placeholder 점검이 필요할 때 사용한다.
 - `mcp-config-ops`: Claude Desktop/Code 설치, MCP 설정 백업/복원, config drift 점검이 필요할 때 사용한다.
 - `resilience-policy`: 집단지성 계층의 동시성/쿼터/회로차단/cleanup 정책 변경이나 검증이 필요할 때 사용한다.
-- 상세 절차는 각 스킬 문서(`.agents/skills/{build,test,deploy,git-worktree,security-ops,mcp-config-ops,resilience-policy}/SKILL.md`)를 단일 기준으로 따른다.
+- `release`: npm 퍼블리싱, GitHub 릴리스 생성, git 태그, 레지스트리 검증이 필요할 때 사용한다.
+- `version`: 버전 범프(semver), CHANGELOG.md 업데이트, 릴리스 준비가 필요할 때 사용한다.
+- 상세 절차는 각 스킬 문서(`.agents/skills/{build,test,deploy,release,version,git-worktree,security-ops,mcp-config-ops,resilience-policy}/SKILL.md`)를 단일 기준으로 따른다.
 
 ## 멀티에이전트 운영 지침
 - 기본 원칙: 단일 에이전트+도구 구성을 먼저 극대화한다. 복잡도/성능 이득이 명확할 때만 멀티에이전트로 확장한다.

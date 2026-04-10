@@ -1,0 +1,4 @@
+interface:
+  display_name: "release"
+  short_description: "Create git tag, GitHub Release, and post-publish verification for openrouter-mcp after npm publish completes."
+auto_invoke: false
