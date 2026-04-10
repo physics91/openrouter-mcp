@@ -1,0 +1,4 @@
+interface:
+  display_name: "version"
+  short_description: "Bump the package version, update CHANGELOG.md, and prepare the repository for release."
+auto_invoke: false

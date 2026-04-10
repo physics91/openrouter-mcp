@@ -18,28 +18,30 @@ Target: npm registry (`@physics91/openrouter-mcp`). Always manual, intentional.
 
 Run in order. Stop at first failure:
 
-1. **Version**: Confirm `version` in `package.json` is the intended release (semver).
-2. **Build gate**: Run `build` skill in check mode. `ruff`, `black`, and `isort` must all pass.
-3. **Assurance gate**: Run `python3 run_tests.py assurance -v` through the `test` skill.
-4. **Metadata sanity**: Check `package.json` fields:
+1. **Clean tree**: Working tree must be clean (`git status --short` returns empty). Dirty state means the publish artifact may not match the tagged commit.
+2. **Branch**: Must be on `main`, `develop`, `release/*`, or `hotfix/*`.
+3. **Version**: Confirm `version` in `package.json` is the intended release (semver).
+4. **Build gate**: Run `build` skill in check mode. `ruff`, `black`, and `isort` must all pass.
+5. **Assurance gate**: Run `python3 run_tests.py assurance -v` through the `test` skill.
+6. **Metadata sanity**: Check `package.json` fields:
    - `author`
    - `homepage`
    - `repository`
    - `bugs`
-5. **Placeholder scan**: Run:
+7. **Placeholder scan**: Run:
    ```
    rg -n "yourusername|yourproject.com|your-domain-here|Your Name" package.json CHANGELOG.md README.md SECURITY.md docs
    ```
    Release only when the results are understood and intentional.
-6. **Release notes and links**: Verify `CHANGELOG.md` version section and comparison links.
-7. **Package contents**: Run:
+8. **Release notes and links**: Verify `CHANGELOG.md` version section and comparison links.
+9. **Package contents**: Run:
    ```
    npm pack --dry-run
    ```
    Confirm the package includes the expected files and excludes junk.
-8. **Install-doc consistency**: Spot-check scoped package naming in `README.md` and `docs/INSTALLATION.md`.
-9. **npm auth**: Run `npm whoami`. If not logged in, run `npm login`.
-10. **Manual confirmation**: Confirm with the user before publish.
+10. **Install-doc consistency**: Spot-check scoped package naming in `README.md` and `docs/INSTALLATION.md`.
+11. **npm auth**: Run `npm whoami`. If not logged in, run `npm login`.
+12. **Manual confirmation**: Confirm with the user before publish.
 
 ## Publish
 
@@ -49,11 +51,7 @@ npm publish --access public
 
 ## Post-publish
 
-1. Tag the release in git:
-   ```
-   git tag v<version>
-   git push origin v<version>
-   ```
+1. Tag and create GitHub Release: delegate to `release` skill.
 2. Verify registry version:
    ```
    npm info @physics91/openrouter-mcp version
