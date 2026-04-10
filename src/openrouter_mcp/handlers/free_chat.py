@@ -19,6 +19,12 @@ from ..free.metrics import MetricsCollector
 from ..free.quota import QuotaTracker
 from ..free.router import FreeModelRouter
 from ..mcp_registry import get_openrouter_client, mcp
+from ..runtime_thrift import (
+    compact_messages_for_model,
+    enrich_response_with_thrift_metadata,
+    get_request_thrift_metrics_snapshot,
+    thrift_request_scope,
+)
 from ..utils.async_utils import collect_async_iterable
 
 logger = logging.getLogger(__name__)
@@ -115,12 +121,8 @@ class FreeChatRequest(BaseModel):
     conversation_history: List[Dict[str, Any]] = Field(
         default_factory=list, description="Previous conversation messages"
     )
-    max_tokens: int = Field(
-        FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate"
-    )
-    temperature: float = Field(
-        ModelDefaults.TEMPERATURE, description="Sampling temperature"
-    )
+    max_tokens: int = Field(FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate")
+    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
     preferred_models: List[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )
@@ -171,13 +173,21 @@ async def _execute_chat(
     The ``actual_model`` key in the result holds the model that was actually used
     (may differ from *model_id* when fallback occurred).
     """
+    compaction = await compact_messages_for_model(
+        client,
+        model_id,
+        messages,
+        max_completion_tokens=max_tokens,
+    )
+    effective_messages = compaction.messages
+
     if not stream:
         kwargs: Dict[str, Any] = {}
         if fallback_models:
             kwargs["models"] = fallback_models
         response = await client.chat_completion(
             model=model_id,
-            messages=messages,
+            messages=effective_messages,
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
@@ -198,7 +208,7 @@ async def _execute_chat(
     chunks = await collect_async_iterable(
         client.stream_chat_completion(
             model=model_id,
-            messages=messages,
+            messages=effective_messages,
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -260,7 +270,14 @@ async def _try_native_fallback(
             fallback_models=model_ids,
         )
         elapsed_ms = (time.monotonic() - start_time) * 1000
-        return _build_result(model_ids[0], exec_result, task_type, metrics, elapsed_ms)
+        return await _build_result(
+            client,
+            model_ids[0],
+            exec_result,
+            task_type,
+            metrics,
+            elapsed_ms,
+        )
 
     except InvalidRequestError as e:
         err_msg = str(e).lower()
@@ -277,9 +294,7 @@ async def _try_native_fallback(
         # so we attribute the failure to the primary model.
         metrics.record_failure(model_ids[0], "RateLimitError")
         cooldown = (
-            e.retry_after
-            if e.retry_after is not None
-            else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+            e.retry_after if e.retry_after is not None else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
         )
         router.report_rate_limit(model_ids[0], cooldown_seconds=cooldown)
         return None
@@ -293,7 +308,8 @@ async def _try_native_fallback(
         return None
 
 
-def _build_result(
+async def _build_result(
+    client: Any,
     model_id: str,
     exec_result: Dict[str, Any],
     task_type: FreeTaskType,
@@ -305,13 +321,20 @@ def _build_result(
     usage = exec_result["usage"]
     total_tokens = usage.get("total_tokens", 0)
     metrics.record_success(actual_model, elapsed_ms, total_tokens)
-    return {
-        "model_used": actual_model,
-        "response": exec_result["content"],
-        "usage": usage,
-        "task_type": task_type.value,
-        "streamed": exec_result["streamed"],
-    }
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    return await enrich_response_with_thrift_metadata(
+        client=client,
+        model=actual_model,
+        payload={
+            "model_used": actual_model,
+            "response": exec_result["content"],
+            "usage": usage,
+            "task_type": task_type.value,
+            "streamed": exec_result["streamed"],
+        },
+        thrift_metrics=thrift_metrics,
+        total_cost_override_usd=0.0,
+    )
 
 
 @mcp.tool()
@@ -329,97 +352,105 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
     Returns:
         Dictionary with model_used, response text, and usage info.
     """
-    router = await _get_router()
-    client = await get_openrouter_client()
-    metrics = _get_metrics()
-    classifier = _get_classifier()
-    quota = _get_quota()
+    with thrift_request_scope():
+        router = await _get_router()
+        client = await get_openrouter_client()
+        metrics = _get_metrics()
+        classifier = _get_classifier()
+        quota = _get_quota()
 
-    # Check quota before proceeding
-    await quota.reserve_and_record()
+        # Check quota before proceeding
+        await quota.reserve_and_record()
 
-    # Classify task type (extract text from multimodal messages)
-    text_for_classify = _extract_text_for_classification(request.message)
-    task_type = classifier.classify(text_for_classify, request.system_prompt)
+        # Classify task type (extract text from multimodal messages)
+        text_for_classify = _extract_text_for_classification(request.message)
+        task_type = classifier.classify(text_for_classify, request.system_prompt)
 
-    # Build messages
-    messages: List[Dict[str, Any]] = []
-    if request.system_prompt:
-        messages.append({"role": "system", "content": request.system_prompt})
-    messages.extend(request.conversation_history)
-    messages.append({"role": "user", "content": request.message})
+        # Build messages
+        messages: List[Dict[str, Any]] = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.extend(request.conversation_history)
+        messages.append({"role": "user", "content": request.message})
 
-    # Infer required capabilities from messages
-    required_caps = _infer_required_capabilities(messages)
+        # Infer required capabilities from messages
+        required_caps = _infer_required_capabilities(messages)
 
-    # Reset native fallback flag when cache expires (retry opportunity)
-    global _native_fallback_disabled
-    if _native_fallback_disabled and router.is_cache_expired() is True:
-        _native_fallback_disabled = False
+        # Reset native fallback flag when cache expires (retry opportunity)
+        global _native_fallback_disabled
+        if _native_fallback_disabled and router.is_cache_expired() is True:
+            _native_fallback_disabled = False
 
-    # Non-streaming: try OpenRouter native fallback (models array) first
-    if not request.stream and not _native_fallback_disabled:
-        result = await _try_native_fallback(
-            router,
-            client,
-            metrics,
-            task_type,
-            messages,
-            request,
-            required_caps,
-        )
-        if result is not None:
-            return result
-
-    # Streaming or native fallback unavailable: local retry loop
-    last_error: Optional[Exception] = None
-
-    for _attempt in range(FreeChatConfig.MAX_RETRY_COUNT + 1):
-        try:
-            model_id = await router.select_model(
-                preferred_models=request.preferred_models or None,
-                task_type=task_type,
-                required_capabilities=required_caps,
-            )
-        except RuntimeError:
-            raise
-
-        start_time = time.monotonic()
-        try:
-            exec_result = await _execute_chat(
+        # Non-streaming: try OpenRouter native fallback (models array) first
+        if not request.stream and not _native_fallback_disabled:
+            result = await _try_native_fallback(
+                router,
                 client,
-                model_id,
+                metrics,
+                task_type,
                 messages,
-                request.temperature,
-                request.max_tokens,
-                request.stream,
+                request,
+                required_caps,
             )
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            return _build_result(model_id, exec_result, task_type, metrics, elapsed_ms)
+            if result is not None:
+                return result
 
-        except RateLimitError as e:
-            logger.warning(f"Rate limit hit for {model_id}, trying next model")
-            metrics.record_failure(model_id, "RateLimitError")
-            cooldown = (
-                e.retry_after
-                if e.retry_after is not None
-                else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
-            )
-            router.report_rate_limit(model_id, cooldown_seconds=cooldown)
-            last_error = e
-            continue
+        # Streaming or native fallback unavailable: local retry loop
+        last_error: Optional[Exception] = None
 
-        except (AuthenticationError, InvalidRequestError):
-            raise
+        for _attempt in range(FreeChatConfig.MAX_RETRY_COUNT + 1):
+            try:
+                model_id = await router.select_model(
+                    preferred_models=request.preferred_models or None,
+                    task_type=task_type,
+                    required_capabilities=required_caps,
+                )
+            except RuntimeError:
+                raise
 
-        except OpenRouterError as e:
-            logger.error(f"OpenRouter error with model {model_id}: {e}")
-            metrics.record_failure(model_id, type(e).__name__)
-            last_error = e
-            router.report_rate_limit(model_id)
-            continue
+            start_time = time.monotonic()
+            try:
+                exec_result = await _execute_chat(
+                    client,
+                    model_id,
+                    messages,
+                    request.temperature,
+                    request.max_tokens,
+                    request.stream,
+                )
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                return await _build_result(
+                    client,
+                    model_id,
+                    exec_result,
+                    task_type,
+                    metrics,
+                    elapsed_ms,
+                )
 
-    raise last_error or RuntimeError("사용 가능한 free 모델이 없습니다.")
+            except RateLimitError as e:
+                logger.warning(f"Rate limit hit for {model_id}, trying next model")
+                metrics.record_failure(model_id, "RateLimitError")
+                cooldown = (
+                    e.retry_after
+                    if e.retry_after is not None
+                    else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+                )
+                router.report_rate_limit(model_id, cooldown_seconds=cooldown)
+                last_error = e
+                continue
+
+            except (AuthenticationError, InvalidRequestError):
+                raise
+
+            except OpenRouterError as e:
+                logger.error(f"OpenRouter error with model {model_id}: {e}")
+                metrics.record_failure(model_id, type(e).__name__)
+                last_error = e
+                router.report_rate_limit(model_id)
+                continue
+
+        raise last_error or RuntimeError("사용 가능한 free 모델이 없습니다.")
 
 
 @mcp.tool()

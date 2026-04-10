@@ -1,3 +1,4 @@
+import asyncio
 import os
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -10,6 +11,11 @@ from src.openrouter_mcp.client.openrouter import (
     OpenRouterClient,
     OpenRouterError,
     RateLimitError,
+)
+from src.openrouter_mcp.runtime_thrift import (
+    RequestCoalescer,
+    get_thrift_metrics_snapshot,
+    reset_thrift_metrics,
 )
 
 
@@ -152,6 +158,403 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_chat_completion_coalesces_identical_concurrent_requests(
+        self, mock_api_key, mock_chat_response
+    ):
+        """Identical concurrent non-streaming requests should share one upstream call."""
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [{"role": "user", "content": "Hello!"}]
+        call_count = 0
+
+        async def delayed_response(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=delayed_response):
+            first, second = await asyncio.gather(
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+            )
+
+        assert first == mock_chat_response
+        assert second == mock_chat_response
+        assert call_count == 1
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_clears_failed_coalesced_request(
+        self, mock_api_key, mock_chat_response
+    ):
+        """Failed coalesced requests should not poison later retries."""
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [{"role": "user", "content": "Hello!"}]
+        attempts = 0
+
+        async def flaky_response(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            await asyncio.sleep(0.01)
+            if attempts == 1:
+                raise OpenRouterError("boom")
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=flaky_response):
+            with pytest.raises(OpenRouterError, match="boom"):
+                await asyncio.gather(
+                    client.chat_completion(model="openai/gpt-4", messages=messages),
+                    client.chat_completion(model="openai/gpt-4", messages=messages),
+                )
+
+            response = await client.chat_completion(model="openai/gpt-4", messages=messages)
+
+        assert response == mock_chat_response
+        assert attempts == 2
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_records_coalesced_savings_metrics(
+        self, mock_api_key, mock_chat_response
+    ):
+        """Follower joins should record avoided prompt/completion spend."""
+        reset_thrift_metrics()
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [{"role": "user", "content": "Hello!"}]
+
+        async def delayed_response(*args, **kwargs):
+            await asyncio.sleep(0.01)
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=delayed_response):
+            await asyncio.gather(
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert metrics["coalesced_requests"] == 1
+        assert metrics["saved_prompt_tokens"] > 0
+        assert metrics["saved_completion_tokens"] > 0
+        assert metrics["saved_cost_usd"] > 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_reuses_recent_response_within_ttl_window(
+        self, mock_api_key, mock_chat_response, monkeypatch
+    ):
+        """Sequential identical requests should reuse a fresh cached response within TTL."""
+        reset_thrift_metrics()
+        monkeypatch.setenv("OPENROUTER_THRIFT_COALESCING_TTL_SECONDS", "30")
+
+        client = OpenRouterClient(api_key=mock_api_key)
+        now = [100.0]
+        client._chat_coalescer = RequestCoalescer(time_fn=lambda: now[0])
+        messages = [{"role": "user", "content": "Hello!"}]
+        call_count = 0
+
+        async def immediate_response(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=immediate_response):
+            first = await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+            second = await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert first == mock_chat_response
+        assert second == mock_chat_response
+        assert call_count == 1
+        assert metrics["coalesced_requests"] == 0
+        assert metrics["recent_reuse_requests"] == 1
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_skips_recent_response_reuse_when_ttl_zero(
+        self, mock_api_key, mock_chat_response, monkeypatch
+    ):
+        """TTL zero should keep the coalescer in in-flight-only mode."""
+        reset_thrift_metrics()
+        monkeypatch.setenv("OPENROUTER_THRIFT_COALESCING_TTL_SECONDS", "0")
+
+        client = OpenRouterClient(api_key=mock_api_key)
+        now = [100.0]
+        client._chat_coalescer = RequestCoalescer(time_fn=lambda: now[0])
+        messages = [{"role": "user", "content": "Hello!"}]
+        call_count = 0
+
+        async def immediate_response(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=immediate_response):
+            await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+            await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert call_count == 2
+        assert metrics["coalesced_requests"] == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_refreshes_recent_response_after_ttl_expires(
+        self, mock_api_key, mock_chat_response, monkeypatch
+    ):
+        """Recent response reuse should expire once the configured TTL elapses."""
+        reset_thrift_metrics()
+        monkeypatch.setenv("OPENROUTER_THRIFT_COALESCING_TTL_SECONDS", "5")
+
+        client = OpenRouterClient(api_key=mock_api_key)
+        now = [100.0]
+        client._chat_coalescer = RequestCoalescer(time_fn=lambda: now[0])
+        messages = [{"role": "user", "content": "Hello!"}]
+        call_count = 0
+
+        async def immediate_response(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=immediate_response):
+            await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+            now[0] += 6.0
+            await client.chat_completion(
+                model="openai/gpt-4",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=100,
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert call_count == 2
+        assert metrics["coalesced_requests"] == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_skips_coalescing_when_policy_disabled(
+        self, mock_api_key, mock_chat_response, monkeypatch
+    ):
+        reset_thrift_metrics()
+        monkeypatch.setenv("OPENROUTER_THRIFT_ENABLE_GENERATION_COALESCING", "false")
+
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [{"role": "user", "content": "Hello!"}]
+        call_count = 0
+
+        async def delayed_response(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.01)
+            return mock_chat_response
+
+        with patch.object(client, "_make_request", side_effect=delayed_response):
+            await asyncio.gather(
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+                client.chat_completion(
+                    model="openai/gpt-4",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=100,
+                ),
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert call_count == 2
+        assert metrics["coalesced_requests"] == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_adds_prefix_cache_breakpoint_for_anthropic(
+        self, mock_api_key, mock_chat_response
+    ):
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [
+            {"role": "system", "content": "stable instruction block " * 1500},
+            {"role": "user", "content": "latest question"},
+        ]
+
+        with patch.object(client, "_make_request", return_value=mock_chat_response) as mock_request:
+            await client.chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=messages,
+                temperature=0.2,
+                max_tokens=64,
+            )
+
+        payload = mock_request.call_args.kwargs["json"]
+        assert isinstance(payload["messages"][0]["content"], list)
+        assert payload["messages"][0]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        assert payload["messages"][1] == messages[1]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_skips_prefix_cache_breakpoint_when_policy_disabled(
+        self, mock_api_key, mock_chat_response, monkeypatch
+    ):
+        monkeypatch.setenv("OPENROUTER_THRIFT_ENABLE_PREFIX_CACHE_PLANNER", "false")
+        client = OpenRouterClient(api_key=mock_api_key)
+        messages = [
+            {"role": "system", "content": "stable instruction block " * 1500},
+            {"role": "user", "content": "latest question"},
+        ]
+
+        with patch.object(client, "_make_request", return_value=mock_chat_response) as mock_request:
+            await client.chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=messages,
+                temperature=0.2,
+                max_tokens=64,
+            )
+
+        payload = mock_request.call_args.kwargs["json"]
+        assert payload["messages"] == messages
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_records_cached_prompt_token_savings(self, mock_api_key):
+        reset_thrift_metrics()
+        client = OpenRouterClient(api_key=mock_api_key)
+        response = {
+            "id": "gen-cache-hit",
+            "model": "anthropic/claude-sonnet-4",
+            "choices": [{"message": {"role": "assistant", "content": "cached answer"}}],
+            "usage": {
+                "prompt_tokens": 1300,
+                "completion_tokens": 40,
+                "total_tokens": 1340,
+                "prompt_tokens_details": {
+                    "cached_tokens": 1200,
+                    "cache_write_tokens": 0,
+                },
+            },
+        }
+
+        with patch.object(client, "_make_request", return_value=response), patch.object(
+            client,
+            "get_model_pricing",
+            AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
+        ):
+            await client.chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=[
+                    {"role": "system", "content": "stable instruction block " * 1500},
+                    {"role": "user", "content": "latest question"},
+                ],
+                max_tokens=64,
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert metrics["cached_prompt_tokens"] == 1200
+        assert metrics["cache_write_prompt_tokens"] == 0
+        assert metrics["saved_cost_usd"] > 0
+        assert metrics["cache_efficiency_by_provider"]["anthropic"]["observed_requests"] == 1
+        assert metrics["cache_efficiency_by_provider"]["anthropic"]["cache_hit_requests"] == 1
+        assert (
+            metrics["cache_efficiency_by_model"]["anthropic/claude-sonnet-4"][
+                "cached_prompt_tokens"
+            ]
+            == 1200
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_chat_completion_records_cache_write_tokens(self, mock_api_key):
+        reset_thrift_metrics()
+        client = OpenRouterClient(api_key=mock_api_key)
+        response = {
+            "id": "gen-cache-write",
+            "model": "anthropic/claude-sonnet-4",
+            "choices": [{"message": {"role": "assistant", "content": "warm cache"}}],
+            "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 40,
+                "total_tokens": 1240,
+                "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "cache_write_tokens": 1024,
+                },
+            },
+        }
+
+        with patch.object(client, "_make_request", return_value=response), patch.object(
+            client,
+            "get_model_pricing",
+            AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
+        ):
+            await client.chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=[
+                    {"role": "system", "content": "stable instruction block " * 1500},
+                    {"role": "user", "content": "latest question"},
+                ],
+                max_tokens=64,
+            )
+
+        metrics = get_thrift_metrics_snapshot()
+        assert metrics["cached_prompt_tokens"] == 0
+        assert metrics["cache_write_prompt_tokens"] == 1024
+        assert metrics["cache_efficiency_by_provider"]["anthropic"]["cache_write_requests"] == 1
+        assert (
+            metrics["cache_efficiency_by_model"]["anthropic/claude-sonnet-4"][
+                "cache_write_prompt_tokens"
+            ]
+            == 1024
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_stream_chat_completion_success(self, mock_api_key, mock_stream_response):
         """Test successful streaming chat completion."""
         client = OpenRouterClient(api_key=mock_api_key)
@@ -175,6 +578,97 @@ class TestOpenRouterClient:
             assert len(chunks) == 3
             assert chunks[0]["choices"][0]["delta"]["content"] == "Hello"
             assert chunks[2]["usage"]["total_tokens"] == 18
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stream_chat_completion_records_cached_prompt_token_savings(self, mock_api_key):
+        reset_thrift_metrics()
+        client = OpenRouterClient(api_key=mock_api_key)
+        chunks = [
+            {"choices": [{"delta": {"content": "warm"}}]},
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 1100,
+                    "completion_tokens": 20,
+                    "total_tokens": 1120,
+                    "prompt_tokens_details": {
+                        "cached_tokens": 1024,
+                        "cache_write_tokens": 0,
+                    },
+                },
+            },
+        ]
+
+        async def mock_stream_gen():
+            for chunk in chunks:
+                yield chunk
+
+        with patch.object(client, "_stream_request", return_value=mock_stream_gen()), patch.object(
+            client,
+            "get_model_pricing",
+            AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
+        ):
+            seen = []
+            async for chunk in client.stream_chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=[
+                    {"role": "system", "content": "stable instruction block " * 1500},
+                    {"role": "user", "content": "latest question"},
+                ],
+                max_tokens=64,
+            ):
+                seen.append(chunk)
+
+        metrics = get_thrift_metrics_snapshot()
+        assert len(seen) == 2
+        assert metrics["cached_prompt_tokens"] == 1024
+        assert metrics["cache_write_prompt_tokens"] == 0
+        assert metrics["saved_cost_usd"] > 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stream_chat_completion_records_cache_write_tokens(self, mock_api_key):
+        reset_thrift_metrics()
+        client = OpenRouterClient(api_key=mock_api_key)
+        chunks = [
+            {"choices": [{"delta": {"content": "warm"}}]},
+            {
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 1100,
+                    "completion_tokens": 20,
+                    "total_tokens": 1120,
+                    "prompt_tokens_details": {
+                        "cached_tokens": 0,
+                        "cache_write_tokens": 1024,
+                    },
+                },
+            },
+        ]
+
+        async def mock_stream_gen():
+            for chunk in chunks:
+                yield chunk
+
+        with patch.object(client, "_stream_request", return_value=mock_stream_gen()), patch.object(
+            client,
+            "get_model_pricing",
+            AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
+        ):
+            async for _chunk in client.stream_chat_completion(
+                model="anthropic/claude-sonnet-4",
+                messages=[
+                    {"role": "system", "content": "stable instruction block " * 1500},
+                    {"role": "user", "content": "latest question"},
+                ],
+                max_tokens=64,
+            ):
+                pass
+
+        metrics = get_thrift_metrics_snapshot()
+        assert metrics["cached_prompt_tokens"] == 0
+        assert metrics["cache_write_prompt_tokens"] == 1024
 
     @pytest.mark.unit
     @pytest.mark.asyncio

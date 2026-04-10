@@ -8,10 +8,19 @@ from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
 import httpx
 
 # Import centralized configuration constants
-from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults
+from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults, PricingDefaults
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
+from ..runtime_thrift import (
+    RequestCoalescer,
+    apply_prefix_cache_planner,
+    get_runtime_thrift_policy,
+    record_coalesced_savings,
+    record_model_request,
+    record_prompt_cache_activity,
+    record_recent_reuse_savings,
+)
 from ..utils.async_utils import maybe_await
 from ..utils.env import get_env_value, get_required_env
 from ..utils.http import build_openrouter_headers
@@ -19,6 +28,7 @@ from ..utils.pricing import normalize_pricing
 
 # Import sanitizer from utils (extracted for SRP compliance)
 from ..utils.sanitizer import SensitiveDataSanitizer
+from ..utils.token_counter import count_message_tokens, get_token_counter
 
 
 class OpenRouterError(Exception):
@@ -149,6 +159,7 @@ class OpenRouterClient:
 
         self._client = httpx.AsyncClient(timeout=timeout)
         self._model_cache: Optional[ModelCache] = None
+        self._chat_coalescer: RequestCoalescer[Dict[str, Any]] = RequestCoalescer()
 
         # Initialize model cache with client credentials
         if enable_cache:
@@ -237,10 +248,11 @@ class OpenRouterClient:
         """Build a chat completion payload with shared validation."""
         self._validate_model(model)
         self._validate_messages_if_text(messages)
+        planned_messages = apply_prefix_cache_planner(messages, model).messages
 
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": planned_messages,
             "temperature": temperature,
             "stream": stream,
             **kwargs,
@@ -281,6 +293,20 @@ class OpenRouterClient:
             raise OpenRouterError(f"Request timeout after {self.timeout} seconds") from e
         self.logger.error(f"Unexpected error for {context} {url}: {str(e)}")
         raise OpenRouterError(f"Unexpected error: {str(e)}") from e
+
+    def _build_coalescing_key(self, endpoint: str, payload: Dict[str, Any]) -> Optional[str]:
+        """Build a stable fingerprint for exact-match request coalescing."""
+        try:
+            serialized = json_lib.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                default=str,
+            )
+        except (TypeError, ValueError):
+            return None
+        return f"{endpoint}:{serialized}"
 
     async def _make_request(
         self,
@@ -567,6 +593,70 @@ class OpenRouterClient:
             },
         }
 
+    async def _estimate_prompt_cache_saved_cost(self, model: str, cached_tokens: int) -> float:
+        if cached_tokens <= 0:
+            return 0.0
+
+        provider = model.split("/", 1)[0].lower() if "/" in model else model.lower()
+        read_multipliers = {
+            "anthropic": 0.1,
+            "google": 0.25,
+            "deepseek": 0.1,
+            "groq": 0.5,
+            "moonshotai": 0.25,
+            "x-ai": 0.25,
+        }
+        read_multiplier = read_multipliers.get(provider)
+        if read_multiplier is None:
+            return 0.0
+
+        pricing = await self.get_model_pricing(model)
+        prompt_price = float(pricing.get("prompt") or PricingDefaults.DEFAULT_TOKEN_PRICE)
+        return max(0.0, cached_tokens * prompt_price * (1.0 - read_multiplier))
+
+    async def _record_prompt_cache_metrics(self, model: str, response: Dict[str, Any]) -> None:
+        usage = response.get("usage")
+        if not isinstance(usage, dict):
+            return
+
+        record_model_request(model)
+
+        details = usage.get("prompt_tokens_details")
+        if not isinstance(details, dict):
+            return
+
+        cached_tokens = int(details.get("cached_tokens") or 0)
+        cache_write_tokens = int(details.get("cache_write_tokens") or 0)
+        if cached_tokens <= 0 and cache_write_tokens <= 0:
+            return
+
+        cache_discount = response.get("cache_discount")
+        estimated_saved_cost_usd = 0.0
+        if isinstance(cache_discount, (int, float)) and cache_discount > 0:
+            estimated_saved_cost_usd = float(cache_discount)
+        elif cached_tokens > 0:
+            estimated_saved_cost_usd = await self._estimate_prompt_cache_saved_cost(
+                model,
+                cached_tokens,
+            )
+
+        record_prompt_cache_activity(
+            cached_tokens,
+            cache_write_tokens,
+            estimated_saved_cost_usd,
+            model,
+        )
+
+    async def _execute_chat_completion_request(
+        self,
+        endpoint: str,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        response = await self._make_request("POST", endpoint, json=payload)
+        if isinstance(response, dict):
+            await self._record_prompt_cache_metrics(str(payload.get("model", "default")), response)
+        return response
+
     async def chat_completion(
         self,
         model: str,
@@ -597,8 +687,40 @@ class OpenRouterClient:
             stream=stream,
             **kwargs,
         )
+        endpoint = "/chat/completions"
+        policy = get_runtime_thrift_policy()
+        if stream or not policy.enable_generation_coalescing:
+            return await self._execute_chat_completion_request(endpoint, payload)
 
-        return await self._make_request("POST", "/chat/completions", json=payload)
+        key = self._build_coalescing_key(endpoint, payload)
+        if key is None:
+            return await self._execute_chat_completion_request(endpoint, payload)
+
+        prompt_tokens = count_message_tokens(
+            payload.get("messages", []), payload.get("model", "default")
+        )
+        estimated_completion_tokens = get_token_counter().estimate_completion_tokens(
+            prompt_tokens,
+            payload.get("max_tokens"),
+        )
+
+        return await self._chat_coalescer.run(
+            key,
+            lambda: self._execute_chat_completion_request(endpoint, payload),
+            ttl_seconds=policy.coalescing_ttl_seconds,
+            on_follower_join=lambda: record_coalesced_savings(
+                prompt_tokens,
+                estimated_completion_tokens,
+                (prompt_tokens + estimated_completion_tokens)
+                * PricingDefaults.ESTIMATED_TOKEN_PRICE,
+            ),
+            on_recent_result_reuse=lambda: record_recent_reuse_savings(
+                prompt_tokens,
+                estimated_completion_tokens,
+                (prompt_tokens + estimated_completion_tokens)
+                * PricingDefaults.ESTIMATED_TOKEN_PRICE,
+            ),
+        )
 
     async def stream_chat_completion(
         self,
@@ -630,6 +752,8 @@ class OpenRouterClient:
         )
 
         async for chunk in self._stream_request("/chat/completions", payload):
+            if isinstance(chunk, dict):
+                await self._record_prompt_cache_metrics(model, chunk)
             yield chunk
 
     async def track_usage(

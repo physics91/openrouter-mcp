@@ -168,12 +168,24 @@ stats = await get_usage_stats(
 )
 ```
 
+The response includes `thrift_summary` and `thrift_metrics` so you can see how much runtime thrift reduced spend. The most useful rollups are:
+
+- `saved_cost_usd`: Estimated dollars avoided
+- `effective_cost_reduction_pct`: Effective reduction versus estimated cost without thrift
+- `prompt_savings_breakdown`: Cache reuse, coalesced prompt tokens, and compaction savings
+- `cache_efficiency`: Cache write volume, cache hit/write request rates, and reuse-to-write ratio
+- `cache_efficiency_by_provider` / `cache_efficiency_by_model`: Which providers and exact models are actually returning cache savings instead of just warming cache
+- `cache_hotspots`: Top provider/model winners, each with a `reason` field explaining why it is carrying savings
+- `cache_deadspots`: Top provider/model losers, each with a `reason` field explaining where cache warmups are being wasted
+
+The thrift part is persisted as daily rollups. If you pass `start_date` / `end_date`, the thrift summary is filtered to that same local-day window instead of whatever this process happened to remember in RAM.
+
 ### How can I reduce costs?
 1. **Use efficient models**: Choose faster/smaller models when possible
 2. **Set token limits**: Use `max_tokens` parameter
 3. **Enable caching**: Reduces repeated API calls
 4. **Batch requests**: Process multiple items together
-5. **Monitor usage**: Track spending with usage stats
+5. **Monitor usage**: Track spending and thrift savings with `get_usage_stats`
 
 ### Is there a free tier?
 OpenRouter offers free credits for new users. Some open-source models may have free or very low-cost tiers.

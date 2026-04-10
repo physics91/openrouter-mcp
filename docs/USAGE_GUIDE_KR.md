@@ -653,6 +653,176 @@ claude "Show my OpenRouter usage and costs for this month"
 claude "Compare costs between GPT-4 and Claude Opus"
 ```
 
+```python
+# MCP 툴에서 직접 조회
+stats = await get_usage_stats(
+    start_date="2025-01-01",
+    end_date="2025-01-31"
+)
+```
+
+**응답에서 같이 확인할 것**:
+
+- `thrift_summary`: 런타임 절감 효과를 요약한 사람이 읽기 쉬운 필드
+- `thrift_metrics`: 캐시, coalescing, compaction, deferred batch 같은 절감 카운터의 raw 값
+
+`get_usage_stats(start_date=..., end_date=...)` 의 thrift 값은 메모리 땜빵이 아니라 persisted daily rollup에서 읽어옴. 즉 날짜를 주면 같은 로컬 날짜 범위로 잘라서 보여줌
+
+```json
+{
+  "total_cost": 12.34,
+  "total_tokens": 1850000,
+  "requests": 412,
+  "thrift_summary": {
+    "saved_cost_usd": 1.48,
+    "estimated_cost_without_thrift_usd": 13.82,
+    "effective_cost_reduction_pct": 10.71,
+    "prompt_savings_breakdown": {
+      "cache_reuse_tokens": 542000,
+      "coalesced_prompt_tokens": 91000,
+      "recent_reuse_prompt_tokens": 28000,
+      "compacted_tokens": 24000
+    },
+    "request_savings_breakdown": {
+      "coalesced_requests": 18,
+      "recent_reuse_requests": 9,
+      "deferred_requests": 0
+    },
+    "cache_efficiency": {
+      "cached_prompt_tokens": 542000,
+      "cache_write_prompt_tokens": 180000,
+      "cache_hit_requests": 126,
+      "cache_write_requests": 54,
+      "cache_hit_request_rate_pct": 30.58,
+      "cache_write_request_rate_pct": 13.11,
+      "reuse_to_write_ratio": 3.01
+    },
+    "cache_efficiency_by_provider": {
+      "anthropic": {
+        "observed_requests": 203,
+        "cached_prompt_tokens": 401000,
+        "cache_write_prompt_tokens": 120000,
+        "cache_hit_requests": 101,
+        "cache_write_requests": 34,
+        "cache_hit_request_rate_pct": 49.75,
+        "cache_write_request_rate_pct": 16.75,
+        "reuse_to_write_ratio": 3.34,
+        "saved_cost_usd": 1.02
+      }
+    },
+    "cache_efficiency_by_model": {
+      "anthropic/claude-sonnet-4": {
+        "observed_requests": 148,
+        "cached_prompt_tokens": 355000,
+        "cache_write_prompt_tokens": 90000,
+        "cache_hit_requests": 88,
+        "cache_write_requests": 26,
+        "cache_hit_request_rate_pct": 59.46,
+        "cache_write_request_rate_pct": 17.57,
+        "reuse_to_write_ratio": 3.94,
+        "saved_cost_usd": 0.88
+      }
+    },
+    "cache_hotspots": {
+      "providers": [
+        {
+          "provider": "anthropic",
+          "saved_cost_usd": 1.02,
+          "cached_prompt_tokens": 401000,
+          "cache_hit_request_rate_pct": 49.75,
+          "cache_write_request_rate_pct": 16.75,
+          "reuse_to_write_ratio": 3.34,
+          "reason": "Hit volume keeps pace with writes, so warming converts into real savings"
+        }
+      ],
+      "models": [
+        {
+          "model": "anthropic/claude-sonnet-4",
+          "saved_cost_usd": 0.88,
+          "cached_prompt_tokens": 355000,
+          "cache_hit_request_rate_pct": 59.46,
+          "cache_write_request_rate_pct": 17.57,
+          "reuse_to_write_ratio": 3.94,
+          "reason": "Hit volume keeps pace with writes, so warming converts into real savings"
+        }
+      ]
+    },
+    "cache_deadspots": {
+      "providers": [
+        {
+          "provider": "google",
+          "saved_cost_usd": 0.03,
+          "cached_prompt_tokens": 22000,
+          "cache_hit_request_rate_pct": 4.91,
+          "cache_write_request_rate_pct": 19.67,
+          "reuse_to_write_ratio": 0.41,
+          "reason": "Cache writes are visible, but hit conversion is still weak"
+        }
+      ],
+      "models": [
+        {
+          "model": "google/gemini-2.5-pro",
+          "saved_cost_usd": 0.02,
+          "cached_prompt_tokens": 15000,
+          "cache_hit_request_rate_pct": 3.33,
+          "cache_write_request_rate_pct": 18.67,
+          "reuse_to_write_ratio": 0.31,
+          "reason": "Cache writes are visible, but hit conversion is still weak"
+        }
+      ]
+    }
+  }
+}
+```
+
+**해석 기준**:
+
+- `saved_cost_usd`: 지금까지 실제로 아낀 비용 추정치
+- `effective_cost_reduction_pct`: thrift 없었으면 얼마나 더 태웠는지 비율로 본 값
+- `prompt_savings_breakdown`: 어떤 절감 레이어가 돈값하는지 보는 핵심 필드
+- `prompt_savings_breakdown.recent_reuse_prompt_tokens`: 완료 직후 같은 요청이 다시 들어왔을 때 TTL 재사용으로 아낀 토큰
+- `request_savings_breakdown`: exact-match 동시 합류와 recent reuse가 요청 개수 기준으로 얼마나 먹혔는지 보는 필드
+- `cache_efficiency.cache_hit_request_rate_pct`: 전체 요청 중 prompt cache hit가 실제로 몇 퍼센트였는지 보는 비율
+- `cache_efficiency.cache_write_request_rate_pct`: 전체 요청 중 cache write가 몇 퍼센트였는지 보는 비율
+- `cache_efficiency_by_provider`: provider 단위로 어느 쪽이 캐시 hit를 진짜 만들어내는지 보는 breakdown
+- `cache_efficiency_by_model`: 같은 provider 안에서도 어떤 모델이 돈값하는지 찍어보는 breakdown
+- `cache_hotspots`: 위 breakdown에서 saved cost 기준 상위 provider/model만 바로 뽑아준 요약
+- `cache_hotspots[*].reason`: 왜 그 provider/model이 상위권인지 한 줄로 설명해주는 필드
+- `cache_deadspots`: 반대로 cache write는 보이는데 hit 전환이 약한 provider/model을 바로 찍어주는 요약
+- `cache_deadspots[*].reason`: 왜 그 provider/model이 워밍 비용만 먹고 있는지 한 줄로 설명해주는 필드
+- `cache_efficiency.reuse_to_write_ratio`: `1.0`보다 낮으면 캐시 write만 하고 재사용이 잘 안 되는 상태
+
+운영 중 비용이 이상하게 튀면 `total_cost`만 보지 말고 `thrift_summary`까지 같이 봐야 함. 안 그러면 “왜 비싸졌지”만 반복하다가 결국 매 요청이 다 달라서 캐시가 하나도 안 먹는 뻔한 상황 놓치기 쉬움
+
+**Claude 출력 예시**:
+
+```text
+이번 달 OpenRouter 사용량 요약임
+
+- 총 비용: $12.34
+- 총 토큰: 1,850,000
+- 요청 수: 412
+
+런타임 thrift 절감 효과
+- saved_cost_usd: $1.48
+- effective_cost_reduction_pct: 10.71%
+- cache_reuse_tokens: 542,000
+- coalesced_prompt_tokens: 91,000
+- recent_reuse_prompt_tokens: 28,000
+- coalesced_requests: 18
+- recent_reuse_requests: 9
+- compacted_tokens: 24,000
+- cache reuse/write ratio: 3.01
+
+해석
+- 캐시 재사용이 잘 먹고 있음
+- coalescing도 일정 수준 효과 있음
+- 최근 동일 요청 재사용도 tail burst에서 돈값하고 있음
+- compaction은 긴 대화에서만 제한적으로 기여 중임
+- hotspot reason은 hit가 write를 따라잡아서 캐시 워밍이 실제 절감으로 이어지는 상태를 뜻함
+- deadspot reason은 cache write는 보이는데 hit 전환이나 reuse 깊이가 구려서 워밍 비용만 먹는 상태를 뜻함
+```
+
 ### 5. Collective Intelligence 워크플로우
 
 ```python

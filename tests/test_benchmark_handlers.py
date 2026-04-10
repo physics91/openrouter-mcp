@@ -488,6 +488,30 @@ This computes the factorial recursively."""
             assert all("prompt" in h for h in history)
             assert all("models" in h for h in history)
 
+    @pytest.mark.asyncio
+    async def test_export_benchmark_batch(self, handler):
+        """Test exporting benchmark requests to deferred batch artifacts."""
+        export = await handler.export_benchmark_batch(
+            model_ids=["openai/gpt-4", "anthropic/claude-3-haiku"],
+            prompt="Explain deferred execution",
+            runs=2,
+            temperature=0.2,
+            max_tokens=128,
+            sla_window_hours=12,
+            target_spend_usd=1.5,
+        )
+
+        assert export["total_requests"] == 4
+        assert export["group_count"] == 2
+        assert Path(export["manifest_path"]).exists()
+        assert Path(export["batch_dir"]).exists()
+
+        manifest = json.loads(Path(export["manifest_path"]).read_text(encoding="utf-8"))
+        assert manifest["metadata"]["workload"] == "benchmark"
+        assert manifest["sla_window_hours"] == 12
+        assert manifest["target_spend_usd"] == 1.5
+        assert len(manifest["groups"]) == 2
+
 
 class TestBenchmarkReportExporter:
     """Test BenchmarkReportExporter class."""
@@ -816,6 +840,39 @@ class TestMCPBenchmarkTools:
             assert result["format"] == "markdown"
             assert result["models_included"] == ["model-a"]
             assert os.path.exists(result["output_path"])
+
+    @pytest.mark.asyncio
+    async def test_export_benchmark_batch_tool(self):
+        """Test export_benchmark_batch MCP tool."""
+        import src.openrouter_mcp.handlers.mcp_benchmark as benchmark_module
+
+        with patch.object(benchmark_module, "get_benchmark_handler") as mock_handler:
+            handler = MagicMock()
+            handler.export_benchmark_batch = AsyncMock(
+                return_value={
+                    "batch_dir": "/tmp/batches/benchmark-batch",
+                    "manifest_path": "/tmp/batches/benchmark-batch/manifest.json",
+                    "total_requests": 6,
+                    "group_count": 2,
+                    "groups": [
+                        {"provider": "openai", "model_id": "openai/gpt-4"},
+                        {"provider": "anthropic", "model_id": "anthropic/claude-3-haiku"},
+                    ],
+                }
+            )
+            mock_handler.return_value = handler
+
+            result = await benchmark_module.export_benchmark_batch(
+                models=["openai/gpt-4", "anthropic/claude-3-haiku"],
+                prompt="Explain deferred execution",
+                runs=3,
+                sla_window_hours=24,
+                target_spend_usd=2.0,
+            )
+
+            assert result["total_requests"] == 6
+            assert result["group_count"] == 2
+            handler.export_benchmark_batch.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_compare_model_performance_tool(self):

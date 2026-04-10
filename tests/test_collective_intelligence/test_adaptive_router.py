@@ -6,6 +6,7 @@ including performance prediction, load balancing, and adaptive optimization.
 """
 
 import asyncio
+import logging
 import time
 
 import pytest
@@ -22,6 +23,7 @@ from src.openrouter_mcp.collective_intelligence.adaptive_router import (
     RoutingStrategy,
 )
 from src.openrouter_mcp.collective_intelligence.base import (
+    ModelCapability,
     ProcessingResult,
     TaskContext,
     TaskType,
@@ -94,9 +96,7 @@ class TestModelLoadMonitor:
 
         # Complete some requests
         for i in range(3):
-            await monitor.register_request_complete(
-                model_id, f"task_{i}", 1.0 + i, True
-            )
+            await monitor.register_request_complete(model_id, f"task_{i}", 1.0 + i, True)
 
         assert load_status.active_requests == 2
 
@@ -132,9 +132,7 @@ class TestModelLoadMonitor:
         # Add some test statuses
         models = ["model_1", "model_2", "model_3"]
         for model_id in models:
-            monitor.model_loads[model_id] = ModelLoadStatus(
-                model_id=model_id, active_requests=1
-            )
+            monitor.model_loads[model_id] = ModelLoadStatus(model_id=model_id, active_requests=1)
 
         all_statuses = monitor.get_all_load_statuses()
         assert len(all_statuses) == 3
@@ -317,9 +315,7 @@ class TestPerformancePredictor:
         # Allow for significant complexity adjustment (up to 3x)
         assert predictions["response_time"] >= 2.0  # At least base time
         assert predictions["response_time"] <= 10.0  # Within reasonable bounds
-        assert (
-            predictions["quality"] >= 0.7
-        )  # Should be reasonably high due to good history
+        assert predictions["quality"] >= 0.7  # Should be reasonably high due to good history
         assert predictions["success_probability"] == 0.95
 
     @pytest.mark.unit
@@ -328,7 +324,9 @@ class TestPerformancePredictor:
         predictor = PerformancePredictor()
 
         short_text = "Hello world"
-        long_text = "This is a much longer text with many more words that should result in more tokens"
+        long_text = (
+            "This is a much longer text with many more words that should result in more tokens"
+        )
 
         short_tokens = predictor._estimate_tokens(short_text)
         long_tokens = predictor._estimate_tokens(long_text)
@@ -411,6 +409,56 @@ class TestPerformancePredictor:
 class TestAdaptiveRouter:
     """Test suite for the AdaptiveRouter class."""
 
+    @staticmethod
+    def _build_runtime_thrift_metrics(healthy_model_id: str, deadspot_model_id: str):
+        healthy_provider = healthy_model_id.split("/", 1)[0]
+        deadspot_provider = deadspot_model_id.split("/", 1)[0]
+        return {
+            "cache_efficiency_by_provider": {
+                healthy_provider: {
+                    "observed_requests": 20,
+                    "cached_prompt_tokens": 240,
+                    "cache_write_prompt_tokens": 120,
+                    "cache_hit_requests": 8,
+                    "cache_write_requests": 8,
+                    "saved_cost_usd": 0.02,
+                },
+                deadspot_provider: {
+                    "observed_requests": 20,
+                    "cached_prompt_tokens": 20,
+                    "cache_write_prompt_tokens": 120,
+                    "cache_hit_requests": 0,
+                    "cache_write_requests": 8,
+                    "saved_cost_usd": 0.001,
+                },
+            },
+            "cache_efficiency_by_model": {
+                healthy_model_id: {
+                    "observed_requests": 20,
+                    "cached_prompt_tokens": 240,
+                    "cache_write_prompt_tokens": 120,
+                    "cache_hit_requests": 8,
+                    "cache_write_requests": 8,
+                    "saved_cost_usd": 0.02,
+                },
+                deadspot_model_id: {
+                    "observed_requests": 20,
+                    "cached_prompt_tokens": 20,
+                    "cache_write_prompt_tokens": 120,
+                    "cache_hit_requests": 0,
+                    "cache_write_requests": 8,
+                    "saved_cost_usd": 0.001,
+                },
+            },
+        }
+
+    @staticmethod
+    def _predictor_from_metrics(metrics_by_model_id):
+        def predict_performance(model, task, performance_history):
+            return metrics_by_model_id[model.model_id]
+
+        return predict_performance
+
     @pytest.mark.unit
     def test_adaptive_router_initialization(self, mock_model_provider):
         """Test that AdaptiveRouter initializes correctly."""
@@ -465,9 +513,7 @@ class TestAdaptiveRouter:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_evaluate_models(
-        self, mock_model_provider, sample_task, sample_models
-    ):
+    async def test_evaluate_models(self, mock_model_provider, sample_task, sample_models):
         """Test model evaluation process."""
         router = AdaptiveRouter(mock_model_provider)
 
@@ -491,9 +537,7 @@ class TestAdaptiveRouter:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_evaluate_single_model(
-        self, mock_model_provider, sample_task, sample_models
-    ):
+    async def test_evaluate_single_model(self, mock_model_provider, sample_task, sample_models):
         """Test evaluation of a single model."""
         router = AdaptiveRouter(mock_model_provider)
         model = sample_models[0]
@@ -511,9 +555,7 @@ class TestAdaptiveRouter:
         assert "final_score" in evaluation
 
     @pytest.mark.unit
-    def test_calculate_strategy_score_performance_based(
-        self, mock_model_provider, sample_models
-    ):
+    def test_calculate_strategy_score_performance_based(self, mock_model_provider, sample_models):
         """Test strategy score calculation for performance-based routing."""
         router = AdaptiveRouter(mock_model_provider)
         model = sample_models[0]
@@ -537,9 +579,7 @@ class TestAdaptiveRouter:
         assert score > 0.8
 
     @pytest.mark.unit
-    def test_calculate_strategy_score_cost_optimized(
-        self, mock_model_provider, sample_models
-    ):
+    def test_calculate_strategy_score_cost_optimized(self, mock_model_provider, sample_models):
         """Test strategy score calculation for cost-optimized routing."""
         router = AdaptiveRouter(mock_model_provider)
         model = sample_models[0]
@@ -572,9 +612,115 @@ class TestAdaptiveRouter:
         assert low_cost_score > high_cost_score
 
     @pytest.mark.unit
-    def test_calculate_strategy_score_speed_optimized(
+    def test_calculate_strategy_score_cost_optimized_penalizes_thrift_deadspot(
         self, mock_model_provider, sample_models
     ):
+        """Cost-optimized routing should down-rank deadspot models."""
+        router = AdaptiveRouter(mock_model_provider)
+        healthy_model = sample_models[0]
+        deadspot_model = sample_models[1]
+
+        predicted_metrics = {
+            "quality": 0.82,
+            "response_time": 2.0,
+            "cost": 0.0015,
+            "success_probability": 0.94,
+        }
+        load_status = ModelLoadStatus(model_id=healthy_model.model_id)
+        thrift_metrics = self._build_runtime_thrift_metrics(
+            healthy_model.model_id,
+            deadspot_model.model_id,
+        )
+
+        healthy_feedback = router._build_thrift_feedback_for_model(
+            healthy_model.model_id,
+            thrift_metrics,
+            window_start="2026-04-04",
+            window_end="2026-04-10",
+            lookback_days=7,
+        )
+        deadspot_feedback = router._build_thrift_feedback_for_model(
+            deadspot_model.model_id,
+            thrift_metrics,
+            window_start="2026-04-04",
+            window_end="2026-04-10",
+            lookback_days=7,
+        )
+
+        healthy_score = router._calculate_strategy_score(
+            healthy_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.COST_OPTIMIZED,
+            healthy_feedback,
+        )
+        deadspot_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.COST_OPTIMIZED,
+            deadspot_feedback,
+        )
+
+        assert healthy_feedback["source"] == "model"
+        assert healthy_feedback["penalty"] == 0.0
+        assert deadspot_feedback["source"] == "model"
+        assert deadspot_feedback["penalty"] > 0.0
+        assert healthy_score > deadspot_score
+
+    @pytest.mark.unit
+    def test_build_thrift_feedback_for_model_ignores_malformed_bucket(
+        self, mock_model_provider, sample_models, caplog
+    ):
+        """Malformed thrift buckets should degrade gracefully without penalties."""
+        router = AdaptiveRouter(mock_model_provider)
+        model = sample_models[0]
+        malformed_metrics = {
+            "cache_efficiency_by_model": {
+                model.model_id: {
+                    "observed_requests": "nope",
+                    "cached_prompt_tokens": 10,
+                    "cache_write_prompt_tokens": 5,
+                    "cache_hit_requests": 1,
+                    "cache_write_requests": 1,
+                }
+            }
+        }
+
+        with caplog.at_level(logging.WARNING):
+            feedback = router._build_thrift_feedback_for_model(
+                model.model_id,
+                malformed_metrics,
+                window_start="2026-04-04",
+                window_end="2026-04-10",
+                lookback_days=7,
+            )
+
+        assert feedback["source"] == "none"
+        assert feedback["penalty"] == 0.0
+        assert feedback["bucket_summary"] is None
+        assert "malformed runtime thrift bucket" in caplog.text
+
+    @pytest.mark.unit
+    def test_get_thrift_feedback_context_falls_back_on_invalid_lookback_config(
+        self, mock_model_provider, monkeypatch, caplog
+    ):
+        """Invalid lookback config should fall back to a safe default."""
+        router = AdaptiveRouter(mock_model_provider)
+        router.configure_routing(thrift_feedback_lookback_days="bad-config")
+        monkeypatch.setattr(
+            "src.openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            lambda start_date=None, end_date=None: {},
+        )
+
+        with caplog.at_level(logging.WARNING):
+            context = router._get_thrift_feedback_context()
+
+        assert context["lookback_days"] == 7
+        assert "Invalid adaptive-router config for thrift_feedback_lookback_days" in caplog.text
+
+    @pytest.mark.unit
+    def test_calculate_strategy_score_speed_optimized(self, mock_model_provider, sample_models):
         """Test strategy score calculation for speed-optimized routing."""
         router = AdaptiveRouter(mock_model_provider)
         model = sample_models[0]
@@ -607,9 +753,7 @@ class TestAdaptiveRouter:
         assert fast_score > slow_score
 
     @pytest.mark.unit
-    def test_calculate_strategy_score_load_balanced(
-        self, mock_model_provider, sample_models
-    ):
+    def test_calculate_strategy_score_load_balanced(self, mock_model_provider, sample_models):
         """Test strategy score calculation for load-balanced routing."""
         router = AdaptiveRouter(mock_model_provider)
         model = sample_models[0]
@@ -668,6 +812,139 @@ class TestAdaptiveRouter:
 
         # All scores should be positive but different
         assert len(set(scores)) > 1  # Not all the same
+
+    @pytest.mark.unit
+    def test_calculate_strategy_score_adaptive_minimize_cost_applies_thrift_penalty(
+        self, mock_model_provider, sample_models
+    ):
+        """Adaptive routing should apply thrift penalty for cost-oriented objective."""
+        router = AdaptiveRouter(mock_model_provider)
+        router.optimization_objective = OptimizationObjective.MINIMIZE_COST
+        deadspot_model = sample_models[1]
+
+        predicted_metrics = {
+            "quality": 0.86,
+            "response_time": 1.5,
+            "cost": 0.0012,
+            "success_probability": 0.95,
+        }
+        load_status = ModelLoadStatus(model_id=deadspot_model.model_id, availability_score=0.9)
+        thrift_metrics = self._build_runtime_thrift_metrics(
+            sample_models[0].model_id,
+            deadspot_model.model_id,
+        )
+        deadspot_feedback = router._build_thrift_feedback_for_model(
+            deadspot_model.model_id,
+            thrift_metrics,
+            window_start="2026-04-04",
+            window_end="2026-04-10",
+            lookback_days=7,
+        )
+
+        baseline_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.ADAPTIVE,
+        )
+        penalized_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.ADAPTIVE,
+            deadspot_feedback,
+        )
+
+        assert deadspot_feedback["penalty"] > 0.0
+        assert penalized_score < baseline_score
+
+    @pytest.mark.unit
+    def test_calculate_strategy_score_adaptive_maximize_quality_ignores_thrift_penalty(
+        self, mock_model_provider, sample_models
+    ):
+        """Adaptive routing should ignore thrift penalty for quality objective."""
+        router = AdaptiveRouter(mock_model_provider)
+        router.optimization_objective = OptimizationObjective.MAXIMIZE_QUALITY
+        deadspot_model = sample_models[1]
+
+        predicted_metrics = {
+            "quality": 0.92,
+            "response_time": 1.4,
+            "cost": 0.0012,
+            "success_probability": 0.95,
+        }
+        load_status = ModelLoadStatus(model_id=deadspot_model.model_id, availability_score=0.9)
+        thrift_metrics = self._build_runtime_thrift_metrics(
+            sample_models[0].model_id,
+            deadspot_model.model_id,
+        )
+        deadspot_feedback = router._build_thrift_feedback_for_model(
+            deadspot_model.model_id,
+            thrift_metrics,
+            window_start="2026-04-04",
+            window_end="2026-04-10",
+            lookback_days=7,
+        )
+
+        baseline_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.ADAPTIVE,
+        )
+        throttled_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.ADAPTIVE,
+            deadspot_feedback,
+        )
+
+        assert throttled_score == baseline_score
+
+    @pytest.mark.unit
+    def test_calculate_strategy_score_speed_optimized_ignores_thrift_penalty(
+        self, mock_model_provider, sample_models
+    ):
+        """Non-cost strategies should not be affected by thrift deadspots."""
+        router = AdaptiveRouter(mock_model_provider)
+        deadspot_model = sample_models[1]
+
+        predicted_metrics = {
+            "quality": 0.8,
+            "response_time": 0.8,
+            "cost": 0.001,
+            "success_probability": 0.9,
+        }
+        load_status = ModelLoadStatus(model_id=deadspot_model.model_id)
+        thrift_metrics = self._build_runtime_thrift_metrics(
+            sample_models[0].model_id,
+            deadspot_model.model_id,
+        )
+        deadspot_feedback = router._build_thrift_feedback_for_model(
+            deadspot_model.model_id,
+            thrift_metrics,
+            window_start="2026-04-04",
+            window_end="2026-04-10",
+            lookback_days=7,
+        )
+
+        baseline_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.SPEED_OPTIMIZED,
+        )
+        throttled_score = router._calculate_strategy_score(
+            deadspot_model,
+            predicted_metrics,
+            load_status,
+            RoutingStrategy.SPEED_OPTIMIZED,
+            deadspot_feedback,
+        )
+
+        assert deadspot_feedback["penalty"] > 0.0
+        assert throttled_score == baseline_score
 
     @pytest.mark.unit
     def test_select_best_model(self, mock_model_provider, sample_models):
@@ -749,9 +1026,7 @@ class TestAdaptiveRouter:
         ]
 
         for strategy in strategies:
-            justification = router._generate_justification(
-                model.model_id, evaluation, strategy
-            )
+            justification = router._generate_justification(model.model_id, evaluation, strategy)
 
             assert isinstance(justification, str)
             assert len(justification) > 0
@@ -791,9 +1066,7 @@ class TestAdaptiveRouter:
         assert router.routing_metrics.successful_routings == initial_successful + 1
         assert decision.selected_model_id in router.model_performance_history
 
-        performance_history = router.model_performance_history[
-            decision.selected_model_id
-        ]
+        performance_history = router.model_performance_history[decision.selected_model_id]
         assert performance_history.task_completions > 0
 
     @pytest.mark.unit
@@ -876,9 +1149,7 @@ class TestAdaptiveRouter:
         router = AdaptiveRouter(mock_model_provider)
 
         # Add some test data
-        router.model_performance_history["test_model"] = ModelPerformanceHistory(
-            "test_model"
-        )
+        router.model_performance_history["test_model"] = ModelPerformanceHistory("test_model")
         router.routing_decisions.append(
             RoutingDecision(
                 task_id="test",
@@ -901,9 +1172,7 @@ class TestAdaptiveRouter:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_routing_with_different_strategies(
-        self, mock_model_provider, sample_task
-    ):
+    async def test_routing_with_different_strategies(self, mock_model_provider, sample_task):
         """Test routing with different strategies."""
         router = AdaptiveRouter(mock_model_provider)
 
@@ -928,9 +1197,7 @@ class TestAdaptiveRouter:
 
     @pytest.mark.asyncio
     @pytest.mark.performance
-    async def test_routing_performance_many_models(
-        self, performance_mock_provider, sample_task
-    ):
+    async def test_routing_performance_many_models(self, performance_mock_provider, sample_task):
         """Test routing performance with many available models."""
         router = AdaptiveRouter(performance_mock_provider)
 
@@ -982,6 +1249,538 @@ class TestAdaptiveRouter:
         assert len(decisions) == 5
         assert all(isinstance(d, RoutingDecision) for d in decisions)
         assert len(set(d.task_id for d in decisions)) == 5  # All unique
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_cost_optimized_prefers_healthier_model_over_deadspot(
+        self, mock_model_provider, sample_task, sample_models, monkeypatch
+    ):
+        """Routing should avoid a cache deadspot when cost gap is small."""
+        healthy_model = sample_models[0]
+        deadspot_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [
+            healthy_model,
+            deadspot_model,
+        ]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+
+        thrift_metrics = self._build_runtime_thrift_metrics(
+            healthy_model.model_id,
+            deadspot_model.model_id,
+        )
+        monkeypatch.setattr(
+            "src.openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            lambda start_date=None, end_date=None: thrift_metrics,
+        )
+
+        def predict_performance(model, task, performance_history):
+            if model.model_id == deadspot_model.model_id:
+                return {
+                    "quality": 0.84,
+                    "response_time": 1.2,
+                    "cost": 0.001,
+                    "success_probability": 0.95,
+                }
+            return {
+                "quality": 0.84,
+                "response_time": 1.2,
+                "cost": 0.00115,
+                "success_probability": 0.95,
+            }
+
+        monkeypatch.setattr(
+            router.performance_predictor, "predict_performance", predict_performance
+        )
+
+        decision = await router.process(sample_task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == healthy_model.model_id
+        assert decision.metadata["thrift_feedback"]["source"] == "model"
+        assert decision.metadata["thrift_feedback"]["penalty"] == 0.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_cost_optimized_ignores_malformed_thrift_bucket(
+        self, mock_model_provider, sample_task, sample_models, monkeypatch, caplog
+    ):
+        """Malformed thrift data should not abort routing."""
+        first_model = sample_models[0]
+        second_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [
+            first_model,
+            second_model,
+        ]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+
+        malformed_metrics = {
+            "cache_efficiency_by_model": {
+                first_model.model_id: {"observed_requests": "bad-data"},
+                second_model.model_id: {"observed_requests": "bad-data"},
+            }
+        }
+        monkeypatch.setattr(
+            "src.openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            lambda start_date=None, end_date=None: malformed_metrics,
+        )
+
+        def predict_performance(model, task, performance_history):
+            if model.model_id == first_model.model_id:
+                return {
+                    "quality": 0.84,
+                    "response_time": 1.2,
+                    "cost": 0.001,
+                    "success_probability": 0.95,
+                }
+            return {
+                "quality": 0.84,
+                "response_time": 1.2,
+                "cost": 0.00115,
+                "success_probability": 0.95,
+            }
+
+        monkeypatch.setattr(
+            router.performance_predictor, "predict_performance", predict_performance
+        )
+
+        with caplog.at_level(logging.WARNING):
+            decision = await router.process(sample_task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == first_model.model_id
+        assert decision.metadata["thrift_feedback"]["source"] == "none"
+        assert decision.metadata["thrift_feedback"]["penalty"] == 0.0
+        assert "malformed runtime thrift bucket" in caplog.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_filters_models_by_max_cost(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Hard max_cost should remove over-budget candidates before ranking."""
+        expensive_model = sample_models[0]
+        budget_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [expensive_model, budget_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.QUALITY_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    expensive_model.model_id: {
+                        "quality": 0.97,
+                        "response_time": 1.0,
+                        "cost": 0.02,
+                        "success_probability": 0.96,
+                    },
+                    budget_model.model_id: {
+                        "quality": 0.82,
+                        "response_time": 1.4,
+                        "cost": 0.001,
+                        "success_probability": 0.94,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="max_cost_filter",
+            task_type=TaskType.REASONING,
+            content="Choose a model under budget",
+            constraints={"max_cost": 0.002},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.QUALITY_OPTIMIZED)
+
+        assert decision.selected_model_id == budget_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_filters_models_by_excluded_provider(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Hard excluded_provider should remove matching providers."""
+        openai_model = sample_models[0]
+        anthropic_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [openai_model, anthropic_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    openai_model.model_id: {
+                        "quality": 0.84,
+                        "response_time": 1.1,
+                        "cost": 0.001,
+                        "success_probability": 0.96,
+                    },
+                    anthropic_model.model_id: {
+                        "quality": 0.83,
+                        "response_time": 1.3,
+                        "cost": 0.0013,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="excluded_provider_filter",
+            task_type=TaskType.REASONING,
+            content="Avoid the excluded provider",
+            constraints={"excluded_provider": "openai"},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == anthropic_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_filters_models_by_required_capabilities(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Hard required_capabilities should keep only capable models."""
+        reasoning_model = sample_models[0]
+        multimodal_model = sample_models[3]
+        mock_model_provider.get_available_models.return_value = [
+            reasoning_model,
+            multimodal_model,
+        ]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    reasoning_model.model_id: {
+                        "quality": 0.88,
+                        "response_time": 1.0,
+                        "cost": 0.0009,
+                        "success_probability": 0.95,
+                    },
+                    multimodal_model.model_id: {
+                        "quality": 0.82,
+                        "response_time": 1.2,
+                        "cost": 0.0012,
+                        "success_probability": 0.94,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="required_capabilities_filter",
+            task_type=TaskType.REASONING,
+            content="Need multimodal support",
+            constraints={"required_capabilities": ["multimodal"]},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == multimodal_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_filters_models_by_min_context_length(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Hard min_context_length should reject undersized contexts."""
+        short_context_model = sample_models[0]
+        long_context_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [
+            short_context_model,
+            long_context_model,
+        ]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.SPEED_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    short_context_model.model_id: {
+                        "quality": 0.84,
+                        "response_time": 0.8,
+                        "cost": 0.0011,
+                        "success_probability": 0.95,
+                    },
+                    long_context_model.model_id: {
+                        "quality": 0.83,
+                        "response_time": 1.1,
+                        "cost": 0.0012,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="min_context_length_filter",
+            task_type=TaskType.REASONING,
+            content="Need big context window",
+            constraints={"min_context_length": 100000},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.SPEED_OPTIMIZED)
+
+        assert decision.selected_model_id == long_context_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_raises_when_constraints_filter_every_model(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Hard constraints should fail loudly when no model survives."""
+        first_model = sample_models[0]
+        second_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [first_model, second_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    first_model.model_id: {
+                        "quality": 0.84,
+                        "response_time": 1.0,
+                        "cost": 0.002,
+                        "success_probability": 0.95,
+                    },
+                    second_model.model_id: {
+                        "quality": 0.83,
+                        "response_time": 1.1,
+                        "cost": 0.003,
+                        "success_probability": 0.94,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="constraints_error",
+            task_type=TaskType.REASONING,
+            content="Nothing should survive",
+            constraints={
+                "max_cost": 0.0001,
+                "required_capabilities": [ModelCapability.MULTIMODAL.value],
+            },
+        )
+
+        with pytest.raises(ValueError, match="No models satisfy routing constraints"):
+            await router.process(task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_prefers_preferred_provider_without_hard_filtering(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """preferred_provider should boost matching candidates without filtering others."""
+        openai_model = sample_models[0]
+        anthropic_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [openai_model, anthropic_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    openai_model.model_id: {
+                        "quality": 0.85,
+                        "response_time": 1.2,
+                        "cost": 0.0013,
+                        "success_probability": 0.95,
+                    },
+                    anthropic_model.model_id: {
+                        "quality": 0.85,
+                        "response_time": 1.1,
+                        "cost": 0.0011,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="preferred_provider",
+            task_type=TaskType.REASONING,
+            content="Prefer OpenAI when close",
+            constraints={"preferred_provider": "openai"},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == openai_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_prefers_model_family_match(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """preferred_model_family should softly boost matching families."""
+        gpt_model = sample_models[0]
+        claude_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [gpt_model, claude_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider, default_strategy=RoutingStrategy.COST_OPTIMIZED
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    gpt_model.model_id: {
+                        "quality": 0.85,
+                        "response_time": 1.2,
+                        "cost": 0.0013,
+                        "success_probability": 0.95,
+                    },
+                    claude_model.model_id: {
+                        "quality": 0.85,
+                        "response_time": 1.1,
+                        "cost": 0.0011,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="preferred_family",
+            task_type=TaskType.REASONING,
+            content="Prefer GPT family when close",
+            constraints={"preferred_model_family": "gpt-4"},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.COST_OPTIMIZED)
+
+        assert decision.selected_model_id == gpt_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_performance_requirements_accuracy_changes_selection(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Accuracy-heavy requirements should favor the more accurate model."""
+        accurate_model = sample_models[0]
+        fast_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [accurate_model, fast_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider,
+            default_strategy=RoutingStrategy.PERFORMANCE_BASED,
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    accurate_model.model_id: {
+                        "quality": 0.96,
+                        "response_time": 2.2,
+                        "cost": 0.0015,
+                        "success_probability": 0.95,
+                    },
+                    fast_model.model_id: {
+                        "quality": 0.83,
+                        "response_time": 0.5,
+                        "cost": 0.001,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="accuracy_weighted",
+            task_type=TaskType.REASONING,
+            content="Favor accuracy",
+            requirements={"accuracy": 0.9, "speed": 0.1},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.PERFORMANCE_BASED)
+
+        assert decision.selected_model_id == accurate_model.model_id
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_process_performance_requirements_speed_changes_selection(
+        self, mock_model_provider, sample_models, monkeypatch
+    ):
+        """Speed-heavy requirements should favor the faster model."""
+        accurate_model = sample_models[0]
+        fast_model = sample_models[1]
+        mock_model_provider.get_available_models.return_value = [accurate_model, fast_model]
+
+        router = AdaptiveRouter(
+            mock_model_provider,
+            default_strategy=RoutingStrategy.PERFORMANCE_BASED,
+        )
+        router.configure_routing(exploration_rate=0.0)
+        monkeypatch.setattr(
+            router.performance_predictor,
+            "predict_performance",
+            self._predictor_from_metrics(
+                {
+                    accurate_model.model_id: {
+                        "quality": 0.96,
+                        "response_time": 2.2,
+                        "cost": 0.0015,
+                        "success_probability": 0.95,
+                    },
+                    fast_model.model_id: {
+                        "quality": 0.83,
+                        "response_time": 0.5,
+                        "cost": 0.001,
+                        "success_probability": 0.95,
+                    },
+                }
+            ),
+        )
+
+        task = TaskContext(
+            task_id="speed_weighted",
+            task_type=TaskType.REASONING,
+            content="Favor speed",
+            requirements={"accuracy": 0.1, "speed": 0.9},
+        )
+
+        decision = await router.process(task, strategy=RoutingStrategy.PERFORMANCE_BASED)
+
+        assert decision.selected_model_id == fast_model.model_id
 
     @pytest.mark.unit
     def test_routing_metrics_success_rate(self):

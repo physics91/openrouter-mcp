@@ -43,11 +43,32 @@ from openrouter_mcp.handlers.collective_intelligence import (
 from openrouter_mcp.handlers.collective_intelligence import (
     _ensemble_reasoning_impl as ensemble_reasoning,
 )
+from openrouter_mcp.utils.metadata import extract_provider_from_id
 from tests.fixtures.collective_payloads import (
     assert_collective_chat_response_shape,
     cleanup_collective_lifecycle,
     mocked_available_models,
 )
+
+
+def _build_runtime_thrift_metrics(*model_ids: str) -> dict:
+    """Build provider-level thrift metrics for all candidate model providers."""
+    provider_metrics = {}
+    for index, model_id in enumerate(model_ids):
+        provider = extract_provider_from_id(model_id).value
+        provider_metrics[provider] = {
+            "observed_requests": 20 + index,
+            "cached_prompt_tokens": 180 + (index * 20),
+            "cache_write_prompt_tokens": 120,
+            "cache_hit_requests": 6 + index,
+            "cache_write_requests": 8,
+            "saved_cost_usd": round(0.01 + (index * 0.002), 4),
+        }
+
+    return {
+        "cache_efficiency_by_provider": provider_metrics,
+        "cache_efficiency_by_model": {},
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -370,9 +391,15 @@ class TestAdaptiveModelSelectionMocked:
             query="Write a Python function to calculate fibonacci numbers",
             task_type="code_generation",
             performance_requirements={"accuracy": 0.9, "speed": 0.8},
+            constraints={"preferred_provider": "openai"},
         )
 
-        result = await adaptive_model_selection(request)
+        thrift_metrics = _build_runtime_thrift_metrics(*(model["id"] for model in models))
+        with patch(
+            "openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            return_value=thrift_metrics,
+        ):
+            result = await adaptive_model_selection(request)
 
         # Test behavior: should select a model and provide reasoning
         assert isinstance(result, dict)
@@ -385,6 +412,18 @@ class TestAdaptiveModelSelectionMocked:
         assert len(result["selected_model"]) > 0
         assert 0.0 <= result["confidence"] <= 1.0
         assert isinstance(result["alternative_models"], list)
+        assert result["routing_metrics"]["constraints_applied"] == ["preferred_provider"]
+        assert result["routing_metrics"]["constraints_unmet"] == []
+        assert result["routing_metrics"]["filtered_candidates"] == 0
+        assert result["routing_metrics"]["performance_weights"]["accuracy"] > 0
+        assert result["routing_metrics"]["performance_weights"]["speed"] > 0
+        assert "preferred_provider" in result["routing_metrics"]["preference_matches"]
+        assert result["routing_metrics"]["thrift_feedback"]["source"] == "provider"
+        assert result["routing_metrics"]["thrift_feedback"]["lookback_days"] == 7
+        assert (
+            result["routing_metrics"]["thrift_feedback"]["bucket_summary"]["observed_requests"]
+            >= 20
+        )
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
@@ -405,10 +444,26 @@ class TestAdaptiveModelSelectionMocked:
 
         request = AdaptiveModelRequest(query="Hello, how are you?", task_type="reasoning")
 
-        result = await adaptive_model_selection(request)
+        thrift_metrics = _build_runtime_thrift_metrics(
+            "openai/gpt-4",
+            "anthropic/claude-3-opus",
+            "meta-llama/llama-3-70b",
+        )
+        with patch(
+            "openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            return_value=thrift_metrics,
+        ):
+            result = await adaptive_model_selection(request)
 
         assert result["selected_model"]
         assert "routing_metrics" in result
+        assert "thrift_feedback" in result["routing_metrics"]
+        assert result["routing_metrics"]["constraints_applied"] == []
+        assert result["routing_metrics"]["constraints_unmet"] == []
+        assert result["routing_metrics"]["filtered_candidates"] == 0
+        assert result["routing_metrics"]["performance_weights"] == {}
+        assert result["routing_metrics"]["preference_matches"] == []
+        assert result["routing_metrics"]["thrift_feedback"]["window_start"]
 
 
 class TestCrossModelValidationMocked:

@@ -10,6 +10,13 @@ from src.openrouter_mcp.client.openrouter import (
 )
 from src.openrouter_mcp.free.quota import QuotaExceededError
 from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
+from src.openrouter_mcp.runtime_thrift import (
+    get_thrift_metrics_snapshot,
+    record_coalesced_savings,
+    record_compaction_savings,
+    record_prompt_cache_activity,
+    reset_thrift_metrics,
+)
 
 
 @pytest.fixture
@@ -73,6 +80,68 @@ class TestFreeChatHandler:
             assert result["model_used"] == "google/gemma-3-27b:free"
             assert result["response"] == "안녕하세요!"
             assert result["usage"]["total_tokens"] == 8
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_free_chat_returns_request_scoped_thrift_summary(self, mock_chat_response):
+        reset_thrift_metrics()
+        record_compaction_savings(42)
+        record_coalesced_savings(prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003)
+        record_prompt_cache_activity(
+            cached_prompt_tokens=300,
+            cache_write_prompt_tokens=100,
+            estimated_saved_cost_usd=0.007,
+        )
+
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router, patch(
+            "src.openrouter_mcp.handlers.free_chat._execute_chat",
+            new_callable=AsyncMock,
+        ) as mock_execute_chat:
+            mock_client = AsyncMock()
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            async def execute_with_request_local_thrift(*args, **kwargs):
+                record_compaction_savings(7)
+                record_coalesced_savings(
+                    prompt_tokens=30,
+                    completion_tokens=10,
+                    estimated_cost_usd=0.002,
+                )
+                record_prompt_cache_activity(
+                    cached_prompt_tokens=120,
+                    cache_write_prompt_tokens=40,
+                    estimated_saved_cost_usd=0.004,
+                )
+                return {
+                    "content": mock_chat_response["choices"][0]["message"]["content"],
+                    "usage": mock_chat_response["usage"],
+                    "streamed": False,
+                    "actual_model": None,
+                }
+
+            mock_execute_chat.side_effect = execute_with_request_local_thrift
+
+            result = await free_chat(FreeChatRequest(message="안녕!"))
+
+            assert result["thrift_metrics"]["compacted_tokens"] == 7
+            assert result["thrift_summary"]["saved_cost_usd"] == 0.006
+            assert result["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 120
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"]["coalesced_prompt_tokens"]
+                == 30
+            )
+            assert result["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"] == 3.0
+            mock_client.get_model_pricing.assert_not_called()
+            assert get_thrift_metrics_snapshot()["compacted_tokens"] == 49
+            assert get_thrift_metrics_snapshot()["saved_cost_usd"] == 0.016
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -161,6 +230,48 @@ class TestFreeChatHandler:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_free_chat_compacts_long_history(self, mock_chat_response):
+        with patch(
+            "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
+        ) as mock_get_client, patch(
+            "src.openrouter_mcp.handlers.free_chat._get_router"
+        ) as mock_get_router:
+            mock_client = AsyncMock()
+            mock_client.chat_completion.return_value = mock_chat_response
+            mock_client.model_cache.get_model_info = AsyncMock(
+                return_value={"id": "google/gemma-3-27b:free", "context_length": 160}
+            )
+            mock_get_client.return_value = mock_client
+
+            mock_router = AsyncMock()
+            mock_router.select_model.return_value = "google/gemma-3-27b:free"
+            mock_get_router.return_value = mock_router
+
+            request = FreeChatRequest(
+                message="latest user question " * 30,
+                system_prompt="You are a helpful assistant.",
+                conversation_history=[
+                    {"role": "user", "content": "older question one " * 40},
+                    {"role": "assistant", "content": "same older answer " * 40},
+                    {"role": "user", "content": "older question two " * 40},
+                    {"role": "assistant", "content": "same older answer " * 40},
+                    {"role": "user", "content": "recent question one " * 30},
+                    {"role": "assistant", "content": "recent answer one " * 30},
+                    {"role": "user", "content": "recent question two " * 30},
+                    {"role": "assistant", "content": "recent answer two " * 30},
+                ],
+                max_tokens=16,
+            )
+            await free_chat(request)
+
+            sent_messages = mock_client.chat_completion.call_args.kwargs["messages"]
+            assert sent_messages[0]["role"] == "system"
+            assert sent_messages[1]["role"] == "assistant"
+            assert "Conversation summary" in sent_messages[1]["content"]
+            assert sent_messages[-1]["content"] == "latest user question " * 30
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_authentication_error_propagates_immediately(self):
         with patch(
             "src.openrouter_mcp.handlers.free_chat.get_openrouter_client"
@@ -168,9 +279,7 @@ class TestFreeChatHandler:
             "src.openrouter_mcp.handlers.free_chat._get_router"
         ) as mock_get_router:
             mock_client = AsyncMock()
-            mock_client.chat_completion.side_effect = AuthenticationError(
-                "Invalid API key"
-            )
+            mock_client.chat_completion.side_effect = AuthenticationError("Invalid API key")
             mock_get_client.return_value = mock_client
 
             mock_router = AsyncMock()

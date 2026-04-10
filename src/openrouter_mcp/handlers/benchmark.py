@@ -6,6 +6,7 @@ by sending the same prompt to each model and analyzing their responses.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -20,6 +21,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Type
 from ..client.openrouter import OpenRouterClient
 from ..config.constants import BenchmarkDefaults, EnvVars, ModelDefaults, PricingDefaults
 from ..models.cache import ModelCache
+from ..runtime_thrift import DeferredBatchLane, DeferredBatchRequest
 from ..utils.env import get_env_value
 from ..utils.pricing import (
     cost_for_tokens,
@@ -754,6 +756,66 @@ class BenchmarkHandler:
 
         logger.info(f"Saved benchmark comparison to {output_path}")
         return str(output_path)
+
+    async def export_benchmark_batch(
+        self,
+        model_ids: List[str],
+        prompt: str,
+        runs: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+        delay_between_requests: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
+        sla_window_hours: int = 24,
+        target_spend_usd: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Export offline-ready benchmark requests as grouped JSONL artifacts."""
+        if not model_ids:
+            raise ValueError("At least one model ID is required")
+        if runs < 1:
+            raise ValueError("runs must be at least 1")
+
+        prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
+        requests: List[DeferredBatchRequest] = []
+
+        for model_id in model_ids:
+            model_slug = re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-") or "model"
+            for run_index in range(1, runs + 1):
+                requests.append(
+                    DeferredBatchRequest(
+                        custom_id=(f"benchmark-{model_slug}-run-{run_index:03d}-{prompt_hash}"),
+                        endpoint="/chat/completions",
+                        model_id=model_id,
+                        body={
+                            "model": model_id,
+                            "messages": self._build_prompt_messages(prompt),
+                            "temperature": temperature,
+                            "max_tokens": max_tokens,
+                            "stream": False,
+                        },
+                        metadata={
+                            "workload": "benchmark",
+                            "run_index": run_index,
+                            "prompt_hash": prompt_hash,
+                            "delay_between_requests": delay_between_requests,
+                        },
+                    )
+                )
+
+        lane = DeferredBatchLane(self.cache_dir / "deferred_batches")
+        export = lane.export_requests(
+            requests=requests,
+            batch_name="benchmark batch",
+            sla_window_hours=sla_window_hours,
+            target_spend_usd=target_spend_usd,
+            metadata={
+                "workload": "benchmark",
+                "prompt_hash": prompt_hash,
+                "model_count": len(model_ids),
+                "runs": runs,
+                "delay_between_requests": delay_between_requests,
+            },
+        )
+        return export.to_dict()
 
     def load_comparison(self, file_path: str) -> ModelComparison:
         """Load comparison results from a file."""

@@ -13,11 +13,14 @@ These tests catch issues like the "0 registered tools" bug and ensure
 all modules properly register their tools with the shared FastMCP instance.
 """
 
+import json
 import sys
+from datetime import date
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastmcp import Client
 
 # Add src directory to path
 src_path = Path(__file__).parent.parent / "src"
@@ -29,6 +32,17 @@ async def _get_tools_dict(mcp_instance):
     """Build a stable name->tool mapping via the FastMCP public API."""
     tools = await mcp_instance.list_tools()
     return {tool.name: tool for tool in tools}
+
+
+def _text_from(result) -> str:
+    for item in result.content:
+        if hasattr(item, "text"):
+            return item.text
+    return ""
+
+
+def _json_from(result) -> dict:
+    return json.loads(_text_from(result))
 
 
 class TestMCPServerToolRegistration:
@@ -249,14 +263,16 @@ class TestMCPServerStartup:
 
     def test_create_app_fails_without_api_key(self, monkeypatch):
         """Test that create_app fails without API key."""
-        from openrouter_mcp.server import create_app
-
         # Remove API key
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
-        # Should raise ValueError
-        with pytest.raises(ValueError, match="Missing required environment variables"):
-            create_app()
+        # Prevent .env from restoring the key during create_app()
+        with patch("openrouter_mcp.server.load_dotenv", return_value=False):
+            from openrouter_mcp.server import create_app
+
+            # Should raise ValueError
+            with pytest.raises(ValueError, match="Missing required environment variables"):
+                create_app()
 
     def test_validate_environment_function(self, mock_env):
         """Test the validate_environment function."""
@@ -360,6 +376,263 @@ class TestToolInputValidation:
         benchmark_tool = tools_dict["benchmark_models"]
         assert benchmark_tool.name == "benchmark_models"
         assert benchmark_tool.description, "Tool should have a description"
+
+
+class TestMCPToolResponseContracts:
+    """Verify MCP tool calls preserve runtime thrift metadata in serialized responses."""
+
+    @pytest.fixture
+    def mock_env(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test-key-12345")
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_chat_tool_call_returns_thrift_metadata(self, mock_env):
+        from openrouter_mcp.client.openrouter import OpenRouterClient
+        from openrouter_mcp.handlers import chat as chat_module
+        from openrouter_mcp.runtime_thrift import (
+            record_compaction_savings,
+            record_prompt_cache_activity,
+            reset_thrift_metrics,
+        )
+
+        reset_thrift_metrics()
+        mock_client = AsyncMock(spec=OpenRouterClient)
+        mock_client.get_model_pricing.return_value = {
+            "prompt": 0.001,
+            "completion": 0.002,
+        }
+        mock_client.model_cache = Mock()
+        mock_client.model_cache.get_model_info = AsyncMock(return_value={"context_length": 8192})
+
+        async def chat_completion_with_thrift(*args, **kwargs):
+            record_compaction_savings(5)
+            record_prompt_cache_activity(
+                cached_prompt_tokens=80,
+                cache_write_prompt_tokens=20,
+                estimated_saved_cost_usd=0.004,
+            )
+            return {
+                "choices": [{"message": {"content": "hello"}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+            }
+
+        mock_client.chat_completion.side_effect = chat_completion_with_thrift
+
+        with patch(
+            "openrouter_mcp.handlers.chat.get_openrouter_client",
+            new=AsyncMock(return_value=mock_client),
+        ):
+            async with Client(chat_module.mcp) as client:
+                result = await client.call_tool(
+                    "chat_with_model",
+                    {
+                        "request": {
+                            "model": "openai/gpt-4o-mini",
+                            "messages": [{"role": "user", "content": "Say hello"}],
+                            "temperature": 0.0,
+                            "max_tokens": 10,
+                        }
+                    },
+                )
+
+        data = _json_from(result)
+        assert data["thrift_metrics"]["compacted_tokens"] == 5
+        assert data["thrift_summary"]["saved_cost_usd"] == 0.004
+        assert data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 80
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_usage_stats_tool_call_returns_thrift_summary(self, mock_env):
+        from openrouter_mcp.client.openrouter import OpenRouterClient
+        from openrouter_mcp.handlers import chat as chat_module
+        from openrouter_mcp.runtime_thrift import (
+            record_compaction_savings,
+            record_prompt_cache_activity,
+            reset_thrift_metrics,
+        )
+
+        reset_thrift_metrics()
+        record_compaction_savings(11)
+        record_prompt_cache_activity(
+            cached_prompt_tokens=90,
+            cache_write_prompt_tokens=30,
+            estimated_saved_cost_usd=0.009,
+        )
+        mock_client = AsyncMock(spec=OpenRouterClient)
+        mock_client.track_usage.return_value = {
+            "total_cost": 0.09,
+            "total_tokens": 1800,
+            "requests": 10,
+            "models": ["openai/gpt-4o-mini"],
+        }
+
+        with patch(
+            "openrouter_mcp.handlers.chat.get_openrouter_client",
+            new=AsyncMock(return_value=mock_client),
+        ):
+            today = date.today().isoformat()
+            async with Client(chat_module.mcp) as client:
+                result = await client.call_tool(
+                    "get_usage_stats",
+                    {
+                        "request": {
+                            "start_date": today,
+                            "end_date": today,
+                        }
+                    },
+                )
+
+        data = _json_from(result)
+        assert data["thrift_metrics"]["compacted_tokens"] == 11
+        assert data["thrift_summary"]["saved_cost_usd"] == 0.009
+        assert data["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"] == 3.0
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_vision_tool_call_returns_thrift_metadata(self, mock_env):
+        from openrouter_mcp.client.openrouter import OpenRouterClient
+        from openrouter_mcp.handlers import multimodal as multimodal_module
+        from openrouter_mcp.runtime_thrift import (
+            record_compaction_savings,
+            record_prompt_cache_activity,
+            reset_thrift_metrics,
+        )
+
+        reset_thrift_metrics()
+        mock_client = AsyncMock(spec=OpenRouterClient)
+        mock_client.get_model_pricing.return_value = {
+            "prompt": 0.001,
+            "completion": 0.002,
+        }
+
+        async def vision_completion_with_thrift(*args, **kwargs):
+            record_compaction_savings(3)
+            record_prompt_cache_activity(
+                cached_prompt_tokens=40,
+                cache_write_prompt_tokens=10,
+                estimated_saved_cost_usd=0.002,
+            )
+            return {
+                "choices": [{"message": {"content": "chart"}, "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 4,
+                    "total_tokens": 16,
+                },
+            }
+
+        mock_client.chat_completion.side_effect = vision_completion_with_thrift
+
+        with patch(
+            "openrouter_mcp.handlers.multimodal.get_openrouter_client",
+            new=AsyncMock(return_value=mock_client),
+        ):
+            async with Client(multimodal_module.mcp) as client:
+                result = await client.call_tool(
+                    "chat_with_vision",
+                    {
+                        "request": {
+                            "model": "openai/gpt-4o",
+                            "messages": [{"role": "user", "content": "Describe this image."}],
+                            "images": [
+                                {
+                                    "data": "https://example.com/chart.png",
+                                    "type": "url",
+                                }
+                            ],
+                            "max_tokens": 20,
+                        }
+                    },
+                )
+
+        data = _json_from(result)
+        assert data["thrift_metrics"]["compacted_tokens"] == 3
+        assert data["thrift_summary"]["saved_cost_usd"] == 0.002
+        assert data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 40
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_free_chat_tool_call_returns_thrift_summary(self, mock_env):
+        from openrouter_mcp.free.classifier import FreeTaskType
+        from openrouter_mcp.handlers import free_chat as free_chat_module
+        from openrouter_mcp.runtime_thrift import (
+            record_compaction_savings,
+            record_prompt_cache_activity,
+            reset_thrift_metrics,
+        )
+
+        reset_thrift_metrics()
+        mock_client = AsyncMock()
+        mock_router = Mock()
+        mock_router.is_cache_expired.return_value = False
+        mock_router.select_model = AsyncMock(return_value="google/gemma-3-27b:free")
+        mock_metrics = Mock()
+        mock_classifier = Mock()
+        mock_classifier.classify.return_value = FreeTaskType.GENERAL
+        mock_quota = Mock()
+        mock_quota.reserve_and_record = AsyncMock()
+
+        async def execute_chat_with_thrift(*args, **kwargs):
+            record_compaction_savings(4)
+            record_prompt_cache_activity(
+                cached_prompt_tokens=60,
+                cache_write_prompt_tokens=20,
+                estimated_saved_cost_usd=0.003,
+            )
+            return {
+                "content": "hi",
+                "usage": {
+                    "prompt_tokens": 8,
+                    "completion_tokens": 2,
+                    "total_tokens": 10,
+                },
+                "streamed": False,
+                "actual_model": "google/gemma-3-27b:free",
+            }
+
+        with patch(
+            "openrouter_mcp.handlers.free_chat.get_openrouter_client",
+            new=AsyncMock(return_value=mock_client),
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._get_router",
+            new=AsyncMock(return_value=mock_router),
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._get_metrics",
+            return_value=mock_metrics,
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._get_classifier",
+            return_value=mock_classifier,
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._get_quota",
+            return_value=mock_quota,
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._try_native_fallback",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "openrouter_mcp.handlers.free_chat._execute_chat",
+            new=AsyncMock(side_effect=execute_chat_with_thrift),
+        ):
+            async with Client(free_chat_module.mcp) as client:
+                result = await client.call_tool(
+                    "free_chat",
+                    {
+                        "request": {
+                            "message": "Say hi",
+                            "max_tokens": 10,
+                        }
+                    },
+                )
+
+        data = _json_from(result)
+        assert data["model_used"] == "google/gemma-3-27b:free"
+        assert data["thrift_metrics"]["compacted_tokens"] == 4
+        assert data["thrift_summary"]["saved_cost_usd"] == 0.003
+        assert data["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"] == 3.0
 
 
 class TestMCPServerDocumentation:

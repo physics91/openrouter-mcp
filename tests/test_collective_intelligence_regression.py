@@ -27,10 +27,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from openrouter_mcp.collective_intelligence import (
-    get_lifecycle_manager,
-    shutdown_lifecycle_manager,
-)
+from openrouter_mcp.collective_intelligence import get_lifecycle_manager, shutdown_lifecycle_manager
 from openrouter_mcp.handlers.collective_intelligence import (
     AdaptiveModelRequest,
     CollaborativeSolvingRequest,
@@ -43,10 +40,29 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _cross_model_validation_impl,
     _ensemble_reasoning_impl,
 )
-from tests.fixtures.collective_payloads import (
-    cleanup_collective_lifecycle,
-    regression_mock_models,
-)
+from openrouter_mcp.utils.metadata import extract_provider_from_id
+from tests.fixtures.collective_payloads import cleanup_collective_lifecycle, regression_mock_models
+
+
+def _build_runtime_thrift_metrics(*model_ids: str) -> dict:
+    """Build provider-level thrift metrics for all candidate model providers."""
+    provider_metrics = {}
+    for index, model_id in enumerate(model_ids):
+        provider = extract_provider_from_id(model_id).value
+        provider_metrics[provider] = {
+            "observed_requests": 24 + index,
+            "cached_prompt_tokens": 210 + (index * 15),
+            "cache_write_prompt_tokens": 120,
+            "cache_hit_requests": 5 + index,
+            "cache_write_requests": 8,
+            "saved_cost_usd": round(0.012 + (index * 0.003), 4),
+        }
+
+    return {
+        "cache_efficiency_by_provider": provider_metrics,
+        "cache_efficiency_by_model": {},
+    }
+
 
 # ============================================================================
 # FIXTURES
@@ -102,9 +118,7 @@ def create_mock_client(mock_models):
         else:
             # Default response
             default_response = {
-                "choices": [
-                    {"message": {"content": "Test response"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Test response"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 20,
@@ -140,9 +154,7 @@ class TestClientImportAndUsage:
         mock_client = create_mock_client()
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test prompt", min_models=1, max_models=2
-        )
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=2)
 
         await _collective_chat_completion_impl(request)
 
@@ -155,9 +167,7 @@ class TestClientImportAndUsage:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_client_not_wrapped_in_async_with(
-        self, mock_get_client, create_mock_client
-    ):
+    async def test_client_not_wrapped_in_async_with(self, mock_get_client, create_mock_client):
         """
         REGRESSION TEST: Verify client is NOT wrapped in async with blocks.
 
@@ -167,9 +177,7 @@ class TestClientImportAndUsage:
         mock_client = create_mock_client()
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test prompt", min_models=1, max_models=1
-        )
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
 
         await _collective_chat_completion_impl(request)
 
@@ -216,9 +224,7 @@ class TestParameterWiring:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_models_list_used_for_selection(
-        self, mock_get_client, create_mock_client
-    ):
+    async def test_models_list_used_for_selection(self, mock_get_client, create_mock_client):
         """
         REGRESSION TEST: Verify models list is used for model selection.
 
@@ -267,9 +273,7 @@ class TestParameterWiring:
         """
         responses = [
             {
-                "choices": [
-                    {"message": {"content": f"Iteration {i}"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": f"Iteration {i}"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 20,
@@ -283,9 +287,7 @@ class TestParameterWiring:
         mock_get_client.return_value = mock_client
 
         max_iter = 2
-        request = CollaborativeSolvingRequest(
-            problem="Test problem", max_iterations=max_iter
-        )
+        request = CollaborativeSolvingRequest(problem="Test problem", max_iterations=max_iter)
 
         result = await _collaborative_problem_solving_impl(request)
 
@@ -305,9 +307,7 @@ class TestConcurrentRequestIsolation:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_concurrent_requests_isolated(
-        self, mock_get_client, create_mock_client
-    ):
+    async def test_concurrent_requests_isolated(self, mock_get_client, create_mock_client):
         """
         REGRESSION TEST: Verify concurrent requests maintain isolation.
 
@@ -374,9 +374,7 @@ class TestQuotaAndCostTracking:
         """
         # Create response with known token usage
         response = {
-            "choices": [
-                {"message": {"content": "Test response"}, "finish_reason": "stop"}
-            ],
+            "choices": [{"message": {"content": "Test response"}, "finish_reason": "stop"}],
             "usage": {
                 "prompt_tokens": 100,
                 "completion_tokens": 200,
@@ -387,9 +385,7 @@ class TestQuotaAndCostTracking:
         mock_client = create_mock_client(chat_responses=response)
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test prompt", min_models=1, max_models=1
-        )
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
 
         result = await _collective_chat_completion_impl(request)
 
@@ -404,9 +400,7 @@ class TestQuotaAndCostTracking:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_quota_tracking_accumulates(
-        self, mock_get_client, create_mock_client
-    ):
+    async def test_quota_tracking_accumulates(self, mock_get_client, create_mock_client):
         """
         REGRESSION TEST: Verify quota tracking accumulates across requests.
 
@@ -414,9 +408,7 @@ class TestQuotaAndCostTracking:
         """
         responses = [
             {
-                "choices": [
-                    {"message": {"content": "Response 1"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Response 1"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 50,
                     "completion_tokens": 100,
@@ -424,9 +416,7 @@ class TestQuotaAndCostTracking:
                 },
             },
             {
-                "choices": [
-                    {"message": {"content": "Response 2"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Response 2"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 60,
                     "completion_tokens": 120,
@@ -438,9 +428,7 @@ class TestQuotaAndCostTracking:
         mock_client = create_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test prompt", min_models=2, max_models=2
-        )
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=2, max_models=2)
 
         result = await _collective_chat_completion_impl(request)
 
@@ -470,9 +458,7 @@ class TestTTLAndHistoryManagement:
         mock_client = create_mock_client()
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(
-            prompt="Test prompt", min_models=1, max_models=1
-        )
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
 
         await _collective_chat_completion_impl(request)
 
@@ -503,9 +489,7 @@ class TestCollectiveChatCompletionE2E:
         """E2E test for collective chat with majority vote strategy."""
         responses = [
             {
-                "choices": [
-                    {"message": {"content": "Answer A"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Answer A"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 5,
@@ -513,9 +497,7 @@ class TestCollectiveChatCompletionE2E:
                 },
             },
             {
-                "choices": [
-                    {"message": {"content": "Answer A"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Answer A"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 5,
@@ -523,9 +505,7 @@ class TestCollectiveChatCompletionE2E:
                 },
             },
             {
-                "choices": [
-                    {"message": {"content": "Answer B"}, "finish_reason": "stop"}
-                ],
+                "choices": [{"message": {"content": "Answer B"}, "finish_reason": "stop"}],
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 5,
@@ -613,13 +593,38 @@ class TestAdaptiveModelSelectionE2E:
             query="Write a hello world function",
             task_type="code_generation",
             performance_requirements={"accuracy": 0.9},
+            constraints={
+                "preferred_provider": "openai",
+                "min_context_length": 10000,
+            },
         )
 
-        result = await _adaptive_model_selection_impl(request)
+        thrift_metrics = _build_runtime_thrift_metrics(
+            "openai/gpt-4",
+            "anthropic/claude-3-opus",
+            "meta-llama/llama-3-70b",
+            "deepseek/deepseek-coder",
+        )
+        with patch(
+            "openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
+            return_value=thrift_metrics,
+        ):
+            result = await _adaptive_model_selection_impl(request)
 
         assert result is not None
         assert "selected_model" in result
         assert "selection_reasoning" in result
+        assert "constraints_applied" in result["routing_metrics"]
+        assert "constraints_unmet" in result["routing_metrics"]
+        assert "filtered_candidates" in result["routing_metrics"]
+        assert "performance_weights" in result["routing_metrics"]
+        assert "preference_matches" in result["routing_metrics"]
+        assert "preferred_provider" in result["routing_metrics"]["constraints_applied"]
+        assert "min_context_length" in result["routing_metrics"]["constraints_applied"]
+        assert result["routing_metrics"]["filtered_candidates"] >= 1
+        assert result["routing_metrics"]["performance_weights"]["accuracy"] == 1.0
+        assert result["routing_metrics"]["thrift_feedback"]["source"] == "provider"
+        assert result["routing_metrics"]["thrift_feedback"]["window_end"]
 
 
 class TestCrossModelValidationE2E:
