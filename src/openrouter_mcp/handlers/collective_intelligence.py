@@ -27,11 +27,12 @@ from ..collective_intelligence import (
     TaskContext,
     TaskType,
     get_lifecycle_manager,
+    shutdown_lifecycle_manager,
 )
 from ..collective_intelligence.base import ModelCapability
 
 # Import centralized configuration constants
-from ..config.constants import ConsensusDefaults, ModelDefaults, PricingDefaults
+from ..config.constants import CollectiveDefaults, ConsensusDefaults, ModelDefaults, PricingDefaults
 
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import get_openrouter_client, mcp
@@ -298,10 +299,22 @@ class OpenRouterModelProvider:
 async def _get_configured_lifecycle_manager() -> CollectiveIntelligenceLifecycleManager:
     """Return lifecycle manager configured with a shared OpenRouter model provider."""
     client = await maybe_await(get_openrouter_client())
-    model_provider = OpenRouterModelProvider(client)
     lifecycle_manager = await get_lifecycle_manager()
+    existing_provider = getattr(lifecycle_manager, "_model_provider", None)
+    existing_client = getattr(existing_provider, "client", None)
+
+    if existing_client is not None and existing_client is not client:
+        await shutdown_lifecycle_manager()
+        lifecycle_manager = await get_lifecycle_manager()
+
+    model_provider = OpenRouterModelProvider(client)
     lifecycle_manager.configure(model_provider)
     return lifecycle_manager
+
+
+def _resolve_collective_max_tokens(max_tokens: Optional[int]) -> int:
+    """Apply a safe default cap for live collective requests."""
+    return max_tokens if max_tokens is not None else CollectiveDefaults.DEFAULT_MAX_TOKENS
 
 
 def _build_requirements(
@@ -480,7 +493,7 @@ async def _collective_chat_completion_impl(
             extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
-            max_tokens=request.max_tokens,
+            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
             models=request.models,
             extras=extras or None,
         )
@@ -571,7 +584,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
             extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
-            max_tokens=request.max_tokens,
+            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
             models=request.models,
             extras=extras or None,
         )
@@ -774,7 +787,7 @@ async def _cross_model_validation_impl(
             extras["system_prompt"] = request.system_prompt
         requirements = _build_requirements(
             temperature=request.temperature,
-            max_tokens=request.max_tokens,
+            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
             models=request.models,
             extras=extras,
         )
@@ -911,7 +924,7 @@ async def _collaborative_problem_solving_impl(
         requirements = _build_requirements(
             base=request.requirements,
             temperature=request.temperature,
-            max_tokens=request.max_tokens,
+            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
             models=request.models,
             extras=extras,
         )

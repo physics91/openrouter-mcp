@@ -56,6 +56,14 @@ def _get_client_lock() -> asyncio.Lock:
     return _client_lock
 
 
+def _shared_client_is_closed(client: Optional["OpenRouterClient"]) -> bool:
+    """Return True when the wrapped HTTP client has already been closed."""
+    if client is None:
+        return True
+    http_client = getattr(client, "_client", None)
+    return bool(getattr(http_client, "is_closed", False))
+
+
 async def get_shared_client() -> "OpenRouterClient":
     """
     Get or create the singleton OpenRouterClient instance.
@@ -87,8 +95,9 @@ async def get_shared_client() -> "OpenRouterClient":
         loop_matches = _client_loop is None or _client_loop is current_loop
         loop_closed = _client_loop.is_closed() if _client_loop is not None else False
         key_matches = (not env_key) or (getattr(_client_instance, "api_key", None) == env_key)
+        client_closed = _shared_client_is_closed(_client_instance)
 
-        if loop_matches and not loop_closed and key_matches:
+        if loop_matches and not loop_closed and not client_closed and key_matches:
             return _client_instance
 
     # Slow path: acquire lock and initialize
@@ -101,13 +110,19 @@ async def get_shared_client() -> "OpenRouterClient":
             loop_matches = _client_loop is None or _client_loop is current_loop
             loop_closed = _client_loop.is_closed() if _client_loop is not None else False
             key_matches = (not env_key) or (getattr(_client_instance, "api_key", None) == env_key)
+            client_closed = _shared_client_is_closed(_client_instance)
 
-            if loop_matches and not loop_closed and key_matches:
+            if loop_matches and not loop_closed and not client_closed and key_matches:
                 return _client_instance
 
             logger.info("Reinitializing shared OpenRouterClient due to loop or key change")
             try:
-                await _client_instance.__aexit__(None, None, None)
+                if not loop_closed and not client_closed:
+                    await _client_instance.__aexit__(None, None, None)
+                else:
+                    logger.info(
+                        "Skipping shared client cleanup during reinitialization because the client or owning loop is already closed"
+                    )
             except Exception as e:
                 logger.error(f"Error during client reinitialization cleanup: {e}")
             finally:
@@ -159,7 +174,8 @@ async def cleanup_shared_client() -> None:
     if _client_instance is not None:
         logger.info("Cleaning up shared OpenRouterClient")
         try:
-            await _client_instance.__aexit__(None, None, None)
+            if not _shared_client_is_closed(_client_instance):
+                await _client_instance.__aexit__(None, None, None)
         except Exception as e:
             logger.error(f"Error during client cleanup: {e}")
         finally:

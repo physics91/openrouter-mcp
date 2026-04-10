@@ -695,7 +695,12 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         for sub_task in ensemble_task.sub_tasks:
             assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-            result = await self._execute_single_sub_task(sub_task, assignment)
+            result = await self._execute_single_sub_task(
+                sub_task,
+                assignment,
+                inherited_requirements=ensemble_task.original_task.requirements,
+                inherited_constraints=ensemble_task.original_task.constraints,
+            )
             results.append(result)
 
             # If a critical task fails, stop execution
@@ -712,7 +717,12 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         async def execute_with_assignment(sub_task: SubTask) -> SubTaskResult:
             assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-            return await self._execute_single_sub_task(sub_task, assignment)
+            return await self._execute_single_sub_task(
+                sub_task,
+                assignment,
+                inherited_requirements=ensemble_task.original_task.requirements,
+                inherited_constraints=ensemble_task.original_task.constraints,
+            )
 
         # Execute all sub-tasks concurrently
         tasks = [execute_with_assignment(sub_task) for sub_task in ensemble_task.sub_tasks]
@@ -760,7 +770,12 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             # Execute ready tasks in parallel
             async def execute_ready_task(sub_task: SubTask) -> SubTaskResult:
                 assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-                return await self._execute_single_sub_task(sub_task, assignment)
+                return await self._execute_single_sub_task(
+                    sub_task,
+                    assignment,
+                    inherited_requirements=ensemble_task.original_task.requirements,
+                    inherited_constraints=ensemble_task.original_task.constraints,
+                )
 
             batch_tasks = [execute_ready_task(task) for task in ready_tasks]
             batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
@@ -789,7 +804,11 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         return await self._execute_parallel(ensemble_task)
 
     async def _execute_single_sub_task(
-        self, sub_task: SubTask, assignment: ModelAssignment
+        self,
+        sub_task: SubTask,
+        assignment: ModelAssignment,
+        inherited_requirements: Optional[Dict[str, Any]] = None,
+        inherited_constraints: Optional[Dict[str, Any]] = None,
     ) -> SubTaskResult:
         """Execute a single sub-task with the assigned model."""
 
@@ -803,6 +822,8 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                     task_id=sub_task.sub_task_id,
                     task_type=sub_task.task_type,
                     content=sub_task.content,
+                    requirements=dict(inherited_requirements or {}),
+                    constraints=dict(inherited_constraints or {}),
                     metadata=sub_task.metadata,
                 )
 

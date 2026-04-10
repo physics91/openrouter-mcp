@@ -81,6 +81,12 @@ class ConsensusDefaults:
     RETRY_ATTEMPTS: int = 2
 
 
+class CollectiveDefaults:
+    """Default limits for collective-intelligence live requests."""
+
+    DEFAULT_MAX_TOKENS: int = 2048
+
+
 class RateLimitConfig:
     """Rate limiting configuration."""
 
@@ -196,6 +202,7 @@ __all__ = [
     "ModelDefaults",
     "EnvVars",
     "ConsensusDefaults",
+    "CollectiveDefaults",
     "RateLimitConfig",
     "LoggingConfig",
     "PricingDefaults",

@@ -58,9 +58,7 @@ async def test_concurrent_client_access():
 
         # All should have the same client ID
         client_ids = [result[0] for result in results]
-        assert (
-            len(set(client_ids)) == 1
-        ), "All handlers should share the same client instance"
+        assert len(set(client_ids)) == 1, "All handlers should share the same client instance"
 
     finally:
         await cleanup_shared_client()
@@ -205,12 +203,27 @@ async def test_client_cleanup():
 
 
 @pytest.mark.asyncio
+async def test_closed_shared_client_is_reinitialized():
+    """Test that a closed shared client is not reused."""
+    from openrouter_mcp.mcp_registry import cleanup_shared_client, get_shared_client
+
+    try:
+        client = await get_shared_client()
+        await client.close()
+
+        replacement = await get_shared_client()
+
+        assert replacement is not client
+        assert not replacement._client.is_closed
+    finally:
+        await cleanup_shared_client()
+
+
+@pytest.mark.asyncio
 async def test_handlers_use_shared_client():
     """Test that handlers actually use the shared client (integration test)."""
     from openrouter_mcp.handlers.chat import get_openrouter_client as chat_get_client
-    from openrouter_mcp.handlers.multimodal import (
-        get_openrouter_client as multimodal_get_client,
-    )
+    from openrouter_mcp.handlers.multimodal import get_openrouter_client as multimodal_get_client
     from openrouter_mcp.mcp_registry import cleanup_shared_client
 
     try:

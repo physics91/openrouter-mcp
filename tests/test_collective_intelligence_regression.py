@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from openrouter_mcp.collective_intelligence import get_lifecycle_manager, shutdown_lifecycle_manager
+from openrouter_mcp.config.constants import CollectiveDefaults
 from openrouter_mcp.handlers.collective_intelligence import (
     AdaptiveModelRequest,
     CollaborativeSolvingRequest,
@@ -296,6 +297,59 @@ class TestParameterWiring:
         # by not calling the API excessively
         assert result is None or isinstance(result, dict)
 
+    @pytest.mark.asyncio
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
+    async def test_collective_chat_uses_safe_default_max_tokens(
+        self, mock_get_client, create_mock_client
+    ):
+        """Collective chat should cap live completions when max_tokens is omitted."""
+        mock_client = create_mock_client()
+        mock_get_client.return_value = mock_client
+
+        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
+
+        await _collective_chat_completion_impl(request)
+
+        call_kwargs = mock_client.chat_completion.call_args[1]
+        assert call_kwargs["max_tokens"] == CollectiveDefaults.DEFAULT_MAX_TOKENS
+
+    @pytest.mark.asyncio
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
+    async def test_ensemble_reasoning_uses_safe_default_max_tokens(
+        self, mock_get_client, create_mock_client
+    ):
+        """Ensemble sub-tasks should inherit the collective max_tokens cap."""
+        responses = [
+            {
+                "choices": [
+                    {
+                        "message": {"content": f"Subtask result {i}"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 30,
+                    "total_tokens": 50,
+                },
+            }
+            for i in range(10)
+        ]
+
+        mock_client = create_mock_client(chat_responses=responses)
+        mock_get_client.return_value = mock_client
+
+        request = EnsembleReasoningRequest(
+            problem="Analyze the potential impacts of remote work on urban planning",
+            task_type="analysis",
+            decompose=True,
+        )
+
+        await _ensemble_reasoning_impl(request)
+
+        for call_obj in mock_client.chat_completion.call_args_list:
+            assert call_obj[1]["max_tokens"] == CollectiveDefaults.DEFAULT_MAX_TOKENS
+
 
 # ============================================================================
 # TEST 3: Concurrent Request Isolation
@@ -351,6 +405,59 @@ class TestConcurrentRequestIsolation:
 
         # Should have both temperatures in the calls
         assert 0.2 in temps_used or 0.9 in temps_used
+
+    @pytest.mark.asyncio
+    @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
+    async def test_collective_requests_refresh_lifecycle_when_client_changes(
+        self, mock_get_client, create_mock_client
+    ):
+        """A new shared client should not keep using the old lifecycle-bound provider."""
+        client_one = create_mock_client(
+            chat_responses={
+                "choices": [
+                    {
+                        "message": {"content": "Response from client one"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "total_tokens": 30,
+                },
+            }
+        )
+        client_two = create_mock_client(
+            chat_responses={
+                "choices": [
+                    {
+                        "message": {"content": "Response from client two"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "total_tokens": 30,
+                },
+            }
+        )
+        mock_get_client.side_effect = [client_one, client_two]
+
+        request = CollectiveChatRequest(
+            prompt="Test prompt",
+            min_models=1,
+            max_models=1,
+            max_tokens=32,
+        )
+
+        first = await _collective_chat_completion_impl(request)
+        second = await _collective_chat_completion_impl(request)
+
+        assert first["consensus_response"] == "Response from client one"
+        assert second["consensus_response"] == "Response from client two"
+        assert client_one.chat_completion.call_count == 1
+        assert client_two.chat_completion.call_count == 1
 
 
 # ============================================================================
