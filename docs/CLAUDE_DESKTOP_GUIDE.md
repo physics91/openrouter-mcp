@@ -95,7 +95,7 @@ If the file doesn't exist, create it. If it exists, add to the existing `mcpServ
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "your-openrouter-api-key-here"
+        "OPENROUTER_API_KEY": "<OPENROUTER_API_KEY>"
       }
     }
   }
@@ -113,7 +113,7 @@ Here's a complete configuration file with multiple MCP servers:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-xxx...",
+        "OPENROUTER_API_KEY": "<OPENROUTER_API_KEY>",
         "OPENROUTER_APP_NAME": "claude-desktop",
         "OPENROUTER_HTTP_REFERER": "https://claude.ai"
       }
@@ -264,7 +264,7 @@ npx @physics91/openrouter-mcp@latest status
 **Debug steps:**
 ```bash
 # Test API key
-curl -H "Authorization: Bearer <OPENROUTER_API_KEY>" https://openrouter.ai/api/v1/models
+curl -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models
 
 # Re-initialize if needed
 npx @physics91/openrouter-mcp@latest init
@@ -347,7 +347,7 @@ You can customize the server behavior with environment variables:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
       "env": {
-        "OPENROUTER_API_KEY": "your-key",
+        "OPENROUTER_API_KEY": "<OPENROUTER_API_KEY>",
         "OPENROUTER_APP_NAME": "my-custom-app",
         "OPENROUTER_HTTP_REFERER": "https://my-domain.com",
         "LOG_LEVEL": "debug",
@@ -370,14 +370,14 @@ You can run multiple OpenRouter instances with different configurations:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start", "--port", "8000"],
       "env": {
-        "OPENROUTER_API_KEY": "your-main-key"
+        "OPENROUTER_API_KEY": "<MAIN_OPENROUTER_API_KEY>"
       }
     },
     "openrouter-experimental": {
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start", "--port", "8001"],
       "env": {
-        "OPENROUTER_API_KEY": "your-experimental-key"
+        "OPENROUTER_API_KEY": "<EXPERIMENT_OPENROUTER_API_KEY>"
       }
     }
   }
@@ -395,7 +395,7 @@ For high-volume usage:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "your-key",
+        "OPENROUTER_API_KEY": "<OPENROUTER_API_KEY>",
         "LOG_LEVEL": "warning",
         "WORKER_PROCESSES": "4",
         "REQUEST_TIMEOUT": "300"

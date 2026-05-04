@@ -286,15 +286,15 @@ console.log('Master key initialized');
 
 ```javascript
 // Encrypt API key
-const apiKey = 'placeholder';
+const apiKey = 'example-openrouter-api-key';
 const encrypted = cryptoManager.encryptWithMasterKey(apiKey, masterKey);
 
 console.log(encrypted);
 // {
 //   version: '2.0',
 //   algorithm: 'aes-256-gcm',
-//   iv: 'a1b2c3d4e5f6g7h8i9j0',
-//   authTag: 'placeholder',
+//   iv: '<iv-hex>',
+//   authTag: '<auth-tag-hex>',
 //   ciphertext: '...',
 //   created: '2025-01-18T12:00:00.000Z'
 // }
@@ -308,7 +308,7 @@ const masterKey = await cryptoManager.retrieveMasterKey();
 
 // Decrypt
 const plaintext = cryptoManager.decryptWithMasterKey(encrypted, masterKey);
-console.log(plaintext); // 'placeholder'
+console.log(plaintext); // 'example-openrouter-api-key'
 ```
 
 ### Export/Import Master Key

@@ -26,6 +26,7 @@ repos:
         stages: [pre-commit]
       - id: name-tests-test
         args: ['--pytest-test-first']
+        exclude: ^tests/fixtures/(benchmark_samples|ci_compact|ci_fixtures|collective_payloads|httpx_mocks|mock_clients|mock_responses|state_management)\.py$
         stages: [pre-commit]
 
   - repo: https://github.com/psf/black

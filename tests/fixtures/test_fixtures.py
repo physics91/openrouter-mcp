@@ -32,7 +32,7 @@ class TestMockClientFactory:
         """Should create a mock OpenRouter client with correct attributes."""
         client = MockClientFactory.create_openrouter_client()
 
-        assert client.api_key == "placeholder"
+        assert client.api_key == "test-api-key"
         assert client.base_url == "https://openrouter.ai/api/v1"
         assert client.timeout == 30.0
         assert client._initialized is True
@@ -248,9 +248,7 @@ class TestConsensusConfigFactory:
 
     def test_majority_vote(self):
         """Should create majority vote config."""
-        from openrouter_mcp.collective_intelligence.consensus_engine import (
-            ConsensusStrategy,
-        )
+        from openrouter_mcp.collective_intelligence.consensus_engine import ConsensusStrategy
 
         config = ConsensusConfigFactory.majority_vote()
 
@@ -260,9 +258,7 @@ class TestConsensusConfigFactory:
 
     def test_weighted_average(self):
         """Should create weighted average config."""
-        from openrouter_mcp.collective_intelligence.consensus_engine import (
-            ConsensusStrategy,
-        )
+        from openrouter_mcp.collective_intelligence.consensus_engine import ConsensusStrategy
 
         config = ConsensusConfigFactory.weighted_average()
 
@@ -270,9 +266,7 @@ class TestConsensusConfigFactory:
 
     def test_confidence_threshold(self):
         """Should create confidence threshold config."""
-        from openrouter_mcp.collective_intelligence.consensus_engine import (
-            ConsensusStrategy,
-        )
+        from openrouter_mcp.collective_intelligence.consensus_engine import ConsensusStrategy
 
         config = ConsensusConfigFactory.confidence_threshold()
 

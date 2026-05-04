@@ -26,7 +26,7 @@ class MockClientFactory:
 
     @staticmethod
     def create_openrouter_client(
-        api_key: str = "placeholder",
+        api_key: str = "test-api-key",
         base_url: str = "https://openrouter.ai/api/v1",
         timeout: float = 30.0,
     ) -> Mock:
@@ -131,7 +131,7 @@ class MockEnvFactory:
     def standard_env() -> Dict[str, str]:
         """Get standard environment variables for testing."""
         return {
-            "OPENROUTER_API_KEY": "placeholder",
+            "OPENROUTER_API_KEY": "test-api-key",
             "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
             "OPENROUTER_APP_NAME": "test-app",
             "OPENROUTER_HTTP_REFERER": "https://test.com",
@@ -141,7 +141,7 @@ class MockEnvFactory:
     def minimal_env() -> Dict[str, str]:
         """Get minimal environment variables (API key only)."""
         return {
-            "OPENROUTER_API_KEY": "placeholder",
+            "OPENROUTER_API_KEY": "test-api-key",
         }
 
     @staticmethod
