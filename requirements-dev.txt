@@ -1,7 +1,7 @@
 -r requirements.txt
 
 # Testing framework
-pytest>=7.0.0
+pytest>=9.0.3
 pytest-asyncio>=0.21.0
 pytest-mock>=3.10.0
 pytest-cov>=4.0.0
@@ -20,7 +20,7 @@ mypy>=1.0.0
 ruff>=0.1.0
 
 # Security scanning
-bandit>=1.7.0
+bandit>=1.7.7
 safety>=2.3.0
 
 # Documentation
@@ -36,5 +36,5 @@ memory-profiler>=0.60.0
 line-profiler>=4.0.0
 
 # Development utilities
-ipython>=8.0.0
+ipython>=8.10.0
 jupyter>=1.0.0
