@@ -229,12 +229,12 @@ function setSecurePermissions(filePath) {
       console.log(chalk.green(`✓ Set secure permissions (600) on ${filePath}`));
     } else {
       // Windows: Use icacls to restrict access
-      const { execSync } = require('child_process');
+      const { execFileSync } = require('child_process');
       const username = process.env.USERNAME;
 
       // Remove inheritance and grant only current user
       try {
-        execSync(`icacls "${filePath}" /inheritance:r /grant:r "${username}:F"`, {
+        execFileSync('icacls', [filePath, '/inheritance:r', '/grant:r', `${username}:F`], {
           stdio: 'pipe'
         });
         console.log(chalk.green(`✓ Set secure permissions on ${filePath}`));

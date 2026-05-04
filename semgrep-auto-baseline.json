@@ -25,12 +25,6 @@
       "source_sha256": "387c192ca3e787c4075192e3268169e569df7ea78ca97421f41e721e12811b18"
     },
     {
-      "check_id": "javascript.lang.security.detect-child-process.detect-child-process",
-      "line": 237,
-      "path": "bin/secure-credentials.js",
-      "source_sha256": "7a8f2c641f9402296e8b1f432defc32991cb214e87355fb5b04c5a678bcd5d24"
-    },
-    {
       "check_id": "python.lang.security.audit.non-literal-import.non-literal-import",
       "line": 23,
       "path": "src/openrouter_mcp/handlers/__init__.py",

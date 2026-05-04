@@ -186,3 +186,52 @@ fs.writeFileSync(
     assert claude_desktop_server["command"] == "npx"
     assert claude_desktop_server["args"] == ["@physics91/openrouter-mcp", "start"]
     assert claude_desktop_server["env"] == {"LOG_LEVEL": "info"}
+
+
+@pytest.mark.unit
+def test_windows_secure_permissions_use_argument_array_for_icacls(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env["USERNAME"] = "test user & calc"
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+
+    target_path = str(tmp_path / 'token file "danger".env')
+    script = f"""
+const assert = require("assert");
+const childProcess = require("child_process");
+const os = require("os");
+const secure = require({json.dumps(str(SECURE_CREDENTIALS_PATH))});
+
+const originalPlatform = os.platform;
+const originalExecFileSync = childProcess.execFileSync;
+const originalExecSync = childProcess.execSync;
+const calls = [];
+let execSyncCalled = false;
+
+os.platform = () => "win32";
+childProcess.execFileSync = (...args) => {{
+  calls.push(args);
+}};
+childProcess.execSync = () => {{
+  execSyncCalled = true;
+  throw new Error("execSync should not be used for icacls");
+}};
+
+try {{
+  secure.setSecurePermissions({json.dumps(target_path)});
+  assert.strictEqual(execSyncCalled, false);
+  assert.deepStrictEqual(calls, [[
+    "icacls",
+    [{json.dumps(target_path)}, "/inheritance:r", "/grant:r", `${{process.env.USERNAME}}:F`],
+    {{ stdio: "pipe" }},
+  ]]);
+}} finally {{
+  os.platform = originalPlatform;
+  childProcess.execFileSync = originalExecFileSync;
+  childProcess.execSync = originalExecSync;
+}}
+"""
+
+    result = _run_node_script(script, cwd=REPO_ROOT, env=env)
+
+    assert result.returncode == 0, result.stderr
