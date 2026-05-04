@@ -221,6 +221,7 @@ jobs:
         set +e
         TRIVY_CACHE_DIR="${trivy_cache_dir}" "${trivy_dir}/trivy" fs \
           --scanners vuln \
+          --include-dev-deps \
           --format json \
           --output trivy-report.json \
           --skip-dirs node_modules \
