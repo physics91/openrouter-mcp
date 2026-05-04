@@ -10,6 +10,7 @@
       "check_id": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal",
       "line": 41,
       "path": "bin/claude-config-utils.js",
+      "rationale": "Reviewed via debate-decision: production callers use os.homedir(), suffix is fixed .claude.json, and no CLI/API/config input reaches homeDir.",
       "source_sha256": "4eff739078603c03e319eabd8fd8b6ab43daf81be86f3ac2100c4ba8c5ead8c2"
     },
     {
