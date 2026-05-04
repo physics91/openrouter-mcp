@@ -199,6 +199,48 @@ jobs:
         exit 0
       continue-on-error: true
 
+    - name: Run Trivy scan
+      run: |
+        set -euo pipefail
+        trivy_version="0.70.0"
+        trivy_asset="trivy_${trivy_version}_Linux-64bit.tar.gz"
+        trivy_dir="$(mktemp -d)"
+        trivy_cache_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/aquasecurity/trivy/releases/download/v${trivy_version}/${trivy_asset}" \
+          -o "${trivy_dir}/${trivy_asset}"
+        curl -fsSL \
+          "https://github.com/aquasecurity/trivy/releases/download/v${trivy_version}/trivy_${trivy_version}_checksums.txt" \
+          -o "${trivy_dir}/trivy_${trivy_version}_checksums.txt"
+        grep "  ${trivy_asset}$" "${trivy_dir}/trivy_${trivy_version}_checksums.txt" | (
+          cd "${trivy_dir}"
+          sha256sum -c -
+        )
+        tar -xzf "${trivy_dir}/${trivy_asset}" -C "${trivy_dir}"
+
+        set +e
+        TRIVY_CACHE_DIR="${trivy_cache_dir}" "${trivy_dir}/trivy" fs \
+          --scanners vuln \
+          --format json \
+          --output trivy-report.json \
+          --skip-dirs node_modules \
+          --skip-dirs .git \
+          --skip-dirs .security-semgrep \
+          .
+        status=$?
+        python - trivy "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
     - name: Run pip-audit
       run: |
         set +e
@@ -359,6 +401,7 @@ jobs:
           safety-output.json
           npm-audit-report.json
           grype-report.json
+          trivy-report.json
           pip-audit-report.json
           pip-audit-security-report.json
           pip-audit-semgrep-report.json

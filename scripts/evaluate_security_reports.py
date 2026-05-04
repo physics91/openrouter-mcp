@@ -16,6 +16,7 @@ EXPECTED_STATUS_KEYS = (
     "safety",
     "npm-audit",
     "grype",
+    "trivy",
     "pip-audit",
     "pip-audit-security",
     "pip-audit-semgrep",
@@ -118,6 +119,20 @@ def _count_grype(report_dir: Path) -> ScannerEvaluation:
     data = _require_dict(_load_json(report_dir, filename), filename)
     matches = _require_list(data.get("matches"), "matches", filename)
     return _scanner_result(len(matches))
+
+
+def _count_trivy(report_dir: Path) -> ScannerEvaluation:
+    filename = "trivy-report.json"
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    results = _require_list(data.get("Results"), "Results", filename)
+    count = 0
+    for result_index, result in enumerate(results):
+        result_dict = _require_dict(result, filename, f"Results[{result_index}]")
+        vulnerabilities = result_dict.get("Vulnerabilities", [])
+        count += len(
+            _require_list(vulnerabilities, f"Results[{result_index}].Vulnerabilities", filename)
+        )
+    return _scanner_result(count)
 
 
 def _count_pip_audit(report_dir: Path, filename: str) -> ScannerEvaluation:
@@ -297,6 +312,7 @@ def evaluate_reports(
             "safety": _count_safety(report_dir),
             "npm-audit": _count_npm_audit(report_dir),
             "grype": _count_grype(report_dir),
+            "trivy": _count_trivy(report_dir),
             "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
             "pip-audit-security": _count_pip_audit(report_dir, "pip-audit-security-report.json"),
             "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),
