@@ -30,8 +30,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE_REF="origin/${{ github.base_ref }}"
-          git fetch --no-tags --prune origin "${{ github.base_ref }}"
+          BASE_BRANCH="${GITHUB_BASE_REF:?GITHUB_BASE_REF is required}"
+          BASE_REF="origin/${BASE_BRANCH}"
+          git fetch --no-tags --prune origin "${BASE_BRANCH}"
 
           mapfile -t COMMIT_SUBJECTS < <(git log --format=%s "${BASE_REF}..HEAD")
           if [ ${#COMMIT_SUBJECTS[@]} -eq 0 ]; then
