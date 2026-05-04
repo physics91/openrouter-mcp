@@ -15,6 +15,8 @@ DEFAULT_SEMGREP_AUTO_BASELINE = Path("semgrep-auto-baseline.json")
 EXPECTED_STATUS_KEYS = (
     "safety",
     "pip-audit",
+    "pip-audit-security",
+    "pip-audit-semgrep",
     "osv-package-lock",
     "osv-requirements",
     "bandit",
@@ -98,17 +100,17 @@ def _count_safety(report_dir: Path) -> ScannerEvaluation:
     )
 
 
-def _count_pip_audit(report_dir: Path) -> ScannerEvaluation:
-    data = _require_dict(_load_json(report_dir, "pip-audit-report.json"), "pip-audit-report.json")
-    dependencies = _require_list(data.get("dependencies"), "dependencies", "pip-audit-report.json")
+def _count_pip_audit(report_dir: Path, filename: str) -> ScannerEvaluation:
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    dependencies = _require_list(data.get("dependencies"), "dependencies", filename)
     count = 0
     for index, dependency in enumerate(dependencies):
         if not isinstance(dependency, dict):
-            raise SecurityReportError(
-                f"pip-audit-report.json dependency #{index} must be an object"
-            )
+            raise SecurityReportError(f"{filename} dependency #{index} must be an object")
         vulns = _require_list(
-            dependency.get("vulns"), f"dependencies[{index}].vulns", "pip-audit-report.json"
+            dependency.get("vulns"),
+            f"dependencies[{index}].vulns",
+            filename,
         )
         count += len(vulns)
     return _scanner_result(count)
@@ -273,7 +275,9 @@ def evaluate_reports(
         status = _load_status(report_dir)
         scanners: dict[str, ScannerEvaluation] = {
             "safety": _count_safety(report_dir),
-            "pip-audit": _count_pip_audit(report_dir),
+            "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
+            "pip-audit-security": _count_pip_audit(report_dir, "pip-audit-security-report.json"),
+            "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),
             "osv-package-lock": _count_osv(report_dir, "osv-package-lock-report.json"),
             "osv-requirements": _count_osv(report_dir, "osv-requirements-report.json"),
             "bandit": _count_bandit(report_dir),
