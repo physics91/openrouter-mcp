@@ -40,6 +40,8 @@ def write_reports(
     status = {
         "safety": 0,
         "pip-audit": 0,
+        "osv-package-lock": 0,
+        "osv-requirements": 0,
         "bandit": 0,
         "semgrep-auto": 0,
         "semgrep-owasp": 0,
@@ -53,6 +55,8 @@ def write_reports(
         "pip-audit-report.json": {
             "dependencies": [{"name": "demo", "version": "1.0", "vulns": []}]
         },
+        "osv-package-lock-report.json": {"results": []},
+        "osv-requirements-report.json": {"results": []},
         "bandit-report.json": {"errors": [], "results": []},
         "semgrep-auto-report.json": {"errors": [], "results": []},
         "semgrep-owasp-report.json": {"errors": [], "results": []},
@@ -63,6 +67,14 @@ def write_reports(
         reports["safety-report.json"]["report_meta"]["vulnerabilities_found"] = 1
     elif finding_scanner == "pip-audit":
         reports["pip-audit-report.json"]["dependencies"][0]["vulns"] = [{"id": "TEST"}]
+    elif finding_scanner == "osv-package-lock":
+        reports["osv-package-lock-report.json"]["results"] = [
+            {"packages": [{"vulnerabilities": [{"id": "GHSA-test"}]}]}
+        ]
+    elif finding_scanner == "osv-requirements":
+        reports["osv-requirements-report.json"]["results"] = [
+            {"packages": [{"vulnerabilities": [{"id": "GHSA-test"}]}]}
+        ]
     elif finding_scanner == "bandit":
         reports["bandit-report.json"]["results"] = [{"test_id": "B000"}]
     elif finding_scanner == "semgrep-auto":
@@ -87,6 +99,10 @@ def write_reports(
         reports["safety-report.json"].pop("report_meta")
     elif schema_missing == "pip-audit":
         reports["pip-audit-report.json"].pop("dependencies")
+    elif schema_missing == "osv-package-lock":
+        reports["osv-package-lock-report.json"].pop("results")
+    elif schema_missing == "osv-requirements":
+        reports["osv-requirements-report.json"].pop("results")
     elif schema_missing == "bandit":
         reports["bandit-report.json"].pop("results")
     elif schema_missing == "semgrep-auto":
@@ -134,7 +150,15 @@ def test_evaluator_passes_zero_reports(tmp_path):
 
 
 def test_evaluator_fails_on_each_scanner_finding(tmp_path):
-    for scanner in ["safety", "pip-audit", "bandit", "semgrep-auto", "semgrep-owasp"]:
+    for scanner in [
+        "safety",
+        "pip-audit",
+        "osv-package-lock",
+        "osv-requirements",
+        "bandit",
+        "semgrep-auto",
+        "semgrep-owasp",
+    ]:
         case_dir = tmp_path / scanner
         case_dir.mkdir()
         write_reports(case_dir, finding_scanner=scanner)

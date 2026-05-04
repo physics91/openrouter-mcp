@@ -15,6 +15,8 @@ DEFAULT_SEMGREP_AUTO_BASELINE = Path("semgrep-auto-baseline.json")
 EXPECTED_STATUS_KEYS = (
     "safety",
     "pip-audit",
+    "osv-package-lock",
+    "osv-requirements",
     "bandit",
     "semgrep-auto",
     "semgrep-owasp",
@@ -109,6 +111,32 @@ def _count_pip_audit(report_dir: Path) -> ScannerEvaluation:
             dependency.get("vulns"), f"dependencies[{index}].vulns", "pip-audit-report.json"
         )
         count += len(vulns)
+    return _scanner_result(count)
+
+
+def _count_osv(report_dir: Path, filename: str) -> ScannerEvaluation:
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    results = _require_list(data.get("results"), "results", filename)
+    count = 0
+    for result_index, result in enumerate(results):
+        result_dict = _require_dict(result, filename, f"results[{result_index}]")
+        packages = _require_list(
+            result_dict.get("packages"),
+            f"results[{result_index}].packages",
+            filename,
+        )
+        for package_index, package in enumerate(packages):
+            package_dict = _require_dict(
+                package,
+                filename,
+                f"results[{result_index}].packages[{package_index}]",
+            )
+            vulnerabilities = _require_list(
+                package_dict.get("vulnerabilities"),
+                f"results[{result_index}].packages[{package_index}].vulnerabilities",
+                filename,
+            )
+            count += len(vulnerabilities)
     return _scanner_result(count)
 
 
@@ -246,6 +274,8 @@ def evaluate_reports(
         scanners: dict[str, ScannerEvaluation] = {
             "safety": _count_safety(report_dir),
             "pip-audit": _count_pip_audit(report_dir),
+            "osv-package-lock": _count_osv(report_dir, "osv-package-lock-report.json"),
+            "osv-requirements": _count_osv(report_dir, "osv-requirements-report.json"),
             "bandit": _count_bandit(report_dir),
             "semgrep-auto": _count_semgrep_auto(
                 report_dir,
