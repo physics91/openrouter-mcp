@@ -244,7 +244,7 @@ jobs:
     - name: Run pip-audit
       run: |
         set +e
-        pip-audit -r requirements.txt -r requirements-dev.txt --format json --output pip-audit-report.json
+        pip-audit --strict -r requirements.txt -r requirements-dev.txt --format json --output pip-audit-report.json
         status=$?
         python - pip-audit "$status" <<'PY'
         import json
@@ -262,7 +262,7 @@ jobs:
     - name: Run pip-audit for security scanners
       run: |
         set +e
-        pip-audit -r requirements-security.txt --format json --output pip-audit-security-report.json
+        pip-audit --strict -r requirements-security.txt --format json --output pip-audit-security-report.json
         status=$?
         python - pip-audit-security "$status" <<'PY'
         import json
@@ -280,7 +280,7 @@ jobs:
     - name: Run pip-audit for semgrep environment
       run: |
         set +e
-        pip-audit -r requirements-semgrep.txt --format json --output pip-audit-semgrep-report.json
+        pip-audit --strict -r requirements-semgrep.txt --format json --output pip-audit-semgrep-report.json
         status=$?
         python - pip-audit-semgrep "$status" <<'PY'
         import json
