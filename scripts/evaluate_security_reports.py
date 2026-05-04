@@ -16,6 +16,7 @@ EXPECTED_STATUS_KEYS = (
     "safety",
     "npm-audit",
     "retire",
+    "grype",
     "pip-audit",
     "pip-audit-security",
     "pip-audit-semgrep",
@@ -139,6 +140,13 @@ def _count_retire(report_dir: Path) -> ScannerEvaluation:
             )
             count += len(vulnerabilities)
     return _scanner_result(count, bool(errors))
+
+
+def _count_grype(report_dir: Path) -> ScannerEvaluation:
+    filename = "grype-report.json"
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    matches = _require_list(data.get("matches"), "matches", filename)
+    return _scanner_result(len(matches))
 
 
 def _count_pip_audit(report_dir: Path, filename: str) -> ScannerEvaluation:
@@ -318,6 +326,7 @@ def evaluate_reports(
             "safety": _count_safety(report_dir),
             "npm-audit": _count_npm_audit(report_dir),
             "retire": _count_retire(report_dir),
+            "grype": _count_grype(report_dir),
             "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
             "pip-audit-security": _count_pip_audit(report_dir, "pip-audit-security-report.json"),
             "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),

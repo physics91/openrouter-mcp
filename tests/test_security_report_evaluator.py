@@ -41,6 +41,7 @@ def write_reports(
         "safety": 0,
         "npm-audit": 0,
         "retire": 0,
+        "grype": 0,
         "pip-audit": 0,
         "pip-audit-security": 0,
         "pip-audit-semgrep": 0,
@@ -63,6 +64,7 @@ def write_reports(
             "messages": [],
             "errors": [],
         },
+        "grype-report.json": {"matches": [], "source": {"type": "directory"}},
         "pip-audit-report.json": {
             "dependencies": [{"name": "demo", "version": "1.0", "vulns": []}]
         },
@@ -97,6 +99,8 @@ def write_reports(
                 ],
             }
         ]
+    elif finding_scanner == "grype":
+        reports["grype-report.json"]["matches"] = [{"vulnerability": {"id": "CVE-TEST"}}]
     elif finding_scanner == "pip-audit":
         reports["pip-audit-report.json"]["dependencies"][0]["vulns"] = [{"id": "TEST"}]
     elif finding_scanner == "pip-audit-security":
@@ -137,6 +141,8 @@ def write_reports(
         reports["npm-audit-report.json"].pop("metadata")
     elif schema_missing == "retire":
         reports["retire-report.json"].pop("data")
+    elif schema_missing == "grype":
+        reports["grype-report.json"].pop("matches")
     elif schema_missing == "pip-audit":
         reports["pip-audit-report.json"].pop("dependencies")
     elif schema_missing == "pip-audit-security":
@@ -198,6 +204,7 @@ def test_evaluator_fails_on_each_scanner_finding(tmp_path):
         "safety",
         "npm-audit",
         "retire",
+        "grype",
         "pip-audit",
         "pip-audit-security",
         "pip-audit-semgrep",

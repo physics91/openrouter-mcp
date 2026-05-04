@@ -189,6 +189,40 @@ jobs:
         exit 0
       continue-on-error: true
 
+    - name: Run Grype scan
+      run: |
+        set -euo pipefail
+        grype_version="0.112.0"
+        grype_asset="grype_${grype_version}_linux_amd64.tar.gz"
+        grype_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/anchore/grype/releases/download/v${grype_version}/${grype_asset}" \
+          -o "${grype_dir}/${grype_asset}"
+        curl -fsSL \
+          "https://github.com/anchore/grype/releases/download/v${grype_version}/grype_${grype_version}_checksums.txt" \
+          -o "${grype_dir}/grype_${grype_version}_checksums.txt"
+        grep "  ${grype_asset}$" "${grype_dir}/grype_${grype_version}_checksums.txt" | (
+          cd "${grype_dir}"
+          sha256sum -c -
+        )
+        tar -xzf "${grype_dir}/${grype_asset}" -C "${grype_dir}"
+
+        set +e
+        "${grype_dir}/grype" dir:. -o json > grype-report.json
+        status=$?
+        python - grype "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
     - name: Run pip-audit
       run: |
         set +e
@@ -349,6 +383,7 @@ jobs:
           safety-output.json
           npm-audit-report.json
           retire-report.json
+          grype-report.json
           pip-audit-report.json
           pip-audit-security-report.json
           pip-audit-semgrep-report.json
