@@ -62,7 +62,7 @@ jobs:
         if: matrix.python-version == '3.11' && github.ref == 'refs/heads/main'
         run: |
           coverage_percent=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); print(f\"{float(tree.getroot().attrib['line-rate']) * 100:.0f}\")")
-          echo "COVERAGE=$coverage_percent" >> $GITHUB_ENV
+          echo "COVERAGE=$coverage_percent" >> "$GITHUB_ENV"
 
       - name: Create coverage comment
         if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
