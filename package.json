@@ -84,6 +84,10 @@
   "optionalDependencies": {
     "keytar": "^7.9.0"
   },
+  "overrides": {
+    "brace-expansion": "1.1.14",
+    "flatted": "3.4.2"
+  },
   "preferGlobal": true,
   "os": [
     "darwin",
