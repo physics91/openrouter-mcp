@@ -14,6 +14,7 @@ DEFAULT_SEMGREP_AUTO_BASELINE = Path("semgrep-auto-baseline.json")
 
 EXPECTED_STATUS_KEYS = (
     "safety",
+    "npm-audit",
     "pip-audit",
     "pip-audit-security",
     "pip-audit-semgrep",
@@ -98,6 +99,17 @@ def _count_safety(report_dir: Path) -> ScannerEvaluation:
             "safety-report.json",
         )
     )
+
+
+def _count_npm_audit(report_dir: Path) -> ScannerEvaluation:
+    filename = "npm-audit-report.json"
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    metadata = _require_dict(data.get("metadata"), filename, "metadata")
+    vulnerabilities = _require_dict(
+        metadata.get("vulnerabilities"), filename, "metadata.vulnerabilities"
+    )
+    total = _require_int(vulnerabilities.get("total"), "metadata.vulnerabilities.total", filename)
+    return _scanner_result(total)
 
 
 def _count_pip_audit(report_dir: Path, filename: str) -> ScannerEvaluation:
@@ -275,6 +287,7 @@ def evaluate_reports(
         status = _load_status(report_dir)
         scanners: dict[str, ScannerEvaluation] = {
             "safety": _count_safety(report_dir),
+            "npm-audit": _count_npm_audit(report_dir),
             "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
             "pip-audit-security": _count_pip_audit(report_dir, "pip-audit-security-report.json"),
             "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),

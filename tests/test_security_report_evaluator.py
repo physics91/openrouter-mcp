@@ -39,6 +39,7 @@ def write_reports(
 
     status = {
         "safety": 0,
+        "npm-audit": 0,
         "pip-audit": 0,
         "pip-audit-security": 0,
         "pip-audit-semgrep": 0,
@@ -54,6 +55,7 @@ def write_reports(
     reports = {
         "security-status.json": status,
         "safety-report.json": {"report_meta": {"vulnerabilities_found": 0}},
+        "npm-audit-report.json": {"metadata": {"vulnerabilities": {"total": 0}}},
         "pip-audit-report.json": {
             "dependencies": [{"name": "demo", "version": "1.0", "vulns": []}]
         },
@@ -73,6 +75,8 @@ def write_reports(
 
     if finding_scanner == "safety":
         reports["safety-report.json"]["report_meta"]["vulnerabilities_found"] = 1
+    elif finding_scanner == "npm-audit":
+        reports["npm-audit-report.json"]["metadata"]["vulnerabilities"]["total"] = 1
     elif finding_scanner == "pip-audit":
         reports["pip-audit-report.json"]["dependencies"][0]["vulns"] = [{"id": "TEST"}]
     elif finding_scanner == "pip-audit-security":
@@ -109,6 +113,8 @@ def write_reports(
 
     if schema_missing == "safety":
         reports["safety-report.json"].pop("report_meta")
+    elif schema_missing == "npm-audit":
+        reports["npm-audit-report.json"].pop("metadata")
     elif schema_missing == "pip-audit":
         reports["pip-audit-report.json"].pop("dependencies")
     elif schema_missing == "pip-audit-security":
@@ -168,6 +174,7 @@ def test_evaluator_passes_zero_reports(tmp_path):
 def test_evaluator_fails_on_each_scanner_finding(tmp_path):
     for scanner in [
         "safety",
+        "npm-audit",
         "pip-audit",
         "pip-audit-security",
         "pip-audit-semgrep",

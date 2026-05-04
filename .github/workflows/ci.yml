@@ -98,6 +98,11 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # actions/setup-node@v6
+      with:
+        node-version: '18'
+
     - name: Set up Go
       uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # actions/setup-go@v6
       with:
@@ -124,6 +129,24 @@ jobs:
         safety check -r requirements.txt -r requirements-dev.txt --json --save-json safety-report.json > safety-output.json
         status=$?
         python - safety "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
+    - name: Run npm audit
+      run: |
+        set +e
+        npm audit --json > npm-audit-report.json
+        status=$?
+        python - npm-audit "$status" <<'PY'
         import json
         import sys
         from pathlib import Path
@@ -294,6 +317,7 @@ jobs:
           security-status.json
           safety-report.json
           safety-output.json
+          npm-audit-report.json
           pip-audit-report.json
           pip-audit-security-report.json
           pip-audit-semgrep-report.json
