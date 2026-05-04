@@ -1,15 +1,12 @@
 """Handler registration helpers for the shared FastMCP instance."""
 
-from importlib import import_module
-
-_HANDLER_MODULES = (
-    "chat",
-    "collective_intelligence",
-    "free_chat",
-    "mcp_benchmark",
-    "multimodal",
-)
 _handlers_registered = False
+
+
+def _load_handler_modules() -> tuple[object, ...]:
+    from . import chat, collective_intelligence, free_chat, mcp_benchmark, multimodal
+
+    return (chat, collective_intelligence, free_chat, mcp_benchmark, multimodal)
 
 
 def register_handlers() -> None:
@@ -19,9 +16,7 @@ def register_handlers() -> None:
     if _handlers_registered:
         return
 
-    for module_name in _HANDLER_MODULES:
-        import_module(f"{__name__}.{module_name}")
-
+    _load_handler_modules()
     _handlers_registered = True
 
 

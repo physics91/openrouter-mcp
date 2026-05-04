@@ -27,12 +27,6 @@
       "path": "bin/openrouter-mcp.js",
       "rationale": "Reviewed via debate-decision: current runCommand callers use fixed Python checks, repository-local requirements install, and Claude Code commands from local constants/package metadata; no CLI/API/config/network values may reach command or args, and new callers require re-audit. Assumes same-user CLI execution with trusted PATH.",
       "source_sha256": "387c192ca3e787c4075192e3268169e569df7ea78ca97421f41e721e12811b18"
-    },
-    {
-      "check_id": "python.lang.security.audit.non-literal-import.non-literal-import",
-      "line": 23,
-      "path": "src/openrouter_mcp/handlers/__init__.py",
-      "source_sha256": "e17c41d047b98bab09cc6a040fff50af37eb7103ddf62d21a5568bea93ce63e2"
     }
   ]
 }
