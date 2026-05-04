@@ -1,0 +1,5 @@
+# Security scanner versions are pinned because CI parses their JSON reports.
+# Update these intentionally with evaluator fixture/test refresh.
+safety==3.7.0
+bandit==1.9.4
+pip-audit==2.10.0

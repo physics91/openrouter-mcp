@@ -1,0 +1,3 @@
+# Semgrep is installed in an isolated venv because its dependency pins conflict
+# with pip-audit in the shared security scanner environment.
+semgrep==1.161.0

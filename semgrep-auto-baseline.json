@@ -1,0 +1,40 @@
+{
+  "findings": [
+    {
+      "check_id": "javascript.lang.security.detect-child-process.detect-child-process",
+      "line": 13,
+      "path": "bin/check-python.js",
+      "source_sha256": "387c192ca3e787c4075192e3268169e569df7ea78ca97421f41e721e12811b18"
+    },
+    {
+      "check_id": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal",
+      "line": 41,
+      "path": "bin/claude-config-utils.js",
+      "source_sha256": "4eff739078603c03e319eabd8fd8b6ab43daf81be86f3ac2100c4ba8c5ead8c2"
+    },
+    {
+      "check_id": "javascript.lang.security.detect-child-process.detect-child-process",
+      "line": 253,
+      "path": "bin/openrouter-mcp.js",
+      "source_sha256": "0dcb7c7d20ea6ed492affc282a6acdfa32283914aa6398f5017cb6ae8d00724a"
+    },
+    {
+      "check_id": "javascript.lang.security.detect-child-process.detect-child-process",
+      "line": 1211,
+      "path": "bin/openrouter-mcp.js",
+      "source_sha256": "387c192ca3e787c4075192e3268169e569df7ea78ca97421f41e721e12811b18"
+    },
+    {
+      "check_id": "javascript.lang.security.detect-child-process.detect-child-process",
+      "line": 237,
+      "path": "bin/secure-credentials.js",
+      "source_sha256": "7a8f2c641f9402296e8b1f432defc32991cb214e87355fb5b04c5a678bcd5d24"
+    },
+    {
+      "check_id": "python.lang.security.audit.non-literal-import.non-literal-import",
+      "line": 23,
+      "path": "src/openrouter_mcp/handlers/__init__.py",
+      "source_sha256": "e17c41d047b98bab09cc6a040fff50af37eb7103ddf62d21a5568bea93ce63e2"
+    }
+  ]
+}

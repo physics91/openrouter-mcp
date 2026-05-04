@@ -101,21 +101,106 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install safety bandit semgrep
+        pip install -r requirements-security.txt
+
+    - name: Install semgrep
+      run: |
+        python -m venv .security-semgrep
+        .security-semgrep/bin/python -m pip install --upgrade pip
+        .security-semgrep/bin/python -m pip install -r requirements-semgrep.txt
+
+    - name: Initialize security scan status
+      run: |
+        printf '{}\n' > security-status.json
 
     - name: Run safety check
       run: |
-        safety check -r requirements.txt -r requirements-dev.txt --json --save-json safety-report.json
+        set +e
+        safety check -r requirements.txt -r requirements-dev.txt --json --save-json safety-report.json > safety-output.json
+        status=$?
+        python - safety "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
+    - name: Run pip-audit
+      run: |
+        set +e
+        pip-audit -r requirements.txt -r requirements-dev.txt --format json --output pip-audit-report.json
+        status=$?
+        python - pip-audit "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
       continue-on-error: true
 
     - name: Run bandit security scan
       run: |
+        set +e
         bandit -r src/ -f json -o bandit-report.json
+        status=$?
+        python - bandit "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
       continue-on-error: true
 
-    - name: Run semgrep scan
+    - name: Run semgrep auto scan
       run: |
-        semgrep --config=auto src/ --json --output=semgrep-report.json
+        set +e
+        .security-semgrep/bin/semgrep scan --config=auto src bin tests --json --output=semgrep-auto-report.json
+        status=$?
+        python - semgrep-auto "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
+    - name: Run semgrep OWASP scan
+      run: |
+        set +e
+        .security-semgrep/bin/semgrep scan --config=p/owasp-top-ten src bin tests --metrics off --json --output=semgrep-owasp-report.json
+        status=$?
+        python - semgrep-owasp "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
       continue-on-error: true
 
     - name: Upload security reports
@@ -124,9 +209,22 @@ jobs:
       with:
         name: security-reports
         path: |
+          security-status.json
           safety-report.json
+          safety-output.json
+          pip-audit-report.json
           bandit-report.json
-          semgrep-report.json
+          semgrep-auto-report.json
+          semgrep-auto-baseline.json
+          semgrep-owasp-report.json
+
+    - name: Evaluate security scan results
+      if: always()
+      run: |
+        python scripts/evaluate_security_reports.py \
+          --report-dir . \
+          --semgrep-auto-baseline semgrep-auto-baseline.json \
+          --source-root .
 
   quality-checks:
     runs-on: ubuntu-latest
