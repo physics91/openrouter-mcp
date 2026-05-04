@@ -6,6 +6,9 @@ on:
     # Run tests daily at 2 AM UTC
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -243,6 +246,8 @@ jobs:
   documentation:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
       with:
