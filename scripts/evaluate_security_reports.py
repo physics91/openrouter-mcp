@@ -22,6 +22,7 @@ EXPECTED_STATUS_KEYS = (
     "pip-audit-semgrep",
     "osv-package-lock",
     "osv-requirements",
+    "osv-v2-source",
     "bandit",
     "semgrep-auto",
     "semgrep-owasp",
@@ -318,6 +319,7 @@ def evaluate_reports(
             "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),
             "osv-package-lock": _count_osv(report_dir, "osv-package-lock-report.json"),
             "osv-requirements": _count_osv(report_dir, "osv-requirements-report.json"),
+            "osv-v2-source": _count_osv(report_dir, "osv-v2-source-report.json"),
             "bandit": _count_bandit(report_dir),
             "semgrep-auto": _count_semgrep_auto(
                 report_dir,

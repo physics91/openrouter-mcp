@@ -38,3 +38,10 @@ line-profiler>=4.0.0
 # Development utilities
 ipython>=8.10.0
 jupyter>=1.0.0
+
+# Transitive vulnerability floors
+filelock>=3.20.3
+jupyter-server>=2.14.1
+nbconvert>=7.17.1
+python-multipart>=0.0.26
+tqdm>=4.66.3

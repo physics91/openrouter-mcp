@@ -47,6 +47,7 @@ def write_reports(
         "pip-audit-semgrep": 0,
         "osv-package-lock": 0,
         "osv-requirements": 0,
+        "osv-v2-source": 0,
         "bandit": 0,
         "semgrep-auto": 0,
         "semgrep-owasp": 0,
@@ -71,6 +72,7 @@ def write_reports(
         },
         "osv-package-lock-report.json": {"results": []},
         "osv-requirements-report.json": {"results": []},
+        "osv-v2-source-report.json": {"results": []},
         "bandit-report.json": {"errors": [], "results": []},
         "semgrep-auto-report.json": {"errors": [], "results": []},
         "semgrep-owasp-report.json": {"errors": [], "results": []},
@@ -99,6 +101,10 @@ def write_reports(
         ]
     elif finding_scanner == "osv-requirements":
         reports["osv-requirements-report.json"]["results"] = [
+            {"packages": [{"vulnerabilities": [{"id": "GHSA-test"}]}]}
+        ]
+    elif finding_scanner == "osv-v2-source":
+        reports["osv-v2-source-report.json"]["results"] = [
             {"packages": [{"vulnerabilities": [{"id": "GHSA-test"}]}]}
         ]
     elif finding_scanner == "bandit":
@@ -139,6 +145,8 @@ def write_reports(
         reports["osv-package-lock-report.json"].pop("results")
     elif schema_missing == "osv-requirements":
         reports["osv-requirements-report.json"].pop("results")
+    elif schema_missing == "osv-v2-source":
+        reports["osv-v2-source-report.json"].pop("results")
     elif schema_missing == "bandit":
         reports["bandit-report.json"].pop("results")
     elif schema_missing == "semgrep-auto":
@@ -196,6 +204,7 @@ def test_evaluator_fails_on_each_scanner_finding(tmp_path):
         "pip-audit-semgrep",
         "osv-package-lock",
         "osv-requirements",
+        "osv-v2-source",
         "bandit",
         "semgrep-auto",
         "semgrep-owasp",

@@ -336,6 +336,47 @@ jobs:
         exit 0
       continue-on-error: true
 
+    - name: Run OSV v2 source scan
+      run: |
+        set -euo pipefail
+        osv_version="2.3.6"
+        osv_asset="osv-scanner_linux_amd64"
+        osv_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${osv_version}/${osv_asset}" \
+          -o "${osv_dir}/${osv_asset}"
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${osv_version}/osv-scanner_SHA256SUMS" \
+          -o "${osv_dir}/osv-scanner_SHA256SUMS"
+        grep "  ${osv_asset}$" "${osv_dir}/osv-scanner_SHA256SUMS" | (
+          cd "${osv_dir}"
+          sha256sum -c -
+        )
+        chmod +x "${osv_dir}/${osv_asset}"
+
+        set +e
+        "${osv_dir}/${osv_asset}" scan source \
+          --recursive \
+          --experimental-exclude .git \
+          --experimental-exclude .security-semgrep \
+          --experimental-exclude node_modules \
+          --format json \
+          --output-file osv-v2-source-report.json \
+          .
+        status=$?
+        python - osv-v2-source "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
     - name: Run bandit security scan
       run: |
         set +e
@@ -407,6 +448,7 @@ jobs:
           pip-audit-semgrep-report.json
           osv-package-lock-report.json
           osv-requirements-report.json
+          osv-v2-source-report.json
           bandit-report.json
           semgrep-auto-report.json
           semgrep-auto-baseline.json

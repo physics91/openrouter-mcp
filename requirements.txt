@@ -2,6 +2,9 @@ fastmcp==3.2.4
 httpx>=0.25.0
 python-dotenv>=1.2.2
 pydantic>=2.4.0
+
+# Transitive vulnerability floor for FastMCP request parsing.
+python-multipart>=0.0.26
 typing-extensions>=4.0.0
 Pillow>=12.2.0
 portalocker>=2.8.0
