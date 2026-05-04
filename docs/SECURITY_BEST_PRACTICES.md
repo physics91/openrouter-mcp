@@ -589,8 +589,8 @@ test:
 **Responsible Disclosure:**
 
 For security vulnerabilities in OpenRouter MCP:
-- Email: [security@yourproject.com]
-- GitHub Security Advisories (preferred)
+- Disclosure policy: [SECURITY.md](../SECURITY.md)
+- GitHub Issues for non-sensitive questions: https://github.com/physics91/openrouter-mcp/issues
 - Do NOT create public issues
 
 **Include:**
@@ -660,12 +660,12 @@ For security vulnerabilities in OpenRouter MCP:
 ## Support
 
 **Security Questions:**
-- Email: [security@yourproject.com]
+- Disclosure policy: [SECURITY.md](../SECURITY.md)
 - GitHub Discussions (non-sensitive)
 
 **Security Incidents:**
-- GitHub Security Advisories (preferred)
-- Private email for disclosure
+- Follow the root [SECURITY.md](../SECURITY.md) disclosure policy
+- Do not post sensitive details in public issues
 
 **General Support:**
 - GitHub Issues

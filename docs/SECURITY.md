@@ -634,8 +634,8 @@ fi
 ### Incident Response Contact
 
 For security incidents involving this project:
-- Report issues: [GitHub Security Advisories]
-- Email: [security@yourproject.com]
+- Private disclosure policy: [SECURITY.md](../SECURITY.md)
+- Non-sensitive issues: [GitHub Issues](https://github.com/physics91/openrouter-mcp/issues)
 - Severity levels: Critical, High, Medium, Low
 
 ---
@@ -709,8 +709,8 @@ This document is version controlled. Check for updates regularly:
 ## Contact
 
 For security concerns or questions:
-- GitHub Issues (non-sensitive): [Link to issues]
-- Security Email: [security@yourproject.com]
-- Documentation: [Link to docs]
+- GitHub Issues (non-sensitive): [GitHub Issues](https://github.com/physics91/openrouter-mcp/issues)
+- Security disclosure policy: [SECURITY.md](../SECURITY.md)
+- Documentation: [docs](.)
 
-**Note**: For responsible disclosure of security vulnerabilities, please use private security advisories on GitHub or email directly. Do not open public issues for security vulnerabilities.
+**Note**: For responsible disclosure of security vulnerabilities, follow the root [SECURITY.md](../SECURITY.md). Do not open public issues for security vulnerabilities.

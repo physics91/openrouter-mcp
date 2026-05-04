@@ -226,7 +226,12 @@ For team/production environments:
 
 **DO NOT** create public GitHub issues for security vulnerabilities.
 
-**Email:** security@[your-domain-here] (replace with actual security contact)
+**Private reporting:** No public security email or GitHub private
+vulnerability reporting route is currently configured for this repository.
+
+Do not include sensitive vulnerability details in public GitHub issues.
+Maintainers should enable GitHub private vulnerability reporting or publish a
+real security contact before accepting private reports.
 
 **Include:**
 - Detailed description of the vulnerability
@@ -245,7 +250,7 @@ Security patches will be released as:
 - **Patch versions** for backwards-compatible security fixes (e.g., 1.4.1)
 - **Minor versions** for security enhancements requiring changes (e.g., 1.5.0)
 
-Subscribe to security advisories: [GitHub Security Advisories](https://github.com/your-org/openrouter-mcp/security/advisories)
+Subscribe to security advisories: [GitHub Security Advisories](https://github.com/physics91/openrouter-mcp/security/advisories)
 
 ## Compliance & Standards
 
