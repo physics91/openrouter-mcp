@@ -126,7 +126,13 @@ jobs:
     - name: Run safety check
       run: |
         set +e
-        safety check -r requirements.txt -r requirements-dev.txt --json --save-json safety-report.json > safety-output.json
+        safety check \
+          -r requirements.txt \
+          -r requirements-dev.txt \
+          -r requirements-security.txt \
+          -r requirements-semgrep.txt \
+          --json \
+          --save-json safety-report.json > safety-output.json
         status=$?
         python - safety "$status" <<'PY'
         import json
