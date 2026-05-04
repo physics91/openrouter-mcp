@@ -15,6 +15,7 @@ DEFAULT_SEMGREP_AUTO_BASELINE = Path("semgrep-auto-baseline.json")
 EXPECTED_STATUS_KEYS = (
     "safety",
     "npm-audit",
+    "retire",
     "pip-audit",
     "pip-audit-security",
     "pip-audit-semgrep",
@@ -110,6 +111,34 @@ def _count_npm_audit(report_dir: Path) -> ScannerEvaluation:
     )
     total = _require_int(vulnerabilities.get("total"), "metadata.vulnerabilities.total", filename)
     return _scanner_result(total)
+
+
+def _count_retire(report_dir: Path) -> ScannerEvaluation:
+    filename = "retire-report.json"
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    findings = _require_list(data.get("data"), "data", filename)
+    errors = _require_list(data.get("errors"), "errors", filename)
+    count = 0
+    for finding_index, finding in enumerate(findings):
+        finding_dict = _require_dict(finding, filename, f"data[{finding_index}]")
+        results = _require_list(
+            finding_dict.get("results"),
+            f"data[{finding_index}].results",
+            filename,
+        )
+        for result_index, result in enumerate(results):
+            result_dict = _require_dict(
+                result,
+                filename,
+                f"data[{finding_index}].results[{result_index}]",
+            )
+            vulnerabilities = _require_list(
+                result_dict.get("vulnerabilities"),
+                f"data[{finding_index}].results[{result_index}].vulnerabilities",
+                filename,
+            )
+            count += len(vulnerabilities)
+    return _scanner_result(count, bool(errors))
 
 
 def _count_pip_audit(report_dir: Path, filename: str) -> ScannerEvaluation:
@@ -288,6 +317,7 @@ def evaluate_reports(
         scanners: dict[str, ScannerEvaluation] = {
             "safety": _count_safety(report_dir),
             "npm-audit": _count_npm_audit(report_dir),
+            "retire": _count_retire(report_dir),
             "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
             "pip-audit-security": _count_pip_audit(report_dir, "pip-audit-security-report.json"),
             "pip-audit-semgrep": _count_pip_audit(report_dir, "pip-audit-semgrep-report.json"),
@@ -305,7 +335,12 @@ def evaluate_reports(
         return False, [str(exc)]
 
     ok = True
-    for scanner, (blocking_count, parsed_count, has_tool_errors, details) in scanners.items():
+    for scanner, (
+        blocking_count,
+        parsed_count,
+        has_tool_errors,
+        details,
+    ) in scanners.items():
         scanner_status = status[scanner]
         messages.append(
             f"{scanner}: exit={scanner_status} findings={parsed_count} "
