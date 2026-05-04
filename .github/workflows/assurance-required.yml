@@ -85,6 +85,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install -r requirements-security.txt
 
       - name: Install Node dependencies
         run: npm install
@@ -92,6 +93,17 @@ jobs:
       - name: Run assurance test suite
         run: |
           python3 run_tests.py assurance -v
+
+      - name: Run dependency vulnerability audit
+        run: |
+          pip-audit --strict \
+            -r requirements.txt \
+            -r requirements-dev.txt
+          pip-audit --strict \
+            -r requirements-security.txt
+          pip-audit --strict \
+            -r requirements-semgrep.txt
+          npm audit
 
   required-static-checks:
     name: Required Static Checks
