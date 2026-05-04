@@ -98,7 +98,7 @@ jobs:
 
     - name: Run safety check
       run: |
-        safety check --json --output safety-report.json
+        safety check -r requirements.txt -r requirements-dev.txt --json --save-json safety-report.json
       continue-on-error: true
 
     - name: Run bandit security scan
