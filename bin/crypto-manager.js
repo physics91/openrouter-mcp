@@ -39,6 +39,7 @@ const MASTER_KEY_ACCOUNT = 'master-encryption-key';
 const CONFIG_DIR = path.join(os.homedir(), '.openrouter-mcp');
 const MASTER_KEY_FILE = path.join(CONFIG_DIR, '.master-key.enc');
 const KEY_METADATA_FILE = path.join(CONFIG_DIR, '.key-metadata.json');
+const GCM_AUTH_TAG_LENGTH_BYTES = 16;
 
 /**
  * Encryption versions
@@ -165,7 +166,9 @@ function encryptWithMasterKey(plaintext, masterKey) {
     const iv = crypto.randomBytes(12);
 
     // Create cipher
-    const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, iv, {
+      authTagLength: GCM_AUTH_TAG_LENGTH_BYTES
+    });
 
     // Encrypt
     let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
@@ -205,7 +208,8 @@ function decryptWithMasterKey(encryptedData, masterKey) {
     const decipher = crypto.createDecipheriv(
       'aes-256-gcm',
       masterKey,
-      Buffer.from(iv, 'hex')
+      Buffer.from(iv, 'hex'),
+      { authTagLength: GCM_AUTH_TAG_LENGTH_BYTES }
     );
 
     // Set authentication tag for verification
@@ -306,7 +310,8 @@ function decryptLegacyV1(legacyData) {
     const decipher = crypto.createDecipheriv(
       'aes-256-gcm',
       key,
-      Buffer.from(legacyData.iv, 'hex')
+      Buffer.from(legacyData.iv, 'hex'),
+      { authTagLength: GCM_AUTH_TAG_LENGTH_BYTES }
     );
 
     decipher.setAuthTag(Buffer.from(legacyData.authTag, 'hex'));

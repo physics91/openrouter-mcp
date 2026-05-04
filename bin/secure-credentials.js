@@ -45,6 +45,7 @@ const ACCOUNT_API_KEY = 'api-key';
 const CONFIG_DIR = path.join(os.homedir(), '.openrouter-mcp');
 const ENCRYPTED_FILE = path.join(CONFIG_DIR, '.credentials.enc');
 const AUDIT_LOG = path.join(CONFIG_DIR, 'security-audit.log');
+const GCM_AUTH_TAG_LENGTH_BYTES = 16;
 
 /**
  * Storage options with security levels
@@ -837,7 +838,8 @@ function decryptDataLegacy(encrypted, iv, authTag) {
   const decipher = crypto.createDecipheriv(
     'aes-256-gcm',
     key,
-    Buffer.from(iv, 'hex')
+    Buffer.from(iv, 'hex'),
+    { authTagLength: GCM_AUTH_TAG_LENGTH_BYTES }
   );
 
   decipher.setAuthTag(Buffer.from(authTag, 'hex'));
