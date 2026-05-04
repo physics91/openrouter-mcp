@@ -357,6 +357,7 @@ jobs:
         set +e
         "${osv_dir}/${osv_asset}" scan source \
           --recursive \
+          --all-vulns \
           --experimental-exclude .git \
           --experimental-exclude .security-semgrep \
           --experimental-exclude node_modules \
