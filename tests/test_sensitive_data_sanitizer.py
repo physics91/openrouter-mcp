@@ -49,7 +49,7 @@ class TestSanitizeHeaders:
     def test_sanitize_authorization_bearer(self):
         """Test sanitization of Authorization header with Bearer token."""
         headers = {
-            "Authorization": "Bearer placeholder",
+            "Authorization": "Bearer placeholderabcdef",
             "Content-Type": "application/json",
         }
 

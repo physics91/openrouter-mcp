@@ -148,7 +148,7 @@ from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
 
 async def run_benchmark():
     # Set API key
-    os.environ["OPENROUTER_API_KEY"] = "placeholder"
+    os.environ["OPENROUTER_API_KEY"] = "your-api-key"
 
     # Get benchmark handler
     handler = await get_benchmark_handler()

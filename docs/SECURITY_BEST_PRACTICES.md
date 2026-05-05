@@ -114,7 +114,7 @@ openrouter-mcp init
 const { storeInEncryptedFile, getFromEncryptedFile } = require('./bin/secure-credentials');
 
 // Store
-storeInEncryptedFile('placeholder');
+storeInEncryptedFile('your-api-key');
 
 // Retrieve
 const apiKey = getFromEncryptedFile();

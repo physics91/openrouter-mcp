@@ -342,7 +342,7 @@ async def main():
     if not api_key:
         print("❌ OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다.")
         print("   다음 명령으로 API 키를 설정하세요:")
-        print("   export OPENROUTER_API_KEY='placeholder-here'")
+        print("   export OPENROUTER_API_KEY='your-api-key-here'")
         return
     
     print(f"✅ API 키 확인 완료: {api_key[:8]}...")

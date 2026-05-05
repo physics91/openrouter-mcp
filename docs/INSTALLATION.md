@@ -303,7 +303,7 @@ If your client only supports inline environment variables, use:
 ```json
 {
   "env": {
-    "OPENROUTER_API_KEY": "placeholder-here",
+    "OPENROUTER_API_KEY": "your-api-key-here",
     "OPENROUTER_APP_NAME": "my-mcp-client",
     "OPENROUTER_HTTP_REFERER": "https://example.com"
   }
@@ -349,7 +349,7 @@ Add configuration:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "placeholder-here"
+        "OPENROUTER_API_KEY": "your-api-key-here"
       }
     }
   }

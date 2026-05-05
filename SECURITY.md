@@ -13,18 +13,18 @@ This document outlines the security practices and recommendations for using the 
 
 **Windows:**
 ```cmd
-set OPENROUTER_API_KEY=sk-or-v1-placeholder-here
+set OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 ```
 
 **Linux/macOS:**
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-placeholder-here
+export OPENROUTER_API_KEY=sk-or-v1-your-api-key-here
 ```
 
 **Permanent (Linux/macOS):**
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-echo 'export OPENROUTER_API_KEY=sk-or-v1-placeholder-here' >> ~/.bashrc
+echo 'export OPENROUTER_API_KEY=sk-or-v1-your-api-key-here' >> ~/.bashrc
 source ~/.bashrc
 ```
 

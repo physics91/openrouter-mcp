@@ -324,7 +324,7 @@ await keytar.deletePassword('openrouter-mcp', 'api-key');
 ```javascript
 // Store encrypted
 const secureCredentials = require('./bin/secure-credentials');
-secureCredentials.storeInEncryptedFile('placeholder');
+secureCredentials.storeInEncryptedFile('your-api-key');
 
 // Retrieve
 const apiKey = secureCredentials.getFromEncryptedFile();

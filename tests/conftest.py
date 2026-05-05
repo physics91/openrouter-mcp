@@ -26,7 +26,7 @@ def event_loop():
 @pytest.fixture
 def mock_api_key() -> str:
     """Mock API key for testing."""
-    return "placeholder"
+    return "sk-or-test-key-123456789"
 
 
 @pytest.fixture
