@@ -42,6 +42,16 @@ def _load_package_json() -> dict:
     return json.loads(_read_text("package.json"))
 
 
+def _requirement_lines(relative_path: str) -> list[str]:
+    lines = []
+    for raw_line in _read_text(relative_path).splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if line and not line.startswith("-r "):
+            lines.append(line)
+
+    return lines
+
+
 def _tracked_markdown_docs() -> list[Path]:
     result = subprocess.run(
         ["git", "ls-files", "*.md"],
@@ -234,6 +244,34 @@ def test_package_node_engine_matches_supported_lts_minimum() -> None:
 
     assert package["engines"]["node"] == EXPECTED_PACKAGE_NODE_ENGINE
     assert package_lock["packages"][""]["engines"]["node"] == EXPECTED_PACKAGE_NODE_ENGINE
+
+
+def test_requirement_lower_bounds_match_auditable_security_floors() -> None:
+    expected_requirements = {
+        "requirements.txt": {
+            "httpx>=0.28.1",
+            "pydantic>=2.11.7",
+            "typing-extensions>=4.15.0",
+        },
+        "requirements-dev.txt": {
+            "jsonschema>=4.20.0",
+            "pytest-xdist>=3.0.2",
+        },
+        "requirements-security.txt": {
+            "httpx>=0.28.1",
+        },
+    }
+    missing = []
+
+    for relative_path, expected_lines in expected_requirements.items():
+        actual_lines = set(_requirement_lines(relative_path))
+        missing.extend(
+            f"{relative_path}: {expected_line}"
+            for expected_line in sorted(expected_lines)
+            if expected_line not in actual_lines
+        )
+
+    assert not missing, "Requirement lower bounds are stale:\n" + "\n".join(missing)
 
 
 def test_documented_node_minimums_match_supported_lts_policy() -> None:

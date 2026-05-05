@@ -7,7 +7,7 @@ pip-audit==2.10.0
 # Transitive vulnerability floors for scanner environments.
 h11>=0.16.0
 h2>=4.3.0
-httpx>=0.23.0
+httpx>=0.28.1
 idna>=3.7
 pip>=26.1.1
 tqdm>=4.66.3
