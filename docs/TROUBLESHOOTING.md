@@ -43,8 +43,8 @@ node --version
 # Update Node.js
 # Windows/macOS: Download from nodejs.org
 # Using nvm:
-nvm install 16
-nvm use 16
+nvm install --lts
+nvm use --lts
 ```
 
 ### Missing Dependencies

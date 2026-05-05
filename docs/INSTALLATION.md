@@ -552,8 +552,8 @@ pip uninstall fastmcp httpx pillow
 #### Node.js Version Too Old
 ```bash
 # Update Node.js
-nvm install 18
-nvm use 18
+nvm install --lts
+nvm use --lts
 ```
 
 #### Python Not Found

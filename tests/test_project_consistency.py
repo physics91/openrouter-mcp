@@ -639,6 +639,10 @@ def test_tracked_markdown_docs_avoid_eol_node_install_guidance() -> None:
             re.compile(r"FROM\s+node:(?:16|18|20)(?:[-\s]|$)", re.IGNORECASE),
             "use a supported Node.js LTS base image",
         ),
+        (
+            re.compile(r"\bnvm\s+(?:install|use)\s+v?\d+(?:\.\d+){0,2}\b"),
+            "use nvm install --lts and nvm use --lts in user docs",
+        ),
     )
     offenders = []
 
