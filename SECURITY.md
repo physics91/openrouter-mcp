@@ -13,18 +13,18 @@ This document outlines the security practices and recommendations for using the 
 
 **Windows:**
 ```cmd
-set OPENROUTER_API_KEY=sk-or-v1-placeholder-here
+set OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 ```
 
 **Linux/macOS:**
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-placeholder-here
+export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
 ```
 
 **Permanent (Linux/macOS):**
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-echo 'export OPENROUTER_API_KEY=sk-or-v1-placeholder-here' >> ~/.bashrc
+echo 'export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -91,7 +91,7 @@ The `SensitiveDataSanitizer` class (in `openrouter.py`) automatically protects:
 **API Keys in Headers:**
 ```python
 # Before sanitization (NEVER logged):
-{"Authorization": "Bearer sk-or-v1-abc123def456..."}
+{"Authorization": "Bearer REDACTED_OPENROUTER_API_KEY"}
 
 # After sanitization (what gets logged):
 {"Authorization": "Bearer sk-o...***MASKED***"}
@@ -118,7 +118,7 @@ The `SensitiveDataSanitizer` class (in `openrouter.py`) automatically protects:
 Suitable for development and single-user setups:
 
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-your-key
+export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
 ```
 
 **Pros:**
@@ -140,7 +140,7 @@ For production or enhanced security, integrate with OS-native secret storage:
 import keyring
 
 # Store API key securely
-keyring.set_password("openrouter-mcp", "api_key", "sk-or-v1-your-key")
+keyring.set_password("openrouter-mcp", "api_key", "REPLACE_WITH_OPENROUTER_API_KEY")
 
 # Retrieve API key
 api_key = keyring.get_password("openrouter-mcp", "api_key")
