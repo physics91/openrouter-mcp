@@ -105,6 +105,47 @@ jobs:
             -r requirements-semgrep.txt
           npm audit
 
+      - name: Run npm package signature audit
+        run: |
+          set -euo pipefail
+          status=0
+          for attempt in 1 2 3; do
+            set +e
+            npm --silent run security:audit-signatures -- --json > npm-audit-signatures-required-report.json
+            status=$?
+            set -e
+
+            if [ "${status}" -eq 0 ]; then
+              break
+            fi
+            if python - npm-audit-signatures-required-report.json <<'PY'
+          import json
+          import sys
+
+          try:
+              data = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          except (OSError, json.JSONDecodeError):
+              raise SystemExit(1)
+
+          invalid = data.get("invalid")
+          missing = data.get("missing")
+          if isinstance(invalid, list) and isinstance(missing, list) and (invalid or missing):
+              raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then
+              break
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              sleep $((attempt * 5))
+            fi
+          done
+
+          if [ "${status}" -ne 0 ]; then
+            cat npm-audit-signatures-required-report.json || true
+          fi
+          exit "${status}"
+
       - name: Run required secret scan
         run: |
           set -euo pipefail

@@ -63,6 +63,7 @@
     "test:handlers": "cd . && python -m pytest tests/test_handlers/ -v",
     "test:integration": "cd . && python -m pytest tests/test_mcp_integration.py tests/test_server_integration.py -v",
     "test:all": "npm run test && npm run test:runtime && npm run test:security",
+    "security:audit-signatures": "npm audit signatures",
     "migrate": "node bin/openrouter-mcp.js migrate-encryption",
     "lint": "cd . && python -m ruff check src/ tests/",
     "format": "cd . && python -m black src/ tests/",

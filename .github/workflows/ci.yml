@@ -182,6 +182,55 @@ jobs:
         exit 0
       continue-on-error: true
 
+    - name: Run npm package signature audit
+      run: |
+        set -euo pipefail
+        status=0
+        for attempt in 1 2 3; do
+          set +e
+          npm --silent run security:audit-signatures -- --json > npm-audit-signatures-report.json
+          status=$?
+          set -e
+
+          if [ "${status}" -eq 0 ]; then
+            break
+          fi
+          if python - npm-audit-signatures-report.json <<'PY'
+        import json
+        import sys
+
+        try:
+            data = json.loads(open(sys.argv[1], encoding="utf-8").read())
+        except (OSError, json.JSONDecodeError):
+            raise SystemExit(1)
+
+        invalid = data.get("invalid")
+        missing = data.get("missing")
+        if isinstance(invalid, list) and isinstance(missing, list) and (invalid or missing):
+            raise SystemExit(0)
+        raise SystemExit(1)
+        PY
+          then
+            break
+          fi
+          if [ "${attempt}" -lt 3 ]; then
+            sleep $((attempt * 5))
+          fi
+        done
+
+        python - npm-audit-signatures "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
     - name: Run Grype scan
       run: |
         set -euo pipefail
@@ -502,6 +551,7 @@ jobs:
           safety-report.json
           safety-output.json
           npm-audit-report.json
+          npm-audit-signatures-report.json
           grype-report.json
           trivy-report.json
           pip-audit-report.json

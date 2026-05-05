@@ -48,6 +48,7 @@ def write_reports(
         "osv-package-lock": 0,
         "osv-requirements": 0,
         "osv-v2-source": 0,
+        "npm-audit-signatures": 0,
         "gitleaks": 0,
         "bandit": 0,
         "semgrep-auto": 0,
@@ -74,6 +75,7 @@ def write_reports(
         "osv-package-lock-report.json": {"results": []},
         "osv-requirements-report.json": {"results": []},
         "osv-v2-source-report.json": {"results": []},
+        "npm-audit-signatures-report.json": {"invalid": [], "missing": []},
         "gitleaks-report.json": [],
         "bandit-report.json": {"errors": [], "results": []},
         "semgrep-auto-report.json": {"errors": [], "results": []},
@@ -108,6 +110,10 @@ def write_reports(
     elif finding_scanner == "osv-v2-source":
         reports["osv-v2-source-report.json"]["results"] = [
             {"packages": [{"vulnerabilities": [{"id": "GHSA-test"}]}]}
+        ]
+    elif finding_scanner == "npm-audit-signatures":
+        reports["npm-audit-signatures-report.json"]["missing"] = [
+            {"name": "demo", "version": "1.0"}
         ]
     elif finding_scanner == "gitleaks":
         reports["gitleaks-report.json"] = [
@@ -153,6 +159,8 @@ def write_reports(
         reports["osv-requirements-report.json"].pop("results")
     elif schema_missing == "osv-v2-source":
         reports["osv-v2-source-report.json"].pop("results")
+    elif schema_missing == "npm-audit-signatures":
+        reports["npm-audit-signatures-report.json"].pop("missing")
     elif schema_missing == "gitleaks":
         reports["gitleaks-report.json"] = {"unexpected": []}
     elif schema_missing == "bandit":
@@ -213,6 +221,7 @@ def test_evaluator_fails_on_each_scanner_finding(tmp_path):
         "osv-package-lock",
         "osv-requirements",
         "osv-v2-source",
+        "npm-audit-signatures",
         "gitleaks",
         "bandit",
         "semgrep-auto",
@@ -279,6 +288,15 @@ def test_evaluator_fails_on_missing_schema_key(tmp_path):
 
     assert result.returncode == 1
     assert "missing list field" in result.stdout
+
+
+def test_evaluator_fails_on_missing_npm_signature_schema_key(tmp_path):
+    write_reports(tmp_path, schema_missing="npm-audit-signatures")
+
+    result = run_evaluator(tmp_path)
+
+    assert result.returncode == 1
+    assert "npm-audit-signatures-report.json missing list field: missing" in result.stdout
 
 
 def test_evaluator_fails_on_missing_status_entry(tmp_path):

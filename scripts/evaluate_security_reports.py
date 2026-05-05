@@ -15,6 +15,7 @@ DEFAULT_SEMGREP_AUTO_BASELINE = Path("semgrep-auto-baseline.json")
 EXPECTED_STATUS_KEYS = (
     "safety",
     "npm-audit",
+    "npm-audit-signatures",
     "grype",
     "trivy",
     "pip-audit",
@@ -114,6 +115,14 @@ def _count_npm_audit(report_dir: Path) -> ScannerEvaluation:
     )
     total = _require_int(vulnerabilities.get("total"), "metadata.vulnerabilities.total", filename)
     return _scanner_result(total)
+
+
+def _count_npm_audit_signatures(report_dir: Path) -> ScannerEvaluation:
+    filename = "npm-audit-signatures-report.json"
+    data = _require_dict(_load_json(report_dir, filename), filename)
+    invalid = _require_list(data.get("invalid"), "invalid", filename)
+    missing = _require_list(data.get("missing"), "missing", filename)
+    return _scanner_result(len(invalid) + len(missing))
 
 
 def _count_grype(report_dir: Path) -> ScannerEvaluation:
@@ -319,6 +328,7 @@ def evaluate_reports(
         scanners: dict[str, ScannerEvaluation] = {
             "safety": _count_safety(report_dir),
             "npm-audit": _count_npm_audit(report_dir),
+            "npm-audit-signatures": _count_npm_audit_signatures(report_dir),
             "grype": _count_grype(report_dir),
             "trivy": _count_trivy(report_dir),
             "pip-audit": _count_pip_audit(report_dir, "pip-audit-report.json"),
