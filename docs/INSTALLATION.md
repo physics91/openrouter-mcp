@@ -17,7 +17,7 @@ Comprehensive installation instructions for the OpenRouter MCP Server across dif
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **Node.js** | 16.0.0 | 18.0.0+ |
+| **Node.js** | 16.0.0 | Current supported LTS |
 | **Python** | 3.9.0 | 3.11.0+ |
 | **RAM** | 2GB | 4GB+ |
 | **Storage** | 500MB | 1GB+ |
@@ -52,7 +52,7 @@ npm --version
 **Linux (Ubuntu/Debian):**
 ```bash
 # Using NodeSource repository
-curl -fsSL https://deb.nodesource.com/setup_18.x -o nodesource_setup.sh
+curl -fsSL https://deb.nodesource.com/setup_lts.x -o nodesource_setup.sh
 # Optional: review nodesource_setup.sh before running it with elevated privileges
 sudo -E bash nodesource_setup.sh
 sudo apt-get install -y nodejs
@@ -191,7 +191,7 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install curl build-essential -y
 
 # Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_18.x -o nodesource_setup.sh
+curl -fsSL https://deb.nodesource.com/setup_lts.x -o nodesource_setup.sh
 # Optional: review nodesource_setup.sh before running it with elevated privileges
 sudo -E bash nodesource_setup.sh
 sudo apt install nodejs -y
@@ -233,9 +233,14 @@ unset OPENROUTER_API_KEY
 
 ```dockerfile
 # Dockerfile
-FROM node:18-python3.11
+FROM node:lts-bookworm
 
 WORKDIR /app
+
+# Install Python runtime required by OpenRouter MCP
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install OpenRouter MCP
 RUN npm install -g @physics91/openrouter-mcp

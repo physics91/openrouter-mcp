@@ -446,6 +446,29 @@ def test_tracked_markdown_docs_avoid_elevated_pipe_to_shell_guidance() -> None:
     assert not offenders, "Elevated pipe-to-shell guidance remains:\n" + "\n".join(offenders)
 
 
+def test_tracked_markdown_docs_avoid_eol_node_install_guidance() -> None:
+    eol_install_patterns = (
+        (
+            re.compile(r"setup_(?:16|18|20)\.x"),
+            "use setup_lts.x or another supported Node.js LTS installer",
+        ),
+        (
+            re.compile(r"FROM\s+node:(?:16|18|20)(?:[-\s]|$)", re.IGNORECASE),
+            "use a supported Node.js LTS base image",
+        ),
+    )
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for pattern, guidance in eol_install_patterns:
+                if pattern.search(line):
+                    offenders.append(f"{relative_path}:{line_number}: {guidance}")
+
+    assert not offenders, "EOL Node.js install guidance remains:\n" + "\n".join(offenders)
+
+
 def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:
     sharing = re.compile(r"\b(share|send|paste|attach|post)\b", re.IGNORECASE)
     artifact = re.compile(r"\b(logs?|output|diagnostics?|dump|audit)\b", re.IGNORECASE)
