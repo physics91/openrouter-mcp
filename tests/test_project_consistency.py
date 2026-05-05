@@ -61,6 +61,48 @@ def _contains_elevated_pipe_to_shell(command_text: str) -> bool:
     return bool(elevated_shell_pipe.search(_normalize_shell_continuations(command_text)))
 
 
+def _iter_markdown_fenced_blocks(path: Path) -> list[tuple[str, list[tuple[int, str]]]]:
+    blocks = []
+    in_block = False
+    language = ""
+    block_lines: list[tuple[int, str]] = []
+
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if in_block:
+                blocks.append((language, block_lines))
+                in_block = False
+                language = ""
+                block_lines = []
+            else:
+                in_block = True
+                parts = stripped[3:].strip().split(maxsplit=1)
+                language = parts[0].lower() if parts else ""
+            continue
+
+        if in_block:
+            block_lines.append((line_number, line))
+
+    return blocks
+
+
+def _contains_secret_env_file_reference(line: str) -> bool:
+    env_file_reference = re.compile(r"(?<![\w.-])\.env(?:\.[A-Za-z0-9_.-]+)?(?![\w.-])")
+    return any(match.group(0) != ".env.example" for match in env_file_reference.finditer(line))
+
+
+def _dockerfile_line_bakes_openrouter_secret(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return False
+
+    if re.match(r"^(?:COPY|ADD)\b", stripped, re.IGNORECASE):
+        return _contains_secret_env_file_reference(stripped)
+
+    return bool(re.match(r"^(?:ENV|ARG)\s+OPENROUTER_API_KEY(?:\s|=|$)", stripped, re.IGNORECASE))
+
+
 def test_package_metadata_has_no_placeholders() -> None:
     package = _load_package_json()
 
@@ -491,6 +533,51 @@ def test_tracked_markdown_docs_avoid_eol_node_install_guidance() -> None:
                     offenders.append(f"{relative_path}:{line_number}: {guidance}")
 
     assert not offenders, "EOL Node.js install guidance remains:\n" + "\n".join(offenders)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "COPY .env .env",
+        "copy --chown=node .env.local /app/.env",
+        'ADD [".env.production", "/app/.env"]',
+        "ENV OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY",
+        "ENV OPENROUTER_API_KEY REPLACE_WITH_OPENROUTER_API_KEY",
+        "ARG OPENROUTER_API_KEY",
+    ],
+)
+def test_detects_dockerfile_secret_baking_examples(line: str) -> None:
+    assert _dockerfile_line_bakes_openrouter_secret(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "COPY .env.example .env.example",
+        "RUN --mount=type=secret,id=OPENROUTER_API_KEY true",
+        "RUN npm install -g @physics91/openrouter-mcp",
+        "# COPY .env .env",
+    ],
+)
+def test_allows_safe_dockerfile_secret_handling_examples(line: str) -> None:
+    assert not _dockerfile_line_bakes_openrouter_secret(line)
+
+
+def test_tracked_markdown_dockerfile_blocks_avoid_secret_baking() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for language, block_lines in _iter_markdown_fenced_blocks(path):
+            if language not in {"dockerfile", "docker"}:
+                continue
+            for line_number, line in block_lines:
+                if _dockerfile_line_bakes_openrouter_secret(line):
+                    offenders.append(
+                        f"{relative_path}:{line_number}: use docker run --env-file instead"
+                    )
+
+    assert not offenders, "Dockerfile examples bake OpenRouter secrets:\n" + "\n".join(offenders)
 
 
 def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:

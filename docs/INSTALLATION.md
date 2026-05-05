@@ -245,14 +245,18 @@ RUN apt-get update && \
 # Install OpenRouter MCP
 RUN npm install -g @physics91/openrouter-mcp
 
-# Copy configuration
-COPY .env .env
-
 # Expose port
 EXPOSE 8000
 
 # Start server
 CMD ["openrouter-mcp", "start"]
+```
+
+Keep local secret files out of the build context:
+```dockerignore
+.env
+.env.*
+!.env.example
 ```
 
 Build and run:
