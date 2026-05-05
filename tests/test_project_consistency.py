@@ -181,6 +181,10 @@ def _openrouter_inline_placeholder_findings(display_path: str, lines: list[str])
             "use an explicit replacement token or runtime environment value",
         ),
         (
+            re.compile(r"<[A-Z0-9_]*OPENROUTER_API_KEY>"),
+            "use an explicit replacement token or runtime environment value",
+        ),
+        (
             re.compile(r"os\.environ\[\s*['\"]OPENROUTER_API_KEY['\"]\s*\]\s*="),
             "read OPENROUTER_API_KEY from the caller environment instead of assigning it",
         ),
