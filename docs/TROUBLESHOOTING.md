@@ -90,8 +90,12 @@ npx @physics91/openrouter-mcp@latest start
 # Re-run initialization
 npx @physics91/openrouter-mcp@latest init
 
-# Check .env file
-cat .env | grep OPENROUTER_API_KEY
+# Check .env without printing the key
+if grep -q '^OPENROUTER_API_KEY=' .env; then
+  echo "OPENROUTER_API_KEY is present in .env"
+else
+  echo "OPENROUTER_API_KEY is missing from .env"
+fi
 ```
 
 2. **Check API key format**:
@@ -112,14 +116,19 @@ OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 
 **Solution**:
 ```bash
-# Create .env file in project root
-echo "OPENROUTER_API_KEY=your-key-here" > .env
+# Preferred: create/update credentials through interactive setup
+npx @physics91/openrouter-mcp@latest init
+
+# Manual fallback: edit .env in a private editor and add:
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 
 # Verify .env location
 ls -la | grep .env
 
-# Manual export (temporary)
-export OPENROUTER_API_KEY="your-key-here"
+# Manual export (temporary, avoids shell history)
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
 ```
 
 ### Port Already in Use
@@ -301,8 +310,12 @@ curl -w "@curl-format.txt" https://openrouter.ai/api/v1
 
 3. **Caching not working**:
 ```bash
-# Verify cache is enabled
-cat .env | grep CACHE
+# Verify cache is configured without printing values
+if grep -q '^CACHE' .env; then
+  echo "Cache configuration is present in .env"
+else
+  echo "Cache configuration is missing from .env"
+fi
 
 # Check cache file exists
 ls -la .cache/openrouter_model_cache.json
