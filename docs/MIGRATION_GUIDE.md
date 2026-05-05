@@ -465,7 +465,8 @@ cat ~/.openrouter-mcp/.credentials.enc | jq '.version'
 - Open GitHub issue with error logs
 
 **Security Concerns**:
-- Email: security@openrouter-mcp.com
+- Follow the root `SECURITY.md` disclosure policy
+- Do not include sensitive vulnerability details in public GitHub issues
 - Include: OS, Node version, error messages
 
 **General Help**:

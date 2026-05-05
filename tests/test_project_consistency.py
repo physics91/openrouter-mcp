@@ -299,3 +299,15 @@ def test_tracked_markdown_docs_use_non_disclosing_security_diagnostics() -> None
                     )
 
     assert not offenders, "Unsafe security diagnostics remain:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_avoid_unverified_security_email() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "security@openrouter-mcp.com" in line:
+                offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
+
+    assert not offenders, "Unverified security email remains:\n" + "\n".join(offenders)

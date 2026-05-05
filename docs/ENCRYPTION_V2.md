@@ -428,7 +428,7 @@ const newMasterKey = await cryptoManager.rotateMasterKey();
 ## Support
 
 For security issues or questions:
-- **Security vulnerabilities**: Report privately to security@openrouter-mcp.com
+- **Security vulnerabilities**: Follow the root `SECURITY.md` disclosure policy
 - **General questions**: Open a GitHub issue
 - **Documentation**: See `docs/SECURITY.md`
 
