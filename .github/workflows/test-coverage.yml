@@ -118,7 +118,6 @@ jobs:
 
       - name: Lint check
         run: |
-          pip install ruff
           ruff check src/ tests/ --select E,F,W
 
   coverage-report:
