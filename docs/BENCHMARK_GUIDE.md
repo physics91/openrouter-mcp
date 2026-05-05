@@ -147,8 +147,8 @@ import asyncio
 from src.openrouter_mcp.handlers.mcp_benchmark import get_benchmark_handler
 
 async def run_benchmark():
-    # Set API key
-    os.environ["OPENROUTER_API_KEY"] = "placeholder"
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        raise RuntimeError("Set OPENROUTER_API_KEY before running benchmarks")
 
     # Get benchmark handler
     handler = await get_benchmark_handler()

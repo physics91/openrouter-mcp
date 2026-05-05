@@ -324,10 +324,14 @@ await keytar.deletePassword('openrouter-mcp', 'api-key');
 ```javascript
 // Store encrypted
 const secureCredentials = require('./bin/secure-credentials');
-secureCredentials.storeInEncryptedFile('placeholder');
+const apiKey = process.env.OPENROUTER_API_KEY;
+if (!apiKey) {
+  throw new Error('Set OPENROUTER_API_KEY before storing credentials');
+}
+secureCredentials.storeInEncryptedFile(apiKey);
 
 // Retrieve
-const apiKey = secureCredentials.getFromEncryptedFile();
+const storedApiKey = secureCredentials.getFromEncryptedFile();
 ```
 
 #### 3. Environment Variables (.env file)

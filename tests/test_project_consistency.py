@@ -283,6 +283,30 @@ def test_tracked_markdown_docs_use_safe_openrouter_key_examples() -> None:
     assert not offenders, "Unsafe OpenRouter API key examples remain:\n" + "\n".join(offenders)
 
 
+def test_tracked_markdown_docs_avoid_inline_api_key_placeholder_literals() -> None:
+    unsafe_patterns = (
+        (
+            re.compile(r"\bplaceholder(?:-here)?\b", re.IGNORECASE),
+            "use an explicit replacement token or runtime environment value",
+        ),
+        (
+            re.compile(r"os\.environ\[\s*['\"]OPENROUTER_API_KEY['\"]\s*\]\s*="),
+            "read OPENROUTER_API_KEY from the caller environment instead of assigning it",
+        ),
+    )
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for pattern, guidance in unsafe_patterns:
+                if pattern.search(line):
+                    offenders.append(f"{relative_path}:{line_number}: {guidance}")
+                    break
+
+    assert not offenders, "Inline API key placeholder guidance remains:\n" + "\n".join(offenders)
+
+
 def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> None:
     patterns = (
         re.compile(r"OPENROUTER_API_KEY\s*=\s*[\"']?sk-"),

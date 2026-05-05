@@ -317,11 +317,13 @@ Preferred:
 - Run `npx @physics91/openrouter-mcp@latest init`
 - Let `openrouter-mcp start` read the API key from secure storage or environment at runtime
 
-If your client only supports inline environment variables, use:
+If your client only supports inline environment variables, use this fallback.
+`REPLACE_WITH_OPENROUTER_API_KEY` is a replacement token, not a literal value.
+Treat the client config file as secret-bearing: do not commit, paste, or share it, and restrict file permissions where possible.
 ```json
 {
   "env": {
-    "OPENROUTER_API_KEY": "placeholder-here",
+    "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY",
     "OPENROUTER_APP_NAME": "my-mcp-client",
     "OPENROUTER_HTTP_REFERER": "https://example.com"
   }
@@ -359,7 +361,7 @@ notepad %APPDATA%\Claude\claude_desktop_config.json
 nano ~/.config/claude/claude_desktop_config.json
 ```
 
-Add configuration:
+Add configuration only if the client cannot use secure storage or runtime environment injection. This file becomes secret-bearing after replacement.
 ```json
 {
   "mcpServers": {
@@ -367,7 +369,7 @@ Add configuration:
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "placeholder-here"
+        "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"
       }
     }
   }
