@@ -854,11 +854,13 @@ async function securityAudit() {
 
   // Check OS Keychain
   if (secureCredentials.keytarAvailable) {
-    const keychainKey = await secureCredentials.getFromKeychain();
-    if (keychainKey) {
+    const keychainCredential = audit.credentials.find(
+      credential => credential.location === 'OS Keychain'
+    );
+    if (keychainCredential) {
       good.push('✓ API key stored in OS Keychain (encrypted)');
       console.log(chalk.green('  ✓ OS Keychain: API key found (encrypted)'));
-      console.log(chalk.gray(`    Masked key: ${secureCredentials.maskApiKey(keychainKey)}`));
+      console.log(chalk.gray(`    Masked key: ${keychainCredential.masked}`));
     } else {
       console.log(chalk.gray('  ○ OS Keychain: Not configured'));
     }
