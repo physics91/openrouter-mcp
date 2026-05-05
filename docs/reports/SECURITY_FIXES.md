@@ -404,13 +404,13 @@ Edit `~/.claude/claude_code_config.json` and remove the `OPENROUTER_API_KEY` lin
 
 **Windows:**
 ```cmd
-set OPENROUTER_API_KEY=sk-or-v1-your-key
+set OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 ```
 
 **Linux/macOS:**
 ```bash
-export OPENROUTER_API_KEY=sk-or-v1-your-key
-echo 'export OPENROUTER_API_KEY=sk-or-v1-your-key' >> ~/.bashrc
+export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
+echo 'export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -429,7 +429,7 @@ pip install keyring
 
 # Store API key securely
 import keyring
-keyring.set_password("openrouter-mcp", "api_key", "sk-or-v1-your-key")
+keyring.set_password("openrouter-mcp", "api_key", "REPLACE_WITH_OPENROUTER_API_KEY")
 ```
 
 ---
