@@ -334,3 +334,16 @@ def test_security_doc_review_dates_are_ordered() -> None:
             )
 
     assert not offenders, "Security doc review dates are inconsistent:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_avoid_security_contact_placeholders() -> None:
+    placeholder = re.compile(r"Security Contact.*\[To be configured\]", re.IGNORECASE)
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if placeholder.search(line):
+                offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
+
+    assert not offenders, "Security contact placeholder remains:\n" + "\n".join(offenders)
