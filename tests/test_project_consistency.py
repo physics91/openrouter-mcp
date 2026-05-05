@@ -13,6 +13,8 @@ from tests.test_tool_expectations import ALL_REGISTERED_TOOL_NAMES
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
+# Checked against the official Node.js Release schedule on 2026-05-05.
+EXPECTED_GITHUB_ACTIONS_NODE_MAJOR = "24"
 USER_FACING_EXAMPLE_FILES = (
     # Security-detection fixtures intentionally keep fake key-shaped values.
     "src/openrouter_mcp/cli/mcp_manager.py",
@@ -37,6 +39,18 @@ def _load_package_json() -> dict:
 def _tracked_markdown_docs() -> list[Path]:
     result = subprocess.run(
         ["git", "ls-files", "*.md"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    return [ROOT / relative_path for relative_path in result.stdout.splitlines()]
+
+
+def _tracked_github_workflows() -> list[Path]:
+    result = subprocess.run(
+        ["git", "ls-files", ".github/workflows/*.yml", ".github/workflows/*.yaml"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -636,6 +650,25 @@ def test_tracked_markdown_docs_avoid_eol_node_install_guidance() -> None:
                     offenders.append(f"{relative_path}:{line_number}: {guidance}")
 
     assert not offenders, "EOL Node.js install guidance remains:\n" + "\n".join(offenders)
+
+
+def test_github_actions_use_supported_lts_node_major() -> None:
+    node_version_pin = re.compile(r"\bnode-version:\s*['\"]?(\d+)['\"]?")
+    offenders = []
+
+    for path in _tracked_github_workflows():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            match = node_version_pin.search(line)
+            if not match:
+                continue
+            if match.group(1) != EXPECTED_GITHUB_ACTIONS_NODE_MAJOR:
+                offenders.append(
+                    f"{relative_path}:{line_number}: use Node "
+                    f"{EXPECTED_GITHUB_ACTIONS_NODE_MAJOR} for CI"
+                )
+
+    assert not offenders, "Unsupported GitHub Actions Node.js pins remain:\n" + "\n".join(offenders)
 
 
 @pytest.mark.parametrize(
