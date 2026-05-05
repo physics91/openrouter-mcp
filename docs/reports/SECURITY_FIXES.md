@@ -377,8 +377,8 @@ These fixes align with:
 
 1. **Check for exposed keys:**
 ```bash
-grep -r "sk-or-" ~/.claude/
-grep -r "OPENROUTER_API_KEY" ~/.claude/
+grep -RIl "sk-or-" ~/.claude/
+grep -RIl "OPENROUTER_API_KEY" ~/.claude/
 ```
 
 2. **Remove API keys from configs:**
@@ -440,7 +440,7 @@ pytest tests/ -k security -v
 pytest tests/ --cov=src/openrouter_mcp
 
 # Check for hardcoded secrets
-grep -r "sk-or-" src/ tests/
+grep -RIl "sk-or-" src/ tests/
 ```
 
 ### Manual Verification Steps

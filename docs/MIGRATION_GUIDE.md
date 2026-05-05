@@ -283,7 +283,7 @@ cp ~/.openrouter-mcp/.credentials.enc.v1.backup ~/.openrouter-mcp/.credentials.e
 
 # Report issue with logs
 openrouter-mcp security-audit > audit.log
-# Share audit.log with support
+# Review and redact audit.log before sharing it with support
 ```
 
 ### Issue 4: "Permission denied" (Linux)

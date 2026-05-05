@@ -215,8 +215,8 @@ For team/production environments:
 
 ### For Security Auditors
 
-- [ ] Verify API keys are NOT in config files: `grep -r "sk-or-" ~/.claude/`
-- [ ] Check environment variable usage: `env | grep OPENROUTER`
+- [ ] Verify API keys are NOT in config files: `grep -RIl "sk-or-" ~/.claude/`
+- [ ] Check `OPENROUTER*` variables without printing values: `env | awk -F= '/^OPENROUTER/ { print $1 " is set" }'`
 - [ ] Review benchmark results for redaction: `cat benchmarks/*.json`
 - [ ] Inspect logs for sanitization: `tail -f logs/*.log`
 - [ ] Test error handling: Trigger errors and verify response redaction

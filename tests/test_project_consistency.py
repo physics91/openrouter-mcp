@@ -275,3 +275,27 @@ def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> No
                 offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
 
     assert not offenders, "Unsafe source API key examples remain:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_use_non_disclosing_security_diagnostics() -> None:
+    unsafe_env_grep = re.compile(r"env\s*\|\s*grep\s+OPENROUTER")
+    unsafe_secret_grep = re.compile(r"grep\s+-[^\n]*r[^\n]*[\"']sk-or-[\"']")
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            line_number = index + 1
+            if unsafe_env_grep.search(line):
+                offenders.append(f"{relative_path}:{line_number}: prints OPENROUTER values")
+            if unsafe_secret_grep.search(line):
+                offenders.append(f"{relative_path}:{line_number}: prints matching secret lines")
+            if "audit.log" in line.lower() and "share" in line.lower():
+                nearby = "\n".join(lines[max(0, index - 2) : index + 3]).lower()
+                if "review" not in nearby and "redact" not in nearby:
+                    offenders.append(
+                        f"{relative_path}:{line_number}: shares audit.log without review/redaction"
+                    )
+
+    assert not offenders, "Unsafe security diagnostics remain:\n" + "\n".join(offenders)
