@@ -21,7 +21,7 @@ def test_security_runner_saves_safety_json_report(monkeypatch):
     runner_module = load_script_runner()
     calls: list[list[str]] = []
 
-    def fake_call(command):
+    def fake_call(command, **_kwargs):
         calls.append(command)
         return 0
 
@@ -30,8 +30,10 @@ def test_security_runner_saves_safety_json_report(monkeypatch):
     results = runner_module.TestRunner().run_security_checks()
 
     assert results == {"bandit": 0, "safety": 0}
+    assert ["safety", "check", "--help"] in calls
     assert [
         "safety",
+        "--disable-optional-telemetry",
         "check",
         "-r",
         "requirements.txt",
@@ -45,3 +47,37 @@ def test_security_runner_saves_safety_json_report(monkeypatch):
         "--save-json",
         "safety-report.json",
     ] in calls
+
+
+def test_security_runner_reports_safety_check_migration_when_unavailable(monkeypatch, capsys):
+    runner_module = load_script_runner()
+    calls: list[list[str]] = []
+
+    def fake_call(command, **_kwargs):
+        calls.append(command)
+        if command == ["safety", "check", "--help"]:
+            return 2
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    results = runner_module.TestRunner().run_security_checks()
+
+    assert results == {"bandit": 0, "safety": 2}
+    assert [
+        "safety",
+        "--disable-optional-telemetry",
+        "check",
+        "-r",
+        "requirements.txt",
+        "-r",
+        "requirements-dev.txt",
+        "-r",
+        "requirements-security.txt",
+        "-r",
+        "requirements-semgrep.txt",
+        "--json",
+        "--save-json",
+        "safety-report.json",
+    ] not in calls
+    assert "SAFETY_API_KEY" in capsys.readouterr().out

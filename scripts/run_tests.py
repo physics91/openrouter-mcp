@@ -174,9 +174,23 @@ class TestRunner:
 
         # Safety
         print("Running safety check...")
+        safety_check_help = subprocess.call(
+            ["safety", "check", "--help"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if safety_check_help != 0:
+            print(
+                "safety check is unavailable; migrate this check to safety scan "
+                "after configuring SAFETY_API_KEY and a non-interactive Safety policy."
+            )
+            results["safety"] = safety_check_help
+            return results
+
         results["safety"] = subprocess.call(
             [
                 "safety",
+                "--disable-optional-telemetry",
                 "check",
                 "-r",
                 "requirements.txt",

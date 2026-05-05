@@ -145,8 +145,13 @@ jobs:
 
     - name: Run safety check
       run: |
+        if ! safety check --help >/dev/null 2>/dev/null; then
+          echo "safety check is unavailable; migrate this job to safety scan after configuring SAFETY_API_KEY and a non-interactive Safety policy."
+          exit 2
+        fi
+
         set +e
-        safety check \
+        safety --disable-optional-telemetry check \
           -r requirements.txt \
           -r requirements-dev.txt \
           -r requirements-security.txt \
