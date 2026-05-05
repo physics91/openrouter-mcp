@@ -366,6 +366,23 @@ def test_tracked_markdown_docs_avoid_tls_verification_bypass() -> None:
     assert not offenders, "TLS verification bypass guidance remains:\n" + "\n".join(offenders)
 
 
+def test_tracked_markdown_docs_avoid_sudo_npm_global_install_guidance() -> None:
+    elevated_global_install = re.compile(
+        r"\bsudo\s+npm\b(?=.*\b(?:install|i)\b)(?=.*(?:^|\s)(?:-g|--global)(?:\s|=|$))"
+    )
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if elevated_global_install.search(line):
+                offenders.append(
+                    f"{relative_path}:{line_number}: use npx or a user-owned Node/npm setup"
+                )
+
+    assert not offenders, "Elevated npm global install guidance remains:\n" + "\n".join(offenders)
+
+
 def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:
     sharing = re.compile(r"\b(share|send|paste|attach|post)\b", re.IGNORECASE)
     artifact = re.compile(r"\b(logs?|output|diagnostics?|dump|audit)\b", re.IGNORECASE)

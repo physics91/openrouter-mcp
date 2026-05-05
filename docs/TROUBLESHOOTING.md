@@ -69,12 +69,11 @@ python -m pip install -r requirements.txt
 
 **Solution**:
 ```bash
-# macOS/Linux: Use sudo
-sudo npm install -g @physics91/openrouter-mcp
-
-# Windows: Run as Administrator
-# Or use npx instead of global install
+# Preferred: use npx to avoid global install permissions
 npx @physics91/openrouter-mcp@latest start
+
+# Persistent install: use a user-owned Node/npm setup first
+npm install -g @physics91/openrouter-mcp
 ```
 
 ## Configuration Problems

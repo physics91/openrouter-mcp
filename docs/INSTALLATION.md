@@ -200,17 +200,20 @@ sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 
 #### Step 2: Install OpenRouter MCP
 ```bash
-# Install globally (may need sudo)
-sudo npm install -g @physics91/openrouter-mcp
-
-# Or use npx (recommended)
+# Recommended: run without a persistent global install
 npx @physics91/openrouter-mcp@latest init
+
+# Optional persistent CLI install with a user-owned Node/npm setup
+npm install -g @physics91/openrouter-mcp
 ```
 
 #### Step 3: Configure Environment
 ```bash
-# Initialize configuration
+# Initialize configuration if installed globally
 openrouter-mcp init
+
+# Or initialize directly with npx
+npx @physics91/openrouter-mcp@latest init
 
 # Optional temporary environment override
 read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
@@ -542,11 +545,11 @@ source ~/.bashrc
 
 #### Permission Denied
 ```bash
-# Use sudo on Unix systems
-sudo npm install -g @physics91/openrouter-mcp
-
-# Or use npx to avoid global install
+# Use npx to avoid global install permissions
 npx @physics91/openrouter-mcp@latest start
+
+# Persistent install: use a user-owned Node/npm setup first
+npm install -g @physics91/openrouter-mcp
 ```
 
 #### SSL Certificate Issues
