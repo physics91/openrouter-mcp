@@ -23,7 +23,7 @@ def mock_logger():
 @pytest.fixture
 def api_key():
     """Test API key."""
-    return "sk-or-v1-test-placeholder67890"
+    return "sk-or-v1-test-secret-key-1234567890"
 
 
 class TestClientLoggingSecurity:
@@ -67,7 +67,7 @@ class TestClientLoggingSecurity:
         # Verify API key is not in any debug logs
         all_logs = " ".join(debug_calls)
         assert api_key not in all_logs
-        assert "test-placeholder67890" not in all_logs
+        assert "test-secret-key-1234567890" not in all_logs
         # Check for masked key - it should appear in the header logs
         assert "***MASKED***" in all_logs
 

@@ -149,7 +149,7 @@ console.log(chalk.bold('\n📊 Test Suite 2: Encryption/Decryption\n'));
 
 test('Encryption produces valid ciphertext structure', () => {
   const masterKey = cryptoManager.generateMasterKey();
-  const plaintext = 'test-api-key-placeholder';
+  const plaintext = 'test-api-key-sk-or-v1-1234567890';
 
   const encrypted = cryptoManager.encryptWithMasterKey(plaintext, masterKey);
 
