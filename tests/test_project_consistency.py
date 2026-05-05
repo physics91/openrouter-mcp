@@ -980,6 +980,34 @@ def test_tracked_markdown_docs_avoid_ad_hoc_grep_secret_hooks() -> None:
     assert not offenders, "Ad hoc grep secret hooks remain:\n" + "\n".join(offenders)
 
 
+def test_security_docs_include_redacted_gitleaks_history_scan() -> None:
+    required_snippets = (
+        "pre-commit run gitleaks --all-files",
+        "gitleaks git",
+        "--no-banner",
+        "--redact=100",
+        "--exit-code 99",
+        "--report-format json",
+        "--report-path /tmp/openrouter-mcp-gitleaks-history.json",
+        "redacted reports still",
+        "expose paths, rules, and commit IDs",
+        "Do not commit or share",
+        "rotation/revocation",
+        "history",
+        "rewrite",
+        "remote secret-scanning alerts",
+    )
+    offenders = []
+
+    for relative_path in ("docs/SECURITY.md", "docs/SECURITY_BEST_PRACTICES.md"):
+        content = _read_text(relative_path)
+        for snippet in required_snippets:
+            if snippet not in content:
+                offenders.append(f"{relative_path}: missing {snippet}")
+
+    assert not offenders, "Gitleaks history guidance is incomplete:\n" + "\n".join(offenders)
+
+
 def test_tracked_markdown_dockerfile_blocks_avoid_secret_baking() -> None:
     offenders = []
 

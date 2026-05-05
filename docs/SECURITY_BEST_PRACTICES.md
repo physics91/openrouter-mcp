@@ -176,10 +176,24 @@ const storedApiKey = getFromEncryptedFile();
 
    # Run a current tracked-file baseline scan
    pre-commit run gitleaks --all-files
+
+   # Run a redacted full-history scan outside the repository
+   gitleaks git \
+     --no-banner \
+     --redact=100 \
+     --exit-code 99 \
+     --report-format json \
+     --report-path /tmp/openrouter-mcp-gitleaks-history.json \
+     .
    ```
 
    This is a commit-time guard, not proof that Git history is clean. Already leaked
    keys and remote secret-scanning alerts still require separate rotation and review.
+   Gitleaks history reports are sensitive security artifacts: redacted reports still
+   expose paths, rules, and commit IDs. Do not commit or share them without review;
+   delete them or move them to approved secure storage after triage.
+   History findings may require explicit approval for rotation/revocation, history
+   rewrite, and remote secret-scanning alerts.
 
 ### 3. Configuration Files (Claude Integrations)
 
