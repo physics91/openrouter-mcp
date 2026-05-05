@@ -146,6 +146,45 @@ def _env_file_setup_findings(path: Path) -> list[str]:
     return findings
 
 
+def _openrouter_key_shaped_placeholder_findings(display_path: str, lines: list[str]) -> list[str]:
+    findings = []
+
+    for line_number, line in enumerate(lines, 1):
+        if "sk-or-v1-" in line:
+            findings.append(f"{display_path}:{line_number} contains sk-or-v1-")
+
+    return findings
+
+
+def _openrouter_inline_placeholder_findings(display_path: str, lines: list[str]) -> list[str]:
+    unsafe_patterns = (
+        (
+            re.compile(r"\byour(?:-[a-z0-9]+)*-api-key(?:-here)?\b", re.IGNORECASE),
+            "use an explicit replacement token or runtime environment value",
+        ),
+        (
+            re.compile(r"os\.environ\[\s*['\"]OPENROUTER_API_KEY['\"]\s*\]\s*="),
+            "read OPENROUTER_API_KEY from the caller environment instead of assigning it",
+        ),
+    )
+    findings = []
+
+    for line_number, line in enumerate(lines, 1):
+        for pattern, guidance in unsafe_patterns:
+            if pattern.search(line):
+                findings.append(f"{display_path}:{line_number}: {guidance}")
+                break
+
+    return findings
+
+
+def _openrouter_placeholder_policy_findings(display_path: str, lines: list[str]) -> list[str]:
+    return [
+        *_openrouter_key_shaped_placeholder_findings(display_path, lines),
+        *_openrouter_inline_placeholder_findings(display_path, lines),
+    ]
+
+
 def test_package_metadata_has_no_placeholders() -> None:
     package = _load_package_json()
 
@@ -340,10 +379,13 @@ def test_tracked_markdown_docs_avoid_openrouter_key_shaped_placeholders() -> Non
     offenders = []
 
     for path in _tracked_markdown_docs():
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if "sk-or-v1-" in line:
-                relative_path = path.relative_to(ROOT)
-                offenders.append(f"{relative_path}:{line_number} contains sk-or-v1-")
+        relative_path = str(path.relative_to(ROOT))
+        offenders.extend(
+            _openrouter_key_shaped_placeholder_findings(
+                relative_path,
+                path.read_text(encoding="utf-8").splitlines(),
+            )
+        )
 
     assert not offenders, "OpenRouter-key-shaped placeholders remain:\n" + "\n".join(offenders)
 
@@ -369,27 +411,30 @@ def test_tracked_markdown_docs_use_safe_openrouter_key_examples() -> None:
 
 
 def test_tracked_markdown_docs_avoid_inline_api_key_placeholder_literals() -> None:
-    unsafe_patterns = (
-        (
-            re.compile(r"\bplaceholder(?:-here)?\b", re.IGNORECASE),
-            "use an explicit replacement token or runtime environment value",
-        ),
-        (
-            re.compile(r"os\.environ\[\s*['\"]OPENROUTER_API_KEY['\"]\s*\]\s*="),
-            "read OPENROUTER_API_KEY from the caller environment instead of assigning it",
-        ),
-    )
     offenders = []
 
     for path in _tracked_markdown_docs():
-        relative_path = path.relative_to(ROOT)
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            for pattern, guidance in unsafe_patterns:
-                if pattern.search(line):
-                    offenders.append(f"{relative_path}:{line_number}: {guidance}")
-                    break
+        relative_path = str(path.relative_to(ROOT))
+        offenders.extend(
+            _openrouter_inline_placeholder_findings(
+                relative_path,
+                path.read_text(encoding="utf-8").splitlines(),
+            )
+        )
 
     assert not offenders, "Inline API key placeholder guidance remains:\n" + "\n".join(offenders)
+
+
+def test_env_example_uses_safe_openrouter_placeholder() -> None:
+    lines = _read_text(".env.example").splitlines()
+    offenders = _openrouter_placeholder_policy_findings(".env.example", lines)
+
+    if "OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY" not in lines:
+        offenders.append(".env.example: missing OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY")
+
+    assert not offenders, "Unsafe .env.example OpenRouter placeholder remains:\n" + "\n".join(
+        offenders
+    )
 
 
 def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> None:
