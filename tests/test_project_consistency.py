@@ -25,7 +25,10 @@ SECURITY_METADATA_DOCS = (
     "docs/SECURITY.md",
     "docs/SECURITY_BEST_PRACTICES.md",
 )
-SOURCE_PLACEHOLDER_POLICY_FILES = ("scripts/install_claude_code_simple.py",)
+SOURCE_PLACEHOLDER_POLICY_FILES = (
+    "scripts/install_claude_code_simple.py",
+    "tests/test_mcp_server.py",
+)
 
 
 def _read_text(relative_path: str) -> str:

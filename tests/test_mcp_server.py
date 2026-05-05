@@ -63,7 +63,7 @@ def main():
             print('     "args": ["-m", "src.openrouter_mcp.server"],')
             print('     "cwd": "G:\\\\ai-dev\\\\Openrouter-mcp",')
             print('     "env": {')
-            print('       "OPENROUTER_API_KEY": "placeholder-here"')
+            print('       "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"')
             print("     }")
             print("   }")
             print()
