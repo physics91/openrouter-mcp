@@ -45,6 +45,22 @@ def _tracked_markdown_docs() -> list[Path]:
     return [ROOT / relative_path for relative_path in result.stdout.splitlines()]
 
 
+def _normalize_shell_continuations(command_text: str) -> str:
+    command_text = re.sub(r"\\\s*\n\s*", " ", command_text)
+    return re.sub(r"\|\s*\n\s*", "| ", command_text)
+
+
+def _contains_elevated_pipe_to_shell(command_text: str) -> bool:
+    elevated_shell_pipe = re.compile(
+        r"\b(?:curl|wget)\b[^\n|]*\|\s*"
+        r"sudo\b(?:\s+(?:-[A-Za-z]+|--[A-Za-z][\w-]*(?:=\S+)?))*\s+"
+        r"(?:bash|sh)\b",
+        re.IGNORECASE,
+    )
+
+    return bool(elevated_shell_pipe.search(_normalize_shell_continuations(command_text)))
+
+
 def test_package_metadata_has_no_placeholders() -> None:
     package = _load_package_json()
 
@@ -381,6 +397,53 @@ def test_tracked_markdown_docs_avoid_sudo_npm_global_install_guidance() -> None:
                 )
 
     assert not offenders, "Elevated npm global install guidance remains:\n" + "\n".join(offenders)
+
+
+@pytest.mark.parametrize(
+    "command_text",
+    [
+        "curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -",
+        "wget -qO- https://example.invalid/install.sh | sudo --preserve-env bash -s",
+        "curl -fsSL https://example.invalid/install.sh \\\n  | sudo sh -",
+        "wget -qO- https://example.invalid/install.sh |\n  sudo --preserve-env=PATH bash -s",
+    ],
+)
+def test_detects_elevated_pipe_to_shell_examples(command_text: str) -> None:
+    assert _contains_elevated_pipe_to_shell(command_text)
+
+
+@pytest.mark.parametrize(
+    "command_text",
+    [
+        (
+            "curl -fsSL https://deb.nodesource.com/setup_18.x -o nodesource_setup.sh\n"
+            "sudo -E bash nodesource_setup.sh"
+        ),
+        "sudo apt install nodejs -y",
+        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+        "curl -fsSL https://example.invalid/install.sh | bash -",
+    ],
+)
+def test_allows_non_elevated_or_downloaded_install_examples(command_text: str) -> None:
+    assert not _contains_elevated_pipe_to_shell(command_text)
+
+
+def test_tracked_markdown_docs_avoid_elevated_pipe_to_shell_guidance() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not re.search(r"\b(?:curl|wget)\b", line):
+                continue
+            window = "\n".join(lines[index : index + 3])
+            if _contains_elevated_pipe_to_shell(window):
+                offenders.append(
+                    f"{relative_path}:{index + 1}: download first or use package/version manager"
+                )
+
+    assert not offenders, "Elevated pipe-to-shell guidance remains:\n" + "\n".join(offenders)
 
 
 def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:

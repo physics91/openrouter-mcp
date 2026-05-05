@@ -52,8 +52,11 @@ npm --version
 **Linux (Ubuntu/Debian):**
 ```bash
 # Using NodeSource repository
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_18.x -o nodesource_setup.sh
+# Optional: review nodesource_setup.sh before running it with elevated privileges
+sudo -E bash nodesource_setup.sh
 sudo apt-get install -y nodejs
+rm nodesource_setup.sh
 
 # Verify installation
 node --version
@@ -188,8 +191,11 @@ sudo apt update && sudo apt upgrade -y
 sudo apt install curl build-essential -y
 
 # Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_18.x -o nodesource_setup.sh
+# Optional: review nodesource_setup.sh before running it with elevated privileges
+sudo -E bash nodesource_setup.sh
 sudo apt install nodejs -y
+rm nodesource_setup.sh
 
 # Install Python
 sudo apt install python3.11 python3-pip python3-venv -y
