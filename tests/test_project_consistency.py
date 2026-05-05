@@ -2,6 +2,7 @@
 """Project consistency checks for docs and package metadata."""
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,18 @@ def _read_text(relative_path: str) -> str:
 
 def _load_package_json() -> dict:
     return json.loads(_read_text("package.json"))
+
+
+def _tracked_markdown_docs() -> list[Path]:
+    result = subprocess.run(
+        ["git", "ls-files", "*.md"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    return [ROOT / relative_path for relative_path in result.stdout.splitlines()]
 
 
 def test_package_metadata_has_no_placeholders() -> None:
@@ -209,3 +222,15 @@ def test_changelog_has_no_placeholder_repo_links() -> None:
     changelog = _read_text("CHANGELOG.md")
 
     assert "yourusername/openrouter-mcp" not in changelog
+
+
+def test_tracked_markdown_docs_avoid_openrouter_key_shaped_placeholders() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "sk-or-v1-" in line:
+                relative_path = path.relative_to(ROOT)
+                offenders.append(f"{relative_path}:{line_number} contains sk-or-v1-")
+
+    assert not offenders, "OpenRouter-key-shaped placeholders remain:\n" + "\n".join(offenders)
