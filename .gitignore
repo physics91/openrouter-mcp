@@ -59,6 +59,10 @@ venv.bak/
 .worktree/
 .worktrees/
 
+# Local agent artifacts
+.codex
+docs/reviews/
+
 # Node.js
 node_modules/
 npm-debug.log*
