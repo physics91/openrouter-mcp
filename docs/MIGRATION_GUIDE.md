@@ -321,33 +321,20 @@ Error: Failed to store master key: Access denied
 
 If automatic migration fails, you can migrate manually:
 
-### Step 1: Export Current API Key
+### Step 1: Confirm Private API Key Access
 
 ```bash
-# Option A: From environment
-echo $OPENROUTER_API_KEY
-
-# Option B: Decrypt manually (Node.js)
-node -e "
-const crypto = require('crypto');
-const fs = require('fs');
-const os = require('os');
-
-const file = fs.readFileSync(os.homedir() + '/.openrouter-mcp/.credentials.enc', 'utf8');
-const data = JSON.parse(file);
-
-const machineId = os.hostname() + os.userInfo().username + os.platform() + os.arch();
-const key = crypto.createHash('sha256').update(machineId).digest();
-
-const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(data.iv, 'hex'));
-decipher.setAuthTag(Buffer.from(data.authTag, 'hex'));
-
-let decrypted = decipher.update(data.encrypted, 'hex', 'utf8');
-decrypted += decipher.final('utf8');
-
-console.log('API Key:', decrypted);
-"
+# Check whether the key is already present without printing it
+if test -n "${OPENROUTER_API_KEY:-}"; then
+  echo "OPENROUTER_API_KEY is set"
+else
+  echo "OPENROUTER_API_KEY is not set"
+fi
 ```
+
+Before deleting old credentials, confirm you can retrieve the API key privately
+from OpenRouter or your password manager, or create a replacement key. Do not
+continue until that private access path is confirmed.
 
 ### Step 2: Delete Old Credentials
 
