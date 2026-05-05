@@ -71,8 +71,11 @@ pytest tests/test_tool_registration_simple.py -v
 
 ```bash
 # Only run with valid API key
-export OPENROUTER_API_KEY=sk-or-...
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
 pytest tests/test_real_world_integration.py -v -s
+unset OPENROUTER_API_KEY
 ```
 
 ### Unit Tests
@@ -105,7 +108,11 @@ pytest tests/test_mcp_integration.py tests/test_collective_intelligence_mocked.p
 pytest --ignore=tests/test_real_world_integration.py -v
 
 # Real API tests (manual only)
-OPENROUTER_API_KEY=sk-... pytest tests/test_real_world_integration.py -v
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
+pytest tests/test_real_world_integration.py -v
+unset OPENROUTER_API_KEY
 ```
 
 ### By Marker

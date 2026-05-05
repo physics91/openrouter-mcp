@@ -45,7 +45,7 @@ if "api_key" in kwargs:
 ```python
 "env": {
     # SECURITY: Never store API keys in config files
-    # API key MUST be set as environment variable: export OPENROUTER_API_KEY=sk-or-...
+    # API key MUST be provided at runtime via environment or secure storage
     # The MCP server will read it from the environment at runtime
     "OPENROUTER_APP_NAME": "claude-code-mcp",
     ...
@@ -57,9 +57,8 @@ if "api_key" in kwargs:
 if "api_key" in kwargs:
     logger.warning(
         "SECURITY WARNING: API keys should NOT be stored in configuration files. "
-        "Please set OPENROUTER_API_KEY as an environment variable instead:\n"
-        "  Windows: set OPENROUTER_API_KEY=sk-or-...\n"
-        "  Linux/Mac: export OPENROUTER_API_KEY=sk-or-...\n"
+        "Please provide OPENROUTER_API_KEY via secure storage or runtime environment.\n"
+        "Avoid placing live keys directly in shell commands.\n"
         "The API key argument will be ignored for security."
     )
 ```
@@ -400,18 +399,11 @@ Edit `~/.claude/claude_code_config.json` and remove the `OPENROUTER_API_KEY` lin
 }
 ```
 
-3. **Set API key as environment variable:**
+3. **Configure the API key securely:**
 
-**Windows:**
-```cmd
-set OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
-```
-
-**Linux/macOS:**
+**Recommended setup:**
 ```bash
-export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
-echo 'export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"' >> ~/.bashrc
-source ~/.bashrc
+openrouter-mcp init
 ```
 
 4. **Rotate your API key** (recommended):

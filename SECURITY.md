@@ -8,24 +8,21 @@ This document outlines the security practices and recommendations for using the 
 
 ### 1. API Key Protection
 
-#### ✅ SECURE: Environment Variables (Recommended)
-**All API keys MUST be stored as environment variables, never in configuration files.**
+#### ✅ SECURE: Runtime Credentials (Recommended)
+**API keys MUST be provided through secure storage or runtime environment variables, never configuration files.**
 
-**Windows:**
-```cmd
-set OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
+**Recommended setup:**
+```bash
+openrouter-mcp init
 ```
 
-**Linux/macOS:**
+**Temporary shell override (Linux/macOS):**
 ```bash
-export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
-```
-
-**Permanent (Linux/macOS):**
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-echo 'export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"' >> ~/.bashrc
-source ~/.bashrc
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
+# Run the command that needs the key, then clear it
+unset OPENROUTER_API_KEY
 ```
 
 #### ❌ INSECURE: Configuration Files (Forbidden)
@@ -118,7 +115,11 @@ The `SensitiveDataSanitizer` class (in `openrouter.py`) automatically protects:
 Suitable for development and single-user setups:
 
 ```bash
-export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
+# Run the command that needs the key, then clear it
+unset OPENROUTER_API_KEY
 ```
 
 **Pros:**

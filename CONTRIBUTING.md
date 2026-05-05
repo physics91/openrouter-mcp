@@ -82,7 +82,7 @@ Create a `.env` file for development:
 
 ```env
 # Development configuration
-OPENROUTER_API_KEY=your-test-api-key
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 OPENROUTER_APP_NAME=openrouter-mcp-dev
 OPENROUTER_HTTP_REFERER=https://localhost
 
@@ -250,25 +250,25 @@ from openrouter_mcp.client.openrouter import OpenRouterClient
 
 class TestNewFeature:
     """Test new feature functionality."""
-    
+
     @pytest.mark.asyncio
     async def test_feature_success(self, mock_client):
         """Test successful feature execution."""
         # Arrange
         expected_result = {"success": True}
-        
+
         # Act
         result = await mock_client.new_feature()
-        
+
         # Assert
         assert result == expected_result
-    
+
     @pytest.mark.asyncio
     async def test_feature_error_handling(self, mock_client):
         """Test feature error handling."""
         # Arrange
         mock_client.session.post.side_effect = Exception("Test error")
-        
+
         # Act & Assert
         with pytest.raises(OpenRouterError):
             await mock_client.new_feature()
@@ -300,13 +300,13 @@ async def test_mcp_chat_completion_integration():
     # This test requires a real API key
     if not os.getenv("OPENROUTER_API_KEY"):
         pytest.skip("No API key available for integration test")
-    
+
     # Test with real API
     request = ChatCompletionRequest(
         model="openai/gpt-3.5-turbo",
         messages=[{"role": "user", "content": "Hello!"}]
     )
-    
+
     result = await chat_with_model(request)
     assert "choices" in result
 ```
@@ -347,16 +347,16 @@ async def chat_completion(
 ) -> Dict[str, Any]:
     """
     Generate chat completion using OpenRouter API.
-    
+
     Args:
         model: Model identifier (e.g., "openai/gpt-4")
         messages: List of conversation messages
         temperature: Sampling temperature (0.0-2.0)
         max_tokens: Maximum tokens to generate
-        
+
     Returns:
         Dictionary containing the completion response
-        
+
     Raises:
         OpenRouterError: If the API request fails
     """
@@ -553,14 +553,19 @@ npm run start -- --debug
 For testing with real OpenRouter API:
 
 ```bash
-# Set real API key
-export OPENROUTER_API_KEY="your-real-key"
+# Set real API key for this shell session
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
 
 # Run integration tests
 python -m pytest tests/ -m integration -v
 
 # Test CLI manually
 npm run start
+
+# Clear the temporary key when done
+unset OPENROUTER_API_KEY
 ```
 
 ### Performance Profiling
@@ -573,9 +578,9 @@ import pstats
 def profile_function():
     profiler = cProfile.Profile()
     profiler.enable()
-    
+
     # Your code here
-    
+
     profiler.disable()
     stats = pstats.Stats(profiler)
     stats.sort_stats('tottime')
@@ -607,13 +612,13 @@ class NewToolRequest(BaseModel):
 async def new_tool(request: NewToolRequest) -> Dict[str, Any]:
     """
     Description of what the tool does.
-    
+
     Args:
         request: Tool request parameters
-        
+
     Returns:
         Tool response data
-        
+
     Raises:
         OpenRouterError: If the operation fails
     """

@@ -180,7 +180,7 @@ print(result['consensus_response'])
 ### 환경 변수
 
 ```bash
-OPENROUTER_API_KEY=your_api_key_here
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 HOST=localhost
 PORT=8000
 LOG_LEVEL=info

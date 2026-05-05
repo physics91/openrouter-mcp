@@ -61,10 +61,14 @@ Starting server on localhost:8000
 
 ### Environment Variable Override
 ```bash
-$ OPENROUTER_API_KEY=sk-or-custom openrouter-mcp start
+$ read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+$ export OPENROUTER_API_KEY
+$ echo
+$ openrouter-mcp start
 ✓ Using API key from environment variable
   Masked key: sk-or-cu...stom
 Starting server on localhost:8000
+$ unset OPENROUTER_API_KEY
 ```
 
 ### No Credentials

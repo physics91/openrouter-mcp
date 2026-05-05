@@ -262,8 +262,11 @@ openrouter-mcp delete-credentials
 openrouter-mcp init
 
 # Option 2: Use environment variable temporarily
-export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
 openrouter-mcp init
+unset OPENROUTER_API_KEY
 ```
 
 ### Issue 3: "Migration verification failed"

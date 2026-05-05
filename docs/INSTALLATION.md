@@ -212,8 +212,12 @@ npx @physics91/openrouter-mcp@latest init
 # Initialize configuration
 openrouter-mcp init
 
-# Set up environment variables
-export OPENROUTER_API_KEY="your-key-here"
+# Optional temporary environment override
+read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
+export OPENROUTER_API_KEY
+echo
+# Run the command that needs the key, then clear it
+unset OPENROUTER_API_KEY
 ```
 
 ### Docker Installation

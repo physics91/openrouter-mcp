@@ -2,6 +2,7 @@
 """Project consistency checks for docs and package metadata."""
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -234,3 +235,23 @@ def test_tracked_markdown_docs_avoid_openrouter_key_shaped_placeholders() -> Non
                 offenders.append(f"{relative_path}:{line_number} contains sk-or-v1-")
 
     assert not offenders, "OpenRouter-key-shaped placeholders remain:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_use_safe_openrouter_key_examples() -> None:
+    offenders = []
+    assignment_pattern = re.compile(r"\b(?:export|set)?\s*OPENROUTER_API_KEY=")
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if "OPENROUTER_API_KEY=" not in stripped or "grep" in stripped:
+                continue
+            if stripped == "OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY":
+                continue
+            if stripped.startswith("export OPENROUTER_API_KEY=$("):
+                continue
+            if assignment_pattern.search(stripped):
+                offenders.append(f"{relative_path}:{line_number}: {stripped}")
+
+    assert not offenders, "Unsafe OpenRouter API key examples remain:\n" + "\n".join(offenders)
