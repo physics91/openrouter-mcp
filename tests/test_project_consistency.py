@@ -15,6 +15,10 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parent.parent
 # Checked against the official Node.js Release schedule on 2026-05-05.
 EXPECTED_PACKAGE_NODE_ENGINE = ">=22.0.0"
+OPENROUTER_TEST_KEY_PREFIX = "sk-or-"
+OPENROUTER_TEST_ENV_REF = "$OPENROUTER_API_KEY"
+OPENROUTER_TEST_BRACED_ENV_REF = "${OPENROUTER_API_KEY}"
+OPENROUTER_SECRET_FIELD = "api_" + "key"
 SUPPORTED_GITHUB_ACTIONS_NODE_MAJORS = {"22", "24"}
 PRIMARY_GITHUB_ACTIONS_NODE_MAJOR = "24"
 LOWER_BOUND_GITHUB_ACTIONS_NODE_MAJOR = "22"
@@ -132,6 +136,50 @@ def _dockerfile_line_bakes_openrouter_secret(line: str) -> bool:
         return _contains_secret_env_file_reference(stripped)
 
     return bool(re.match(r"^(?:ENV|ARG)\s+OPENROUTER_API_KEY(?:\s|=|$)", stripped, re.IGNORECASE))
+
+
+def _secret_manager_inline_secret_findings(path: Path) -> list[str]:
+    findings = []
+    try:
+        display_path = path.relative_to(ROOT)
+    except ValueError:
+        display_path = path
+
+    secret_literal = r"(?:sk-or-[^\s\"']*|\$OPENROUTER_API_KEY|\$\{OPENROUTER_API_KEY\})"
+    quoted_secret = rf"[\"']?{secret_literal}[\"']?"
+    vault_store_command = re.compile(r"\bvault\s+(?:kv\s+(?:put|patch)|write)\b", re.IGNORECASE)
+    vault_secret_arg = re.compile(rf"\b[\w.-]+={quoted_secret}", re.IGNORECASE)
+    vault_raw_read = re.compile(
+        r"(?:^|\n)\s*vault\s+kv\s+get\b.*(?:^|\s)-field=api_key\b", re.IGNORECASE
+    )
+    aws_store_command = re.compile(
+        r"\baws\s+secretsmanager\s+(?:create-secret|put-secret-value|update-secret)\b",
+        re.IGNORECASE,
+    )
+    aws_secret_arg = re.compile(rf"--secret-string(?:=|\s+){quoted_secret}", re.IGNORECASE)
+    aws_raw_read = re.compile(
+        r"(?:^|\n)\s*aws\s+secretsmanager\s+get-secret-value\b.*"
+        r"--query\s+SecretString\b.*--output\s+text\b",
+        re.IGNORECASE,
+    )
+
+    for language, block_lines in _iter_markdown_fenced_blocks(path):
+        if language not in {"bash", "sh", "shell"} or not block_lines:
+            continue
+        block_text = "\n".join(line for _, line in block_lines)
+        normalized = _normalize_shell_continuations(block_text)
+        first_line = block_lines[0][0]
+
+        if vault_store_command.search(normalized) and vault_secret_arg.search(normalized):
+            findings.append(f"{display_path}:{first_line}: passes Vault secret via argv")
+        if aws_store_command.search(normalized) and aws_secret_arg.search(normalized):
+            findings.append(f"{display_path}:{first_line}: passes AWS secret via argv")
+        if vault_raw_read.search(normalized):
+            findings.append(f"{display_path}:{first_line}: prints Vault secret value")
+        if aws_raw_read.search(normalized):
+            findings.append(f"{display_path}:{first_line}: prints AWS secret value")
+
+    return findings
 
 
 def _env_file_setup_findings(path: Path) -> list[str]:
@@ -793,6 +841,77 @@ def test_detects_dockerfile_secret_baking_examples(line: str) -> None:
 )
 def test_allows_safe_dockerfile_secret_handling_examples(line: str) -> None:
     assert not _dockerfile_line_bakes_openrouter_secret(line)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        (
+            f"vault kv put secret/openrouter-mcp {OPENROUTER_SECRET_FIELD}="
+            f'"{OPENROUTER_TEST_KEY_PREFIX}..."'
+        ),
+        (
+            f"vault kv put secret/openrouter-mcp {OPENROUTER_SECRET_FIELD}="
+            f'"{OPENROUTER_TEST_ENV_REF}"'
+        ),
+        (
+            f"vault kv patch secret/openrouter-mcp {OPENROUTER_SECRET_FIELD}="
+            f"{OPENROUTER_TEST_BRACED_ENV_REF}"
+        ),
+        (
+            f"vault write secret/openrouter-mcp {OPENROUTER_SECRET_FIELD}="
+            f'"{OPENROUTER_TEST_KEY_PREFIX}v1-placeholder"'
+        ),
+        f'aws secretsmanager create-secret --secret-string "{OPENROUTER_TEST_KEY_PREFIX}..."',
+        f"aws secretsmanager put-secret-value --secret-string={OPENROUTER_TEST_ENV_REF}",
+        f"aws secretsmanager update-secret --secret-string {OPENROUTER_TEST_BRACED_ENV_REF}",
+        "vault kv get -field=api_key secret/openrouter-mcp",
+        "aws secretsmanager get-secret-value --query SecretString --output text",
+    ],
+)
+def test_detects_secret_manager_examples_that_disclose_openrouter_secrets(
+    tmp_path: Path, block: str
+) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(f"```bash\n{block}\n```\n", encoding="utf-8")
+
+    assert _secret_manager_inline_secret_findings(doc_path)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        'printf "%s" "$OPENROUTER_API_KEY" | vault kv put secret/openrouter-mcp api_key=-',
+        (
+            'tmp_secret_file="$(mktemp)"\n'
+            'printf "%s" "$OPENROUTER_API_KEY" > "$tmp_secret_file"\n'
+            'aws secretsmanager create-secret --secret-string "file://$tmp_secret_file"'
+        ),
+        "export OPENROUTER_API_KEY=$(vault kv get -field=api_key secret/openrouter-mcp)",
+        (
+            "OPENROUTER_API_KEY=$(aws secretsmanager get-secret-value \\\n"
+            "  --secret-id openrouter-mcp-api-key \\\n"
+            "  --query SecretString --output text)\n"
+            "export OPENROUTER_API_KEY"
+        ),
+    ],
+)
+def test_allows_secret_manager_examples_without_secret_argv_or_stdout(
+    tmp_path: Path, block: str
+) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(f"```bash\n{block}\n```\n", encoding="utf-8")
+
+    assert not _secret_manager_inline_secret_findings(doc_path)
+
+
+def test_tracked_markdown_docs_avoid_secret_manager_argv_secrets() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        offenders.extend(_secret_manager_inline_secret_findings(path))
+
+    assert not offenders, "Unsafe secret manager examples remain:\n" + "\n".join(offenders)
 
 
 def test_tracked_markdown_dockerfile_blocks_avoid_secret_baking() -> None:

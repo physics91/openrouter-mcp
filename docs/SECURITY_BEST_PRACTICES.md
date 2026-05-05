@@ -372,24 +372,28 @@ openrouter-mcp security-audit
 
 **HashiCorp Vault:**
 ```bash
-# Store API key
-vault kv put secret/openrouter-mcp api_key="sk-or-..."
+# Store API key without putting the value in vault argv
+printf '%s' "$OPENROUTER_API_KEY" | vault kv put secret/openrouter-mcp api_key=-
 
-# Retrieve in scripts
+# Retrieve in scripts without printing the value
 export OPENROUTER_API_KEY=$(vault kv get -field=api_key secret/openrouter-mcp)
 ```
 
 **AWS Secrets Manager:**
 ```bash
-# Store API key
+# Store API key without putting the value in aws argv
+umask 077
+tmp_secret_file="$(mktemp)"
+trap 'rm -f "$tmp_secret_file"' EXIT
+printf '%s' "$OPENROUTER_API_KEY" > "$tmp_secret_file"
 aws secretsmanager create-secret \
   --name openrouter-mcp-api-key \
-  --secret-string "sk-or-..."
+  --secret-string "file://$tmp_secret_file"
 
-# Retrieve
-aws secretsmanager get-secret-value \
+# Retrieve in scripts without printing the value
+export OPENROUTER_API_KEY=$(aws secretsmanager get-secret-value \
   --secret-id openrouter-mcp-api-key \
-  --query SecretString --output text
+  --query SecretString --output text)
 ```
 
 ---
