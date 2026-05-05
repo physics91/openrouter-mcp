@@ -49,7 +49,7 @@ Client-specific examples:
 See `docs/MCP_CLIENT_GUIDE.md` for the common flow and client-specific examples.
 
 ## Prerequisites
-- Node.js 16+
+- Node.js 22+
 - Python 3.10+ (`python` or `python3` must be available in `PATH`)
 - First run attempts dependency install via `<python> -m pip install -r requirements.txt`
 - OpenRouter API key: https://openrouter.ai

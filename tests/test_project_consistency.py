@@ -14,7 +14,10 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
 # Checked against the official Node.js Release schedule on 2026-05-05.
-EXPECTED_GITHUB_ACTIONS_NODE_MAJOR = "24"
+EXPECTED_PACKAGE_NODE_ENGINE = ">=22.0.0"
+SUPPORTED_GITHUB_ACTIONS_NODE_MAJORS = {"22", "24"}
+PRIMARY_GITHUB_ACTIONS_NODE_MAJOR = "24"
+LOWER_BOUND_GITHUB_ACTIONS_NODE_MAJOR = "22"
 USER_FACING_EXAMPLE_FILES = (
     # Security-detection fixtures intentionally keep fake key-shaped values.
     "src/openrouter_mcp/cli/mcp_manager.py",
@@ -223,6 +226,40 @@ def test_package_metadata_has_no_placeholders() -> None:
     ]
 
     assert not offenders, f"Placeholder package metadata remains: {offenders}"
+
+
+def test_package_node_engine_matches_supported_lts_minimum() -> None:
+    package = _load_package_json()
+    package_lock = json.loads(_read_text("package-lock.json"))
+
+    assert package["engines"]["node"] == EXPECTED_PACKAGE_NODE_ENGINE
+    assert package_lock["packages"][""]["engines"]["node"] == EXPECTED_PACKAGE_NODE_ENGINE
+
+
+def test_documented_node_minimums_match_supported_lts_policy() -> None:
+    expected_snippets = {
+        "README.md": "Node.js 22+",
+        "docs/INSTALLATION.md": "| **Node.js** | 22.0.0 | Current supported LTS |",
+        "docs/ARCHITECTURE.md": "**Node.js 22+**",
+        "docs/FAQ.md": "**Node.js**: Version 22 or higher",
+        "docs/TROUBLESHOOTING.md": "Node.js version 22+ required",
+        "docs/USAGE_GUIDE_KR.md": "**Node.js**: 22.0.0 이상",
+    }
+    missing = [
+        f"{relative_path}: {snippet}"
+        for relative_path, snippet in expected_snippets.items()
+        if snippet not in _read_text(relative_path)
+    ]
+
+    assert not missing, "Documented Node.js minimum is stale:\n" + "\n".join(missing)
+
+
+def test_changelog_notes_node_engine_support_policy_change() -> None:
+    changelog = _read_text("CHANGELOG.md")
+
+    assert "## [Unreleased]" in changelog
+    assert "BREAKING" in changelog
+    assert "Node.js 22.0.0" in changelog
 
 
 def test_api_docs_cover_all_registered_tools() -> None:
@@ -666,6 +703,7 @@ def test_tracked_markdown_docs_avoid_eol_node_install_guidance() -> None:
 def test_github_actions_use_supported_lts_node_major() -> None:
     node_version_pin = re.compile(r"\bnode-version:\s*['\"]?(\d+)['\"]?")
     offenders = []
+    seen_majors = set()
 
     for path in _tracked_github_workflows():
         relative_path = path.relative_to(ROOT)
@@ -673,11 +711,20 @@ def test_github_actions_use_supported_lts_node_major() -> None:
             match = node_version_pin.search(line)
             if not match:
                 continue
-            if match.group(1) != EXPECTED_GITHUB_ACTIONS_NODE_MAJOR:
+            major = match.group(1)
+            seen_majors.add(major)
+            if major not in SUPPORTED_GITHUB_ACTIONS_NODE_MAJORS:
                 offenders.append(
-                    f"{relative_path}:{line_number}: use Node "
-                    f"{EXPECTED_GITHUB_ACTIONS_NODE_MAJOR} for CI"
+                    f"{relative_path}:{line_number}: use a supported CI Node major "
+                    f"{sorted(SUPPORTED_GITHUB_ACTIONS_NODE_MAJORS)}"
                 )
+
+    if PRIMARY_GITHUB_ACTIONS_NODE_MAJOR not in seen_majors:
+        offenders.append(f"missing primary Node {PRIMARY_GITHUB_ACTIONS_NODE_MAJOR} CI runtime")
+    if LOWER_BOUND_GITHUB_ACTIONS_NODE_MAJOR not in seen_majors:
+        offenders.append(
+            f"missing lower-bound Node {LOWER_BOUND_GITHUB_ACTIONS_NODE_MAJOR} CI smoke"
+        )
 
     assert not offenders, "Unsupported GitHub Actions Node.js pins remain:\n" + "\n".join(offenders)
 

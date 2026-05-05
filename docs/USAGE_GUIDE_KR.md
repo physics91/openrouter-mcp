@@ -67,7 +67,7 @@ npx @physics91/openrouter-mcp@latest install-claude-code
 
 ### 시스템 요구사항
 
-- **Node.js**: 16.0.0 이상
+- **Node.js**: 22.0.0 이상
 - **Python**: 3.10 이상
 - **OpenRouter API Key**: [openrouter.ai](https://openrouter.ai)에서 발급
 

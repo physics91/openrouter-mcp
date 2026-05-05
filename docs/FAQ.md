@@ -37,7 +37,7 @@ Over 200 models including:
 ## Setup & Installation
 
 ### What are the system requirements?
-- **Node.js**: Version 16 or higher
+- **Node.js**: Version 22 or higher
 - **Python**: Version 3.9 or higher
 - **Memory**: At least 2GB RAM recommended
 - **Storage**: 500MB for installation

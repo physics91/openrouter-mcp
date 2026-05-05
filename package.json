@@ -46,7 +46,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "start": "node bin/openrouter-mcp.js start",

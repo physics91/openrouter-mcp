@@ -141,7 +141,7 @@ File Cache (JSON)
 
 ### Core Technologies
 - **Python 3.10+**: Server implementation
-- **Node.js 16+**: CLI and package management
+- **Node.js 22+**: CLI and package management
 - **FastMCP**: MCP framework
 - **httpx**: Async HTTP client
 - **Pillow**: Image processing

@@ -33,7 +33,7 @@ python3 --version
 
 ### Node.js Version Issues
 
-**Error**: `Node.js version 16+ required`
+**Error**: `Node.js version 22+ required`
 
 **Solution**:
 ```bash

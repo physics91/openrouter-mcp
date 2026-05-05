@@ -17,7 +17,7 @@ Comprehensive installation instructions for the OpenRouter MCP Server across dif
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **Node.js** | 16.0.0 | Current supported LTS |
+| **Node.js** | 22.0.0 | Current supported LTS |
 | **Python** | 3.9.0 | 3.11.0+ |
 | **RAM** | 2GB | 4GB+ |
 | **Storage** | 500MB | 1GB+ |
