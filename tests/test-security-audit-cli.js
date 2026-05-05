@@ -98,4 +98,40 @@ assert.strictEqual(
   `security-audit should report a keychain retrieval failure once\n${mockedOutput}`
 );
 
+const plaintextProject = fs.mkdtempSync(path.join(os.tmpdir(), 'openrouter-mcp-plaintext-'));
+const plaintextHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openrouter-mcp-audit-'));
+fs.chmodSync(plaintextHome, 0o755);
+const plaintextEnvPath = path.join(plaintextProject, '.env');
+fs.writeFileSync(plaintextEnvPath, 'OPENROUTER_API_KEY=sk-or-test-audit-key\n');
+fs.chmodSync(plaintextEnvPath, 0o600);
+fs.writeFileSync(path.join(plaintextProject, '.gitignore'), '.env\n');
+
+const plaintextResult = spawnSync(process.execPath, [cliPath, 'security-audit'], {
+  cwd: plaintextProject,
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    HOME: plaintextHome,
+    USERPROFILE: plaintextHome
+  }
+});
+fs.rmSync(plaintextProject, { recursive: true, force: true });
+fs.rmSync(plaintextHome, { recursive: true, force: true });
+
+const plaintextOutput = `${plaintextResult.stdout}\n${plaintextResult.stderr}`;
+assert.strictEqual(
+  plaintextResult.status,
+  0,
+  `security-audit should exit cleanly with plaintext shared fixture\n${plaintextOutput}`
+);
+const summarySection = plaintextOutput.split('Summary:')[1].split('Recommendations:')[0];
+const plaintextSharedIssues = summarySection.match(
+  /Plaintext credentials in shared environment/g
+) || [];
+assert.strictEqual(
+  plaintextSharedIssues.length,
+  1,
+  `security-audit summary should include plaintext shared risk once\n${plaintextOutput}`
+);
+
 console.log('security-audit CLI regression test passed');

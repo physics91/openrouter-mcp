@@ -999,6 +999,13 @@ async function securityAudit() {
     console.log(chalk.gray('  ○ Claude Code: Not configured'));
   }
 
+  const plaintextSharedVulnerability = audit.vulnerabilities.find(
+    vulnerability => vulnerability.issue === 'Plaintext credentials in shared environment'
+  );
+  if (plaintextSharedVulnerability) {
+    issues.push(`! ${plaintextSharedVulnerability.issue}`);
+  }
+
   // Summary
   console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────'));
   console.log(chalk.bold('Summary:\n'));
