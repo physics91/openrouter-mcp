@@ -23,6 +23,7 @@ SECURITY_METADATA_DOCS = (
     "docs/SECURITY.md",
     "docs/SECURITY_BEST_PRACTICES.md",
 )
+SOURCE_PLACEHOLDER_POLICY_FILES = ("scripts/install_claude_code_simple.py",)
 
 
 def _read_text(relative_path: str) -> str:
@@ -435,6 +436,20 @@ def test_env_example_uses_safe_openrouter_placeholder() -> None:
     assert not offenders, "Unsafe .env.example OpenRouter placeholder remains:\n" + "\n".join(
         offenders
     )
+
+
+def test_user_facing_source_examples_avoid_inline_api_key_placeholder_literals() -> None:
+    offenders = []
+
+    for relative_path in SOURCE_PLACEHOLDER_POLICY_FILES:
+        offenders.extend(
+            _openrouter_placeholder_policy_findings(
+                relative_path,
+                _read_text(relative_path).splitlines(),
+            )
+        )
+
+    assert not offenders, "Unsafe source API key placeholder remains:\n" + "\n".join(offenders)
 
 
 def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> None:
