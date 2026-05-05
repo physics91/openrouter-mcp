@@ -103,6 +103,10 @@ fi
 # No quotes or extra spaces in .env file
 OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 ```
+`.env` is plaintext. Do not commit, paste, or share it.
+```bash
+chmod 600 .env
+```
 
 3. **Verify API key on OpenRouter**:
 - Login to [OpenRouter](https://openrouter.ai)
@@ -120,6 +124,9 @@ npx @physics91/openrouter-mcp@latest init
 
 # Manual fallback: edit .env in a private editor and add:
 OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
+
+# .env is plaintext. Do not commit, paste, or share it.
+chmod 600 .env
 
 # Verify .env location
 ls -la | grep .env

@@ -100,6 +100,11 @@ LOG_LEVEL=INFO
 # OPENROUTER_VERBOSE_LOGGING=false
 ```
 
+`.env`는 평문 파일입니다. 커밋하거나 공유하지 마세요.
+```bash
+chmod 600 .env
+```
+
 캐시 설정(TTL/메모리/파일 경로)은 환경변수가 아닌 코드에서 `ModelCache`로 조정합니다.
 
 ---

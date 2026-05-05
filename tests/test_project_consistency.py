@@ -103,6 +103,49 @@ def _dockerfile_line_bakes_openrouter_secret(line: str) -> bool:
     return bool(re.match(r"^(?:ENV|ARG)\s+OPENROUTER_API_KEY(?:\s|=|$)", stripped, re.IGNORECASE))
 
 
+def _env_file_setup_findings(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    findings = []
+    try:
+        display_path = path.relative_to(ROOT)
+    except ValueError:
+        display_path = path
+
+    for language, block_lines in _iter_markdown_fenced_blocks(path):
+        if language not in {"env", "dotenv", "bash", "sh", "shell"} or not block_lines:
+            continue
+
+        block_text = "\n".join(line for _, line in block_lines)
+        if "OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY" not in block_text:
+            continue
+
+        start_line = block_lines[0][0]
+        end_line = block_lines[-1][0]
+        context_start = max(0, start_line - 9)
+        context_end = min(len(lines), end_line + 8)
+        context = "\n".join(lines[context_start:context_end])
+
+        if ".env" not in context:
+            continue
+
+        missing = []
+        if "chmod 600 .env" not in context:
+            missing.append("chmod 600 .env")
+        if not re.search(r"\bplain\s?text\b|평문", context, re.IGNORECASE):
+            missing.append("plaintext warning")
+        if not re.search(
+            r"\b(?:do not|don't|never)\b.{0,100}\b(?:commit|share|paste)\b|커밋|공유",
+            context,
+            re.IGNORECASE,
+        ):
+            missing.append("non-commit/share warning")
+
+        if missing:
+            findings.append(f"{display_path}:{start_line}: missing {', '.join(missing)}")
+
+    return findings
+
+
 def test_package_metadata_has_no_placeholders() -> None:
     package = _load_package_json()
 
@@ -578,6 +621,70 @@ def test_tracked_markdown_dockerfile_blocks_avoid_secret_baking() -> None:
                     )
 
     assert not offenders, "Dockerfile examples bake OpenRouter secrets:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_env_file_examples_include_permissions_and_warnings() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        offenders.extend(_env_file_setup_findings(path))
+
+    assert not offenders, "Unsafe .env file examples remain:\n" + "\n".join(offenders)
+
+
+def test_detects_env_file_examples_without_permissions_or_warnings(tmp_path: Path) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(
+        """Create a `.env` file:
+
+```env
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
+```
+""",
+        encoding="utf-8",
+    )
+
+    findings = _env_file_setup_findings(doc_path)
+
+    assert findings
+    assert "chmod 600 .env" in findings[0]
+    assert "plaintext warning" in findings[0]
+    assert "non-commit/share warning" in findings[0]
+
+
+def test_allows_env_file_examples_with_permissions_and_warnings(tmp_path: Path) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(
+        """Create a `.env` file:
+
+```env
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
+```
+
+`.env` is plaintext. Do not commit, paste, or share it.
+```bash
+chmod 600 .env
+```
+""",
+        encoding="utf-8",
+    )
+
+    assert not _env_file_setup_findings(doc_path)
+
+
+def test_ignores_generic_non_env_file_environment_examples(tmp_path: Path) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(
+        """Set a temporary environment variable:
+
+```bash
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
+```
+""",
+        encoding="utf-8",
+    )
+
+    assert not _env_file_setup_findings(doc_path)
 
 
 def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:

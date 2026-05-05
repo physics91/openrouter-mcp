@@ -297,6 +297,11 @@ OPENROUTER_APP_NAME=my-app
 OPENROUTER_HTTP_REFERER=https://myapp.com
 ```
 
+`.env` is plaintext. Do not commit, paste, or share it.
+```bash
+chmod 600 .env
+```
+
 Cache tuning (TTL, memory size, cache file path) is configured programmatically
 via `ModelCache` and `OpenRouterClient` rather than environment variables.
 

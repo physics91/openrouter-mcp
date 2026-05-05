@@ -92,6 +92,11 @@ PORT=8000
 LOG_LEVEL=debug
 ```
 
+`.env` is plaintext. Do not commit, paste, or share it.
+```bash
+chmod 600 .env
+```
+
 ### 5. Verify Setup
 
 ```bash
