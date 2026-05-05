@@ -23,6 +23,7 @@ EXPECTED_STATUS_KEYS = (
     "osv-package-lock",
     "osv-requirements",
     "osv-v2-source",
+    "gitleaks",
     "bandit",
     "semgrep-auto",
     "semgrep-owasp",
@@ -178,6 +179,12 @@ def _count_osv(report_dir: Path, filename: str) -> ScannerEvaluation:
     return _scanner_result(count)
 
 
+def _count_gitleaks(report_dir: Path) -> ScannerEvaluation:
+    filename = "gitleaks-report.json"
+    findings = _require_list(_load_json(report_dir, filename), "root", filename)
+    return _scanner_result(len(findings))
+
+
 def _count_bandit(report_dir: Path) -> ScannerEvaluation:
     data = _require_dict(_load_json(report_dir, "bandit-report.json"), "bandit-report.json")
     errors = _require_list(data.get("errors"), "errors", "bandit-report.json")
@@ -320,6 +327,7 @@ def evaluate_reports(
             "osv-package-lock": _count_osv(report_dir, "osv-package-lock-report.json"),
             "osv-requirements": _count_osv(report_dir, "osv-requirements-report.json"),
             "osv-v2-source": _count_osv(report_dir, "osv-v2-source-report.json"),
+            "gitleaks": _count_gitleaks(report_dir),
             "bandit": _count_bandit(report_dir),
             "semgrep-auto": _count_semgrep_auto(
                 report_dir,

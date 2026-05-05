@@ -396,6 +396,48 @@ jobs:
         exit 0
       continue-on-error: true
 
+    - name: Run Gitleaks current tree scan
+      run: |
+        set -euo pipefail
+        gitleaks_version="8.30.1"
+        gitleaks_asset="gitleaks_${gitleaks_version}_linux_x64.tar.gz"
+        gitleaks_dir="$(mktemp -d)"
+        gitleaks_scan_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/gitleaks/gitleaks/releases/download/v${gitleaks_version}/${gitleaks_asset}" \
+          -o "${gitleaks_dir}/${gitleaks_asset}"
+        curl -fsSL \
+          "https://github.com/gitleaks/gitleaks/releases/download/v${gitleaks_version}/gitleaks_${gitleaks_version}_checksums.txt" \
+          -o "${gitleaks_dir}/gitleaks_${gitleaks_version}_checksums.txt"
+        grep "  ${gitleaks_asset}$" "${gitleaks_dir}/gitleaks_${gitleaks_version}_checksums.txt" | (
+          cd "${gitleaks_dir}"
+          sha256sum -c -
+        )
+        tar -xzf "${gitleaks_dir}/${gitleaks_asset}" -C "${gitleaks_dir}"
+        git archive HEAD | tar -x -C "${gitleaks_scan_dir}"
+
+        set +e
+        "${gitleaks_dir}/gitleaks" dir \
+          --no-banner \
+          --redact=100 \
+          --report-format json \
+          --report-path gitleaks-report.json \
+          --exit-code 99 \
+          "${gitleaks_scan_dir}"
+        status=$?
+        python - gitleaks "$status" <<'PY'
+        import json
+        import sys
+        from pathlib import Path
+
+        path = Path("security-status.json")
+        data = json.loads(path.read_text())
+        data[sys.argv[1]] = int(sys.argv[2])
+        path.write_text(json.dumps(data, sort_keys=True) + "\n")
+        PY
+        exit 0
+      continue-on-error: true
+
     - name: Run bandit security scan
       run: |
         set +e
@@ -468,6 +510,7 @@ jobs:
           osv-package-lock-report.json
           osv-requirements-report.json
           osv-v2-source-report.json
+          gitleaks-report.json
           bandit-report.json
           semgrep-auto-report.json
           semgrep-auto-baseline.json
