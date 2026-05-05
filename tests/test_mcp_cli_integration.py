@@ -59,11 +59,13 @@ def test_mcp_cli_integration():
     print("\n" + "=" * 60)
     print("✅ MCP CLI Integration Test Complete!")
     print("\nNow you can use these commands in Claude Code CLI:")
-    print("  export OPENROUTER_API_KEY=sk-or-...")
+    print('  read -rsp "OpenRouter API key: " OPENROUTER_API_KEY')
+    print("  export OPENROUTER_API_KEY")
     print("  claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start")
     print("  claude mcp list")
     print("  claude mcp get openrouter")
     print("  claude mcp remove openrouter")
+    print("  unset OPENROUTER_API_KEY")
 
 
 def demonstrate_cli_syntax():
@@ -74,7 +76,8 @@ def demonstrate_cli_syntax():
     print("=" * 60)
 
     examples = [
-        ("Export API key", "export OPENROUTER_API_KEY=sk-or-xxx"),
+        ("Prompt for API key", 'read -rsp "OpenRouter API key: " OPENROUTER_API_KEY'),
+        ("Export prompted API key", "export OPENROUTER_API_KEY"),
         (
             "Add OpenRouter server",
             "claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start",
@@ -90,6 +93,7 @@ def demonstrate_cli_syntax():
             "Custom server",
             "claude mcp add myserver -- python server.py --flag value",
         ),
+        ("Clear prompted API key", "unset OPENROUTER_API_KEY"),
     ]
 
     for description, command in examples:

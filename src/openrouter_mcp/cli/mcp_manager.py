@@ -103,8 +103,7 @@ class MCPManager:
             "type": "stdio",
             "env": {
                 # SECURITY: Never store API keys in config files
-                # API key MUST be set as environment variable: export OPENROUTER_API_KEY=sk-or-...
-                # The MCP server will read it from the environment at runtime
+                # API key must be supplied at runtime, not persisted in MCP config
                 EnvVars.APP_NAME: "claude-code-mcp",
                 EnvVars.HTTP_REFERER: "https://localhost:3000",
                 "HOST": "localhost",
@@ -353,9 +352,9 @@ class MCPManager:
             if api_key_value and api_key_value.strip():
                 raise MCPConfigError(
                     "SECURITY ERROR: API keys must NOT be stored in configuration files. "
-                    f"Please remove the {EnvVars.API_KEY} from the config and set it as an environment variable:\n"
-                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
-                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
+                    f"Please remove {EnvVars.API_KEY} from the config and provide it at runtime. "
+                    "Run openrouter-mcp init, or set it in the runtime environment "
+                    "without placing the live key in shell history."
                 )
 
         # Check if API key is set in environment
@@ -363,9 +362,8 @@ class MCPManager:
         if not env_api_key:
             logger.warning(
                 f"WARNING: {EnvVars.API_KEY} environment variable is not set. "
-                "The server will fail to start without it. Please set it:\n"
-                f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
-                f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-..."
+                "The server will fail to start without it. Run openrouter-mcp init, "
+                "or set it in the runtime environment without placing the live key in shell history."
             )
 
     def backup_config(self) -> Path:
@@ -468,9 +466,8 @@ class MCPManager:
             if "api_key" in kwargs:
                 logger.warning(
                     "SECURITY WARNING: API keys should NOT be stored in configuration files. "
-                    f"Please set {EnvVars.API_KEY} as an environment variable instead:\n"
-                    f"  Windows: set {EnvVars.API_KEY}=sk-or-...\n"
-                    f"  Linux/Mac: export {EnvVars.API_KEY}=sk-or-...\n"
+                    f"Please provide {EnvVars.API_KEY} through secure storage or the runtime environment. "
+                    "Avoid placing live keys directly in shell commands. "
                     "The API key argument will be ignored for security."
                 )
 

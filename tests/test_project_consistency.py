@@ -13,6 +13,11 @@ from tests.test_tool_expectations import ALL_REGISTERED_TOOL_NAMES
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parent.parent
+USER_FACING_EXAMPLE_FILES = (
+    # Security-detection fixtures intentionally keep fake key-shaped values.
+    "src/openrouter_mcp/cli/mcp_manager.py",
+    "tests/test_mcp_cli_integration.py",
+)
 
 
 def _read_text(relative_path: str) -> str:
@@ -255,3 +260,18 @@ def test_tracked_markdown_docs_use_safe_openrouter_key_examples() -> None:
                 offenders.append(f"{relative_path}:{line_number}: {stripped}")
 
     assert not offenders, "Unsafe OpenRouter API key examples remain:\n" + "\n".join(offenders)
+
+
+def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> None:
+    patterns = (
+        re.compile(r"OPENROUTER_API_KEY\s*=\s*[\"']?sk-"),
+        re.compile(r"\{EnvVars\.API_KEY\}\s*=\s*[\"']?sk-"),
+    )
+    offenders = []
+
+    for relative_path in USER_FACING_EXAMPLE_FILES:
+        for line_number, line in enumerate(_read_text(relative_path).splitlines(), 1):
+            if any(pattern.search(line) for pattern in patterns):
+                offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
+
+    assert not offenders, "Unsafe source API key examples remain:\n" + "\n".join(offenders)
