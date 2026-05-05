@@ -87,7 +87,7 @@ npx @physics91/openrouter-mcp init
 
 ```bash
 # 필수 설정
-OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 
 # 선택 설정
 OPENROUTER_APP_NAME=MyApp

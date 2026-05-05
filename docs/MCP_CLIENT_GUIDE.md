@@ -39,7 +39,7 @@ If your client requires inline environment variables, add:
 ```json
 {
   "env": {
-    "OPENROUTER_API_KEY": "sk-or-v1-...",
+    "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY",
     "OPENROUTER_APP_NAME": "my-mcp-client",
     "OPENROUTER_HTTP_REFERER": "https://example.com"
   }
@@ -61,7 +61,7 @@ Claude Desktop uses `mcpServers` in `claude_desktop_config.json`.
       "command": "npx",
       "args": ["@physics91/openrouter-mcp", "start"],
       "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-..."
+        "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"
       }
     }
   }

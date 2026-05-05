@@ -214,7 +214,7 @@ if (keyResult.key) {
 ### Return Value
 ```javascript
 {
-  key: "sk-or-v1-...",  // The actual API key (or null)
+  key: "REDACTED_OPENROUTER_API_KEY",  // The actual API key (or null)
   source: "keychain"     // Where it came from
 }
 ```

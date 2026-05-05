@@ -262,7 +262,7 @@ openrouter-mcp delete-credentials
 openrouter-mcp init
 
 # Option 2: Use environment variable temporarily
-export OPENROUTER_API_KEY="sk-or-v1-your-key"
+export OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY"
 openrouter-mcp init
 ```
 

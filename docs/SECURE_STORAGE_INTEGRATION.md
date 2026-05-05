@@ -97,9 +97,9 @@ Starting server on localhost:8000
 ### Example 3: Using Environment Variable (Override)
 ```bash
 # Environment variable takes precedence
-$ OPENROUTER_API_KEY=sk-or-v1-custom-key openrouter-mcp start
+$ OPENROUTER_API_KEY="REPLACE_WITH_OPENROUTER_API_KEY" openrouter-mcp start
 ✓ Using API key from environment variable
-  Masked key: sk-or-v1...key0
+  Masked key: sk-o...***MASKED***
 Starting server on localhost:8000
 ```
 

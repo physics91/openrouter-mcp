@@ -96,9 +96,9 @@ cat .env | grep OPENROUTER_API_KEY
 
 2. **Check API key format**:
 ```bash
-# API key should look like: sk-or-v1-xxxxx
+# Use an API key generated from your OpenRouter dashboard
 # No quotes or extra spaces in .env file
-OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 ```
 
 3. **Verify API key on OpenRouter**:
