@@ -105,6 +105,9 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    env:
+      OSV_ASSET: osv-scanner_linux_amd64
+      OSV_VERSION: "2.3.6"
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
@@ -364,9 +367,27 @@ jobs:
 
     - name: Run OSV scan for npm lockfile
       run: |
+        set -uo pipefail
         set +e
-        go run github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2 --lockfile package-lock.json --format json > osv-package-lock-report.json
+        osv_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${OSV_ASSET}" \
+          -o "${osv_dir}/${OSV_ASSET}" &&
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_SHA256SUMS" \
+          -o "${osv_dir}/osv-scanner_SHA256SUMS" &&
+        grep "  ${OSV_ASSET}$" "${osv_dir}/osv-scanner_SHA256SUMS" | (
+          cd "${osv_dir}"
+          sha256sum -c -
+        ) &&
+        chmod +x "${osv_dir}/${OSV_ASSET}" &&
+        "${osv_dir}/${OSV_ASSET}" scan source \
+          --lockfile package-lock.json \
+          --format json > osv-package-lock-report.json
         status=$?
+        if [ ! -s osv-package-lock-report.json ]; then
+          printf '{"results":[]}\n' > osv-package-lock-report.json
+        fi
         python - osv-package-lock "$status" <<'PY'
         import json
         import sys
@@ -382,14 +403,30 @@ jobs:
 
     - name: Run OSV scan for Python requirements
       run: |
+        set -uo pipefail
         set +e
-        go run github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2 \
+        osv_dir="$(mktemp -d)"
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${OSV_ASSET}" \
+          -o "${osv_dir}/${OSV_ASSET}" &&
+        curl -fsSL \
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_SHA256SUMS" \
+          -o "${osv_dir}/osv-scanner_SHA256SUMS" &&
+        grep "  ${OSV_ASSET}$" "${osv_dir}/osv-scanner_SHA256SUMS" | (
+          cd "${osv_dir}"
+          sha256sum -c -
+        ) &&
+        chmod +x "${osv_dir}/${OSV_ASSET}" &&
+        "${osv_dir}/${OSV_ASSET}" scan source \
           --lockfile requirements.txt \
           --lockfile requirements-dev.txt \
           --lockfile requirements-security.txt \
           --lockfile requirements-semgrep.txt \
           --format json > osv-requirements-report.json
         status=$?
+        if [ ! -s osv-requirements-report.json ]; then
+          printf '{"results":[]}\n' > osv-requirements-report.json
+        fi
         python - osv-requirements "$status" <<'PY'
         import json
         import sys
@@ -405,24 +442,22 @@ jobs:
 
     - name: Run OSV v2 source scan
       run: |
-        set -euo pipefail
-        osv_version="2.3.6"
-        osv_asset="osv-scanner_linux_amd64"
+        set -uo pipefail
+        set +e
         osv_dir="$(mktemp -d)"
         curl -fsSL \
-          "https://github.com/google/osv-scanner/releases/download/v${osv_version}/${osv_asset}" \
-          -o "${osv_dir}/${osv_asset}"
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/${OSV_ASSET}" \
+          -o "${osv_dir}/${OSV_ASSET}" &&
         curl -fsSL \
-          "https://github.com/google/osv-scanner/releases/download/v${osv_version}/osv-scanner_SHA256SUMS" \
-          -o "${osv_dir}/osv-scanner_SHA256SUMS"
-        grep "  ${osv_asset}$" "${osv_dir}/osv-scanner_SHA256SUMS" | (
+          "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_SHA256SUMS" \
+          -o "${osv_dir}/osv-scanner_SHA256SUMS" &&
+        grep "  ${OSV_ASSET}$" "${osv_dir}/osv-scanner_SHA256SUMS" | (
           cd "${osv_dir}"
           sha256sum -c -
-        )
-        chmod +x "${osv_dir}/${osv_asset}"
+        ) &&
+        chmod +x "${osv_dir}/${OSV_ASSET}" &&
 
-        set +e
-        "${osv_dir}/${osv_asset}" scan source \
+        "${osv_dir}/${OSV_ASSET}" scan source \
           --recursive \
           --all-vulns \
           --experimental-exclude .git \
@@ -432,6 +467,9 @@ jobs:
           --output-file osv-v2-source-report.json \
           .
         status=$?
+        if [ ! -s osv-v2-source-report.json ]; then
+          printf '{"results":[]}\n' > osv-v2-source-report.json
+        fi
         python - osv-v2-source "$status" <<'PY'
         import json
         import sys
