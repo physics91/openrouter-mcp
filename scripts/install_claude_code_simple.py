@@ -59,7 +59,7 @@ def main():
         print("[WARNING] OPENROUTER_API_KEY 환경변수가 설정되지 않았습니다.")
         print("[INFO] 기본값을 사용합니다. 나중에 설정 파일에서 수정하세요.")
     else:
-        print(f"[SUCCESS] 환경변수에서 API 키 발견: {api_key[:8]}...")
+        print("[SUCCESS] 환경변수에서 API 키 발견")
 
     # 5. MCP 서버 설정 생성
     print("\n[5] OpenRouter MCP Server 설정 추가...")

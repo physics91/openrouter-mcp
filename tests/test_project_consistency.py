@@ -631,6 +631,18 @@ def test_user_facing_source_examples_avoid_key_shaped_inline_assignments() -> No
     assert not offenders, "Unsafe source API key examples remain:\n" + "\n".join(offenders)
 
 
+def test_user_facing_examples_do_not_print_api_key_fragments() -> None:
+    key_slice = re.compile(r"(?:api_key|openrouter_api_key|OPENROUTER_API_KEY)\s*\[[^]]*:[^]]*]")
+    offenders = []
+
+    for relative_path in ("examples/benchmark_example.py", "scripts/install_claude_code_simple.py"):
+        for line_number, line in enumerate(_read_text(relative_path).splitlines(), 1):
+            if "print" in line and key_slice.search(line):
+                offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
+
+    assert not offenders, "API key fragments are printed:\n" + "\n".join(offenders)
+
+
 def test_tracked_markdown_docs_use_non_disclosing_security_diagnostics() -> None:
     unsafe_env_grep = re.compile(r"env\s*\|\s*grep\s+OPENROUTER")
     unsafe_secret_grep = re.compile(r"grep\s+-[^\n]*r[^\n]*[\"']sk-or-[\"']")
