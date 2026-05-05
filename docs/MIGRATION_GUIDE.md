@@ -461,8 +461,11 @@ cat ~/.openrouter-mcp/.credentials.enc | jq '.version'
 
 **Migration Issues**:
 - Check troubleshooting section above
-- Run: `openrouter-mcp security-audit` and share output
-- Open GitHub issue with error logs
+- Run `openrouter-mcp security-audit`, then review/redact the output
+- Open GitHub issues only with sanitized, non-sensitive migration summaries
+- Do not post secrets, full logs, environment dumps, or vulnerability details publicly
+- For sensitive cases, follow root `SECURITY.md`; if no private route is
+  configured, wait for maintainers to provide one before sharing details
 
 **Security Concerns**:
 - Follow the root `SECURITY.md` disclosure policy

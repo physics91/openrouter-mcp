@@ -364,3 +364,32 @@ def test_tracked_markdown_docs_avoid_tls_verification_bypass() -> None:
                 offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
 
     assert not offenders, "TLS verification bypass guidance remains:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:
+    sharing = re.compile(r"\b(share|send|paste|attach|post)\b", re.IGNORECASE)
+    artifact = re.compile(r"\b(logs?|output|diagnostics?|dump|audit)\b", re.IGNORECASE)
+    public_issue = re.compile(r"github issue", re.IGNORECASE)
+    safety_terms = re.compile(
+        r"\b(review|redact|sanitize|sanitized|non-sensitive)\b", re.IGNORECASE
+    )
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            line_number = index + 1
+            nearby = "\n".join(lines[max(0, index - 2) : index + 3])
+            if "security-audit" in nearby and sharing.search(nearby) and artifact.search(nearby):
+                if not safety_terms.search(nearby):
+                    offenders.append(
+                        f"{relative_path}:{line_number}: shares security-audit diagnostics unsafely"
+                    )
+            if public_issue.search(nearby) and artifact.search(nearby):
+                if not safety_terms.search(nearby):
+                    offenders.append(
+                        f"{relative_path}:{line_number}: sends sensitive diagnostics to public issue"
+                    )
+
+    assert not offenders, "Unsafe public diagnostic sharing remains:\n" + "\n".join(offenders)
