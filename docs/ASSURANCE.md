@@ -51,3 +51,21 @@ The command runs:
   - `pre-commit run --hook-stage manual mypy-advisory --all-files`
   - `pre-commit run --hook-stage manual bandit-advisory --all-files`
   - `pre-commit run --hook-stage manual pylint-advisory --all-files`
+
+## Semgrep Auto Baseline Control
+
+`semgrep-auto-baseline.json` is a reviewed exception list, not a permanent
+waiver. Any change touching command construction, child process callers, or
+Claude config path handling in these files requires re-audit:
+
+- `bin/check-python.js`
+- `bin/openrouter-mcp.js`
+- `bin/claude-config-utils.js`
+- `semgrep-auto-baseline.json`
+
+The re-audit must run the Semgrep auto report through
+`scripts/evaluate_security_reports.py` with
+`--semgrep-auto-baseline semgrep-auto-baseline.json`. The change is blocked
+until the evaluator reports `new=0` and `stale_baseline=0`, or the new/stale
+finding is reviewed through debate-decision and the baseline rationale is
+updated with the new source hash.

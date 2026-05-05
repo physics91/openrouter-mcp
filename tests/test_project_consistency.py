@@ -1128,3 +1128,23 @@ def test_tracked_markdown_docs_avoid_public_sensitive_log_sharing() -> None:
                     )
 
     assert not offenders, "Unsafe public diagnostic sharing remains:\n" + "\n".join(offenders)
+
+
+def test_assurance_docs_define_semgrep_baseline_reaudit_control() -> None:
+    assurance = _read_text("docs/ASSURANCE.md")
+
+    required_terms = (
+        "Semgrep Auto Baseline Control",
+        "bin/check-python.js",
+        "bin/openrouter-mcp.js",
+        "bin/claude-config-utils.js",
+        "semgrep-auto-baseline.json",
+        "scripts/evaluate_security_reports.py",
+        "--semgrep-auto-baseline semgrep-auto-baseline.json",
+        "new=0",
+        "stale_baseline=0",
+    )
+
+    missing = [term for term in required_terms if term not in assurance]
+
+    assert not missing, "Missing Semgrep baseline re-audit controls:\n" + "\n".join(missing)
