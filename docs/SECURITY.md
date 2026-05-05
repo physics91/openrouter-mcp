@@ -691,9 +691,9 @@ For security incidents involving this project:
 ## Security Updates
 
 This document is version controlled. Check for updates regularly:
-- **Last Updated**: 2025-11-17
+- **Last Updated**: 2026-05-05
 - **Version**: 1.4.0
-- **Next Review**: 2025-02-17
+- **Next Review**: 2026-08-05
 
 ---
 

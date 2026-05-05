@@ -18,6 +18,11 @@ USER_FACING_EXAMPLE_FILES = (
     "src/openrouter_mcp/cli/mcp_manager.py",
     "tests/test_mcp_cli_integration.py",
 )
+SECURITY_METADATA_DOCS = (
+    "SECURITY.md",
+    "docs/SECURITY.md",
+    "docs/SECURITY_BEST_PRACTICES.md",
+)
 
 
 def _read_text(relative_path: str) -> str:
@@ -311,3 +316,21 @@ def test_tracked_markdown_docs_avoid_unverified_security_email() -> None:
                 offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
 
     assert not offenders, "Unverified security email remains:\n" + "\n".join(offenders)
+
+
+def test_security_doc_review_dates_are_ordered() -> None:
+    date_pattern = re.compile(
+        r"\*\*(Last Updated|Next Review)(?::)?\*\*:?\s*([0-9]{4}-[0-9]{2}-[0-9]{2})"
+    )
+    offenders = []
+
+    for relative_path in SECURITY_METADATA_DOCS:
+        metadata = dict(date_pattern.findall(_read_text(relative_path)))
+        last_updated = metadata.get("Last Updated")
+        next_review = metadata.get("Next Review")
+        if last_updated and next_review and next_review < last_updated:
+            offenders.append(
+                f"{relative_path}: Next Review {next_review} is before Last Updated {last_updated}"
+            )
+
+    assert not offenders, "Security doc review dates are inconsistent:\n" + "\n".join(offenders)

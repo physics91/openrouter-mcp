@@ -317,6 +317,6 @@ This project follows **"Secure by Default"** principles:
 
 ---
 
-**Last Updated:** 2025-12-29
+**Last Updated:** 2026-05-05
 **Version:** 1.4.0
 **Security Contact:** [To be configured]
