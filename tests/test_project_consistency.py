@@ -182,6 +182,26 @@ def _secret_manager_inline_secret_findings(path: Path) -> list[str]:
     return findings
 
 
+def _ad_hoc_grep_secret_hook_findings(path: Path) -> list[str]:
+    findings = []
+    try:
+        display_path = path.relative_to(ROOT)
+    except ValueError:
+        display_path = path
+
+    staged_files = re.compile(r"\bgit\s+diff\s+--cached\s+--name-only\b", re.IGNORECASE)
+    grep_scan = re.compile(r"\b(?:xargs\s+)?grep\b", re.IGNORECASE)
+
+    for language, block_lines in _iter_markdown_fenced_blocks(path):
+        if language not in {"bash", "sh", "shell"} or not block_lines:
+            continue
+        normalized = _normalize_shell_continuations("\n".join(line for _, line in block_lines))
+        if staged_files.search(normalized) and grep_scan.search(normalized):
+            findings.append(f"{display_path}:{block_lines[0][0]}: use pre-commit gitleaks")
+
+    return findings
+
+
 def _env_file_setup_findings(path: Path) -> list[str]:
     lines = path.read_text(encoding="utf-8").splitlines()
     findings = []
@@ -912,6 +932,52 @@ def test_tracked_markdown_docs_avoid_secret_manager_argv_secrets() -> None:
         offenders.extend(_secret_manager_inline_secret_findings(path))
 
     assert not offenders, "Unsafe secret manager examples remain:\n" + "\n".join(offenders)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        'git diff --cached --name-only | xargs grep -l "OPENROUTER_API_KEY\\|sk-or-"',
+        'git diff --cached --name-only | xargs grep -l "password\\|token"',
+        "git diff --cached --name-only \\\n  | xargs grep --line-number secret",
+    ],
+)
+def test_detects_ad_hoc_grep_secret_hooks(tmp_path: Path, block: str) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(f"```bash\n{block}\n```\n", encoding="utf-8")
+
+    assert _ad_hoc_grep_secret_hook_findings(doc_path)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "pre-commit install",
+        "pre-commit run gitleaks --all-files",
+        "git diff --cached --name-only | xargs sed -n '1,5p'",
+    ],
+)
+def test_allows_project_native_secret_scanning_guidance(tmp_path: Path, block: str) -> None:
+    doc_path = tmp_path / "doc.md"
+    doc_path.write_text(f"```bash\n{block}\n```\n", encoding="utf-8")
+
+    assert not _ad_hoc_grep_secret_hook_findings(doc_path)
+
+
+def test_pre_commit_config_keeps_gitleaks_hook() -> None:
+    config = _read_text(".pre-commit-config.yaml")
+
+    assert "github.com/gitleaks/gitleaks" in config
+    assert "id: gitleaks" in config
+
+
+def test_tracked_markdown_docs_avoid_ad_hoc_grep_secret_hooks() -> None:
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        offenders.extend(_ad_hoc_grep_secret_hook_findings(path))
+
+    assert not offenders, "Ad hoc grep secret hooks remain:\n" + "\n".join(offenders)
 
 
 def test_tracked_markdown_dockerfile_blocks_avoid_secret_baking() -> None:

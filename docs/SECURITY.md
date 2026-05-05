@@ -492,19 +492,18 @@ secrets/
 
 ### Pre-commit Hooks
 
-Prevent accidental credential commits:
+Prevent accidental credential commits with the repository's configured hooks:
 
 ```bash
-#!/bin/sh
-# .git/hooks/pre-commit
+# Install the repository hooks, including gitleaks
+pre-commit install
 
-# Check for potential secrets
-if git diff --cached --name-only | xargs grep -l "OPENROUTER_API_KEY\|sk-or-"; then
-    echo "ERROR: Potential API key found in staged files!"
-    echo "Please remove credentials before committing."
-    exit 1
-fi
+# Run a current tracked-file baseline scan
+pre-commit run gitleaks --all-files
 ```
+
+This is a commit-time guard, not proof that Git history is clean. Already leaked
+keys and remote secret-scanning alerts still require separate rotation and review.
 
 ---
 

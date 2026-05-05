@@ -169,16 +169,17 @@ const storedApiKey = getFromEncryptedFile();
    git ls-files .env  # Should return nothing
    ```
 
-3. **Pre-commit Hook** (E:\ai-dev\openrouter-mcp\.git\hooks\pre-commit)
+3. **Pre-commit Secret Scanning**
    ```bash
-   #!/bin/sh
-   # Prevent accidental credential commits
+   # Install the repository hooks, including gitleaks
+   pre-commit install
 
-   if git diff --cached --name-only | xargs grep -l "OPENROUTER_API_KEY\|sk-or-"; then
-       echo "ERROR: Potential API key found in staged files!"
-       exit 1
-   fi
+   # Run a current tracked-file baseline scan
+   pre-commit run gitleaks --all-files
    ```
+
+   This is a commit-time guard, not proof that Git history is clean. Already leaked
+   keys and remote secret-scanning alerts still require separate rotation and review.
 
 ### 3. Configuration Files (Claude Integrations)
 
