@@ -820,16 +820,30 @@ async function securityAudit() {
   const issues = [];
   const warnings = [];
   const good = [];
+  const legacySharedEnvironment = secureCredentials.isSharedEnvironment();
+  const environment = {
+    ...audit.environment,
+    indicators: [...audit.environment.indicators]
+  };
+  if (legacySharedEnvironment && !environment.shared) {
+    environment.shared = true;
+    // Preserve the older detector's broader signal while reporting environment once.
+    environment.indicators.push({
+      type: 'legacy-shared-environment',
+      severity: 'medium'
+    });
+    environment.recommendation = 'Use OS Keychain or encrypted file storage';
+  }
 
   // Display environment analysis
   console.log(chalk.bold('Environment Analysis:\n'));
-  if (audit.environment.shared) {
+  if (environment.shared) {
     issues.push('! Shared/enterprise environment detected');
     console.log(chalk.red('  ! Shared Environment: Detected'));
-    audit.environment.indicators.forEach(ind => {
+    environment.indicators.forEach(ind => {
       console.log(chalk.yellow(`    - ${ind.type} (${ind.severity} severity)`));
     });
-    console.log(chalk.yellow(`\n  Recommendation: ${audit.environment.recommendation}\n`));
+    console.log(chalk.yellow(`\n  Recommendation: ${environment.recommendation}\n`));
   } else {
     good.push('✓ Single-user environment detected');
     console.log(chalk.green('  ✓ Environment: Single-user\n'));
@@ -981,18 +995,6 @@ async function securityAudit() {
     }
   } else {
     console.log(chalk.gray('  ○ Claude Code: Not configured'));
-  }
-
-  // Environment detection
-  console.log(chalk.bold('\n\nEnvironment Analysis:\n'));
-
-  if (secureCredentials.isSharedEnvironment()) {
-    issues.push('! Shared/enterprise environment detected');
-    console.log(chalk.red('  ! Shared Environment: Detected'));
-    console.log(chalk.red('    Recommend: Use enterprise secrets management'));
-  } else {
-    good.push('✓ Single-user environment detected');
-    console.log(chalk.green('  ✓ Environment: Single-user'));
   }
 
   // Summary
