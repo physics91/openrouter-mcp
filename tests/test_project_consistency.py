@@ -347,3 +347,20 @@ def test_tracked_markdown_docs_avoid_security_contact_placeholders() -> None:
                 offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
 
     assert not offenders, "Security contact placeholder remains:\n" + "\n".join(offenders)
+
+
+def test_tracked_markdown_docs_avoid_tls_verification_bypass() -> None:
+    bypass_patterns = (
+        re.compile(r"NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*0"),
+        re.compile(r"npm\s+config\s+set\s+strict-ssl\s+false"),
+        re.compile(r"strict-ssl\s*=\s*false"),
+    )
+    offenders = []
+
+    for path in _tracked_markdown_docs():
+        relative_path = path.relative_to(ROOT)
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(pattern.search(line) for pattern in bypass_patterns):
+                offenders.append(f"{relative_path}:{line_number}: {line.strip()}")
+
+    assert not offenders, "TLS verification bypass guidance remains:\n" + "\n".join(offenders)

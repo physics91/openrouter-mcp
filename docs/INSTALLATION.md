@@ -551,11 +551,14 @@ npx @physics91/openrouter-mcp@latest start
 
 #### SSL Certificate Issues
 ```bash
-# Temporary fix (not recommended for production)
-export NODE_TLS_REJECT_UNAUTHORIZED=0
+# Do not disable TLS verification. Update your OS/root CA store first.
 
-# Better solution: Update certificates
-npm config set strict-ssl false
+# If your network uses a corporate CA, trust that CA explicitly for npm.
+npm config set cafile /path/to/corporate-ca.pem
+npm config set strict-ssl true
+
+# If Node.js runtime HTTPS calls also need the corporate CA:
+export NODE_EXTRA_CA_CERTS=/path/to/corporate-ca.pem
 ```
 
 ### Getting Help
