@@ -13,7 +13,7 @@
 
 2. **Initialize with Secure Storage**
    ```bash
-   openrouter-mcp init
+   openrouter-mcp setup
    # Choose "OS Keychain" when prompted
    ```
 
@@ -63,7 +63,7 @@ npm install keytar
 
 **Setup:**
 ```bash
-openrouter-mcp init
+openrouter-mcp setup
 # Select "OS Keychain/Credential Manager" when prompted
 ```
 
@@ -105,7 +105,7 @@ secret-tool search service openrouter-mcp
 
 **Setup:**
 ```bash
-openrouter-mcp init
+openrouter-mcp setup
 # Select "Encrypted File Storage" when prompted
 ```
 
@@ -204,7 +204,7 @@ const storedApiKey = getFromEncryptedFile();
 
 **Setup with Consent:**
 ```bash
-openrouter-mcp init
+openrouter-mcp setup
 # Explicit consent required for each config file
 ```
 
@@ -624,7 +624,7 @@ For security vulnerabilities in OpenRouter MCP:
 
 ### Initial Setup
 - [ ] Install keytar for OS Keychain support
-- [ ] Run `openrouter-mcp init` with keychain option
+- [ ] Run `openrouter-mcp setup` with keychain option
 - [ ] Add .env to .gitignore
 - [ ] Set secure file permissions (600)
 - [ ] Run security audit

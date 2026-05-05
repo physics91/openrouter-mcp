@@ -334,6 +334,37 @@ function isKeystoreAvailable() {
 }
 
 /**
+ * Probe whether the OS keystore can actually store secrets.
+ * keytar can be installed while the Linux Secret Service daemon is absent.
+ *
+ * @returns {Promise<{available: boolean, reason: string|null}>}
+ */
+async function checkKeystoreUsability() {
+  if (!keytarAvailable) {
+    return {
+      available: false,
+      reason: 'keytar module is not available'
+    };
+  }
+
+  const probeAccount = `${MASTER_KEY_ACCOUNT}-probe-${process.pid}-${Date.now()}`;
+
+  try {
+    await keytar.setPassword(SERVICE_NAME, probeAccount, 'openrouter-mcp-probe');
+    await keytar.deletePassword(SERVICE_NAME, probeAccount);
+    return {
+      available: true,
+      reason: null
+    };
+  } catch (error) {
+    return {
+      available: false,
+      reason: error.message
+    };
+  }
+}
+
+/**
  * Get encryption version metadata
  * @returns {Object|null} Metadata object or null
  */
@@ -491,6 +522,7 @@ module.exports = {
 
   // Utilities
   isKeystoreAvailable,
+  checkKeystoreUsability,
   getKeyMetadata,
   rotateMasterKey,
   verifyMasterKeyIntegrity,

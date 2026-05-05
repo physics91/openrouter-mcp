@@ -57,8 +57,8 @@ if (require.main === module) {
   checkPython().then((success) => {
     if (!success) {
       console.log(chalk.blue('\n💡 After installing Python, you can run:'));
-      console.log(chalk.blue('   npx openrouter-mcp init    # Configure the server'));
-      console.log(chalk.blue('   npx openrouter-mcp start   # Start the server'));
+      console.log(chalk.blue('   npx @physics91/openrouter-mcp@latest setup    # Configure the server'));
+      console.log(chalk.blue('   npx -y @physics91/openrouter-mcp@latest start # Start the server'));
     }
   });
 }

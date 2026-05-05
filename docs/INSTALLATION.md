@@ -103,12 +103,11 @@ pip3 --version
 
 ```bash
 # Using npx (no installation needed)
-npx @physics91/openrouter-mcp@latest init && npx @physics91/openrouter-mcp@latest start
+npx @physics91/openrouter-mcp@latest setup
 
 # Or install globally
 npm install -g @physics91/openrouter-mcp
-openrouter-mcp init
-openrouter-mcp start
+openrouter-mcp setup
 ```
 
 ## Platform-Specific Installation
@@ -136,13 +135,13 @@ choco install nodejs python
 npm install -g @physics91/openrouter-mcp
 
 # Or use npx (recommended)
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 #### Step 3: Configure Environment
 ```powershell
 # Create configuration
-openrouter-mcp init
+openrouter-mcp setup
 
 # Enter your API key when prompted
 # Configure Claude Desktop integration (optional)
@@ -169,13 +168,13 @@ source ~/.zshrc
 npm install -g @physics91/openrouter-mcp
 
 # Or use npx (recommended)
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 #### Step 3: Configure Environment
 ```bash
 # Initialize configuration
-openrouter-mcp init
+openrouter-mcp setup
 
 # Follow prompts for API key and integration setup
 ```
@@ -207,7 +206,7 @@ sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
 #### Step 2: Install OpenRouter MCP
 ```bash
 # Recommended: run without a persistent global install
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
 # Optional persistent CLI install with a user-owned Node/npm setup
 npm install -g @physics91/openrouter-mcp
@@ -216,10 +215,10 @@ npm install -g @physics91/openrouter-mcp
 #### Step 3: Configure Environment
 ```bash
 # Initialize configuration if installed globally
-openrouter-mcp init
+openrouter-mcp setup
 
 # Or initialize directly with npx
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
 # Optional temporary environment override
 read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
@@ -271,12 +270,12 @@ docker run -p 8000:8000 --env-file .env openrouter-mcp
 
 #### 1. Initialize Configuration
 ```bash
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 This will prompt you for:
 - OpenRouter API key
-- Server port (default: 8000)
+- Supported MCP client registration
 - Optional auto-setup for supported MCP clients
 
 #### 2. Manual Configuration
@@ -314,7 +313,7 @@ Client config formats differ, but the local stdio launch values are usually the 
 ```json
 {
   "command": "npx",
-  "args": ["@physics91/openrouter-mcp", "start"]
+  "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
 }
 ```
 
@@ -323,7 +322,7 @@ If your client runtime cannot resolve `npx`, install the package globally and us
 #### 2. Credential Options
 
 Preferred:
-- Run `npx @physics91/openrouter-mcp@latest init`
+- Run `npx @physics91/openrouter-mcp@latest setup`
 - Let `openrouter-mcp start` read the API key from secure storage or environment at runtime
 
 If your client only supports inline environment variables, use this fallback.
@@ -341,7 +340,7 @@ Treat the client config file as secret-bearing: do not commit, paste, or share i
 
 #### 3. Supported Client Shortcuts
 
-Common guidance for any client is in [MCP Client Guide](MCP_CLIENT_GUIDE.md). The project also includes convenience installers for Claude clients.
+Common guidance for any client is in [MCP Client Guide](MCP_CLIENT_GUIDE.md). The project also includes convenience installers for Claude and Codex clients.
 
 ### Claude Desktop Example
 
@@ -376,7 +375,7 @@ Add configuration only if the client cannot use secure storage or runtime enviro
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"
       }
@@ -397,10 +396,10 @@ npx @physics91/openrouter-mcp@latest install-claude-code
 #### Recommended Native Setup
 ```bash
 # Store credentials once
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
 # Register OpenRouter in Claude Code user scope
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 #### Project-Scoped Manual Setup
@@ -413,13 +412,37 @@ Create `.mcp.json` in the project root:
     "openrouter": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     }
   }
 }
 ```
 
 Claude Code stores user-scoped MCP servers in `~/.claude.json` and project-scoped servers in `.mcp.json`.
+
+### Codex CLI Example
+
+#### Automatic Setup
+```bash
+npx @physics91/openrouter-mcp@latest install-codex
+```
+
+#### Recommended Native Setup
+```bash
+# Store credentials once
+npx @physics91/openrouter-mcp@latest setup
+
+# Register OpenRouter in Codex as openrouter-local
+codex mcp add openrouter-local \
+  --env OPENROUTER_APP_NAME=codex-openrouter-local \
+  --env OPENROUTER_HTTP_REFERER=https://localhost:3000 \
+  --env HOST=localhost \
+  --env PORT=8000 \
+  --env LOG_LEVEL=info \
+  -- npx -y @physics91/openrouter-mcp@latest start
+```
+
+Codex stores user MCP servers in `~/.codex/config.toml`.
 
 ## Verification
 

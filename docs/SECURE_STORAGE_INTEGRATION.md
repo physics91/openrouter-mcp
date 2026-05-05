@@ -69,7 +69,7 @@ const keyResult = await secureCredentials.getApiKey();
 ### Example 1: Using OS Keychain
 ```bash
 # Configure with keychain storage
-$ openrouter-mcp init
+$ openrouter-mcp setup
 # Select "OS Keychain" option
 
 # Start server (automatically retrieves from keychain)
@@ -83,7 +83,7 @@ Starting server on localhost:8000
 ### Example 2: Using Encrypted File
 ```bash
 # Configure with encrypted file storage
-$ openrouter-mcp init
+$ openrouter-mcp setup
 # Select "Encrypted File Storage" option
 
 # Start server (automatically retrieves from encrypted file)
@@ -112,7 +112,7 @@ $ unset OPENROUTER_API_KEY
 $ openrouter-mcp start
 🔑 Retrieving API key from secure storage...
 ⚠️  No API key found in secure storage
-💡 To configure API key, run: openrouter-mcp init
+💡 To configure API key, run: openrouter-mcp setup
    Server will start but API calls will fail without a valid key
 
 Starting server on localhost:8000
@@ -152,7 +152,7 @@ The implementation follows the same pattern used in `installClaudeConfig()`:
 if (!apiKey) {
   const keyResult = await secureCredentials.getApiKey();
   if (!keyResult.key) {
-    console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp init" first.'));
+    console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp setup" first.'));
     return;
   }
   apiKey = keyResult.key;
@@ -190,7 +190,7 @@ $ openrouter-mcp security-audit
 Simply run the initialization wizard:
 
 ```bash
-$ openrouter-mcp init
+$ openrouter-mcp setup
 # Follow the prompts to configure secure storage
 ```
 

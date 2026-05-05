@@ -60,7 +60,9 @@ def test_start_command_does_not_write_wrapper_logs_to_stdout() -> None:
 
 
 @pytest.mark.unit
-def test_resolve_api_key_for_start_fails_when_no_credentials_are_available(tmp_path: Path) -> None:
+def test_resolve_api_key_for_start_fails_when_no_credentials_are_available(
+    tmp_path: Path,
+) -> None:
     env = os.environ.copy()
     env["HOME"] = str(tmp_path / "home")
     env["NO_COLOR"] = "1"
@@ -94,7 +96,7 @@ const runtime = require({json.dumps(str(START_RUNTIME_PATH))});
     payload = json.loads(result.stdout.strip())
     assert payload == {
         "ok": False,
-        "message": "OpenRouter API key is required to start the MCP server. Run 'openrouter-mcp init' first or set OPENROUTER_API_KEY.",
+        "message": "OpenRouter API key is required to start the MCP server. Run 'openrouter-mcp setup' first or set OPENROUTER_API_KEY.",
     }
 
 
@@ -189,7 +191,9 @@ fs.writeFileSync(
 
 
 @pytest.mark.unit
-def test_windows_secure_permissions_use_argument_array_for_icacls(tmp_path: Path) -> None:
+def test_windows_secure_permissions_use_argument_array_for_icacls(
+    tmp_path: Path,
+) -> None:
     env = os.environ.copy()
     env["USERNAME"] = "test user & calc"
     env["NO_COLOR"] = "1"
@@ -233,5 +237,176 @@ try {{
 """
 
     result = _run_node_script(script, cwd=REPO_ROOT, env=env)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.unit
+def test_storage_capabilities_disable_keychain_backed_options_when_secret_service_fails(
+    tmp_path: Path,
+) -> None:
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "home")
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+
+    script = f"""
+const assert = require("assert");
+const Module = require("module");
+const originalLoad = Module._load;
+
+Module._load = function mockedKeytarLoad(request, parent, isMain) {{
+  if (request === "keytar") {{
+    return {{
+      getPassword: async () => null,
+      setPassword: async () => {{
+        throw new Error("mock Secret Service unavailable");
+      }},
+      deletePassword: async () => false,
+    }};
+  }}
+  return originalLoad.apply(this, arguments);
+}};
+
+const secure = require({json.dumps(str(SECURE_CREDENTIALS_PATH))});
+
+(async () => {{
+  assert.strictEqual(
+    typeof secure.getCredentialStorageCapabilities,
+    "function",
+    "credential capability probe should be exported"
+  );
+  const capabilities = await secure.getCredentialStorageCapabilities();
+  console.log(JSON.stringify(capabilities));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    result = _run_node_script(script, cwd=REPO_ROOT, env=env)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["keychain"]["available"] is False
+    assert "mock Secret Service unavailable" in payload["keychain"]["reason"]
+    assert payload["encryptedFile"]["available"] is False
+    assert "mock Secret Service unavailable" in payload["encryptedFile"]["reason"]
+    assert payload["envFile"]["available"] is True
+
+
+@pytest.mark.unit
+def test_cli_exposes_setup_shortcut() -> None:
+    result = subprocess.run(
+        [NODE_BINARY, str(CLI_PATH), "--help"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "setup" in result.stdout
+    assert "one-command" in result.stdout
+
+
+@pytest.mark.unit
+def test_codex_install_command_uses_runtime_key_resolution() -> None:
+    codex_utils_path = REPO_ROOT / "bin" / "codex-config-utils.js"
+    env = os.environ.copy()
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+
+    script = f"""
+const assert = require("assert");
+const codex = require({json.dumps(str(codex_utils_path))});
+
+assert.strictEqual(
+  typeof codex.buildCodexInstallCommand,
+  "function",
+  "Codex install command builder should be exported"
+);
+const command = codex.buildCodexInstallCommand("@physics91/openrouter-mcp");
+
+console.log(JSON.stringify(command));
+"""
+
+    result = _run_node_script(script, cwd=REPO_ROOT, env=env)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["command"] == "codex"
+    assert payload["args"][:3] == ["mcp", "add", "openrouter-local"]
+    assert "OPENROUTER_API_KEY" not in " ".join(payload["args"])
+    assert payload["args"][-4:] == [
+        "npx",
+        "-y",
+        "@physics91/openrouter-mcp@latest",
+        "start",
+    ]
+
+
+@pytest.mark.unit
+def test_env_lookup_finds_user_level_setup_file_from_other_cwd(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    user_env = home / ".openrouter-mcp.env"
+    user_env.write_text("OPENROUTER_API_KEY=sk-or-user-level\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env.pop("OPENROUTER_API_KEY", None)
+    env["HOME"] = str(home)
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+
+    script = f"""
+const secure = require({json.dumps(str(SECURE_CREDENTIALS_PATH))});
+console.log(secure.getFromEnvironment());
+"""
+
+    result = _run_node_script(script, cwd=workspace, env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "sk-or-user-level"
+
+
+@pytest.mark.unit
+def test_delete_credentials_removes_user_level_env_file(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    user_env = home / ".openrouter-mcp.env"
+    user_env.write_text(
+        "OPENROUTER_API_KEY=sk-or-user-level\nOPENROUTER_APP_NAME=test\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env.pop("OPENROUTER_API_KEY", None)
+    env["HOME"] = str(home)
+    env["NO_COLOR"] = "1"
+    env["FORCE_COLOR"] = "0"
+
+    script = f"""
+const assert = require("assert");
+const fs = require("fs");
+const secure = require({json.dumps(str(SECURE_CREDENTIALS_PATH))});
+
+(async () => {{
+  const locations = await secure.deleteAllCredentials();
+  const content = fs.readFileSync({json.dumps(str(user_env))}, "utf8");
+  assert(locations.includes(".openrouter-mcp.env"));
+  assert(!content.includes("OPENROUTER_API_KEY="));
+  assert(content.includes("OPENROUTER_APP_NAME=test"));
+}})().catch((error) => {{
+  console.error(error);
+  process.exit(1);
+}});
+"""
+
+    result = _run_node_script(script, cwd=workspace, env=env)
 
     assert result.returncode == 0, result.stderr

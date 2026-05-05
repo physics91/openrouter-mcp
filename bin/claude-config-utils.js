@@ -1,5 +1,6 @@
 const os = require('os');
 const path = require('path');
+const { buildNpxStartArgs } = require('./package-launch-utils');
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -7,7 +8,7 @@ function buildClaudeCodeServerConfig(packageName) {
   return {
     type: 'stdio',
     command: 'npx',
-    args: [packageName, 'start']
+    args: buildNpxStartArgs(packageName)
   };
 }
 
@@ -24,8 +25,7 @@ function buildClaudeCodeInstallCommand(packageName, scope = 'user') {
       'openrouter',
       '--',
       'npx',
-      packageName,
-      'start'
+      ...buildNpxStartArgs(packageName)
     ]
   };
 }

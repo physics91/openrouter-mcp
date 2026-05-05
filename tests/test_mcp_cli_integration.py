@@ -61,7 +61,7 @@ def test_mcp_cli_integration():
     print("\nNow you can use these commands in Claude Code CLI:")
     print('  read -rsp "OpenRouter API key: " OPENROUTER_API_KEY')
     print("  export OPENROUTER_API_KEY")
-    print("  claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start")
+    print("  claude mcp add -s user openrouter -- npx -y @physics91/openrouter-mcp@latest start")
     print("  claude mcp list")
     print("  claude mcp get openrouter")
     print("  claude mcp remove openrouter")
@@ -80,11 +80,11 @@ def demonstrate_cli_syntax():
         ("Export prompted API key", "export OPENROUTER_API_KEY"),
         (
             "Add OpenRouter server",
-            "claude mcp add -s user openrouter -- npx @physics91/openrouter-mcp start",
+            "claude mcp add -s user openrouter -- npx -y @physics91/openrouter-mcp@latest start",
         ),
         (
             "Add project-scoped OpenRouter server",
-            "claude mcp add -s project openrouter -- npx @physics91/openrouter-mcp start",
+            "claude mcp add -s project openrouter -- npx -y @physics91/openrouter-mcp@latest start",
         ),
         ("List all servers", "claude mcp list"),
         ("Get server status", "claude mcp get openrouter"),

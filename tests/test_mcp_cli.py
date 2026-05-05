@@ -85,13 +85,13 @@ class TestMCPServerConfig:
         data = {
             "type": "stdio",
             "command": "npx",
-            "args": ["@physics91/openrouter-mcp", "start"],
+            "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
         }
 
         config = MCPServerConfig.from_dict("openrouter", data)
         assert config.transport_type == "stdio"
         assert config.command == "npx"
-        assert config.args == ["@physics91/openrouter-mcp", "start"]
+        assert config.args == ["-y", "@physics91/openrouter-mcp@latest", "start"]
 
 
 class TestMCPManager:

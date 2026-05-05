@@ -25,6 +25,8 @@ const os = require('os');
 const crypto = require('crypto');
 const chalk = require('chalk');
 const { getClaudeCodeUserConfigPath } = require('./claude-config-utils');
+const cryptoManager = require('./crypto-manager');
+const { buildNpxStartArgs } = require('./package-launch-utils');
 
 // Try to load keytar for OS keychain support
 let keytar = null;
@@ -45,6 +47,7 @@ const ACCOUNT_API_KEY = 'api-key';
 const CONFIG_DIR = path.join(os.homedir(), '.openrouter-mcp');
 const ENCRYPTED_FILE = path.join(CONFIG_DIR, '.credentials.enc');
 const AUDIT_LOG = path.join(CONFIG_DIR, 'security-audit.log');
+const USER_ENV_FILE = path.join(os.homedir(), '.openrouter-mcp.env');
 const GCM_AUTH_TAG_LENGTH_BYTES = 16;
 
 /**
@@ -65,7 +68,7 @@ const StorageOptions = {
     name: 'Encrypted File Storage',
     securityLevel: 'MEDIUM-HIGH',
     encrypted: true,
-    description: 'Machine-specific AES-256-GCM encryption - Keys derived from hardware/OS data',
+    description: 'AES-256-GCM encrypted file - Master key stored in the OS keystore',
     platforms: ['darwin', 'win32', 'linux'],
     available: true
   },
@@ -88,6 +91,29 @@ const StorageOptions = {
     available: true
   }
 };
+
+async function getCredentialStorageCapabilities() {
+  const keystore = await cryptoManager.checkKeystoreUsability();
+  const keychainReason = keystore.available ? null : keystore.reason;
+  const encryptedReason = keystore.available
+    ? null
+    : `Encrypted file storage requires OS keystore access for its master key: ${keystore.reason}`;
+
+  return {
+    keychain: {
+      available: keystore.available,
+      reason: keychainReason
+    },
+    encryptedFile: {
+      available: keystore.available,
+      reason: encryptedReason
+    },
+    envFile: {
+      available: true,
+      reason: null
+    }
+  };
+}
 
 /**
  * Security warnings for different storage methods
@@ -356,7 +382,7 @@ function storeInConfigFile(apiKey, configPath, configType = 'claude-desktop') {
   config.mcpServers = config.mcpServers || {};
   config.mcpServers.openrouter = {
     command: "npx",
-    args: ["openrouter-mcp", "start"],
+    args: buildNpxStartArgs('@physics91/openrouter-mcp'),
     env: {
       OPENROUTER_API_KEY: apiKey
     }
@@ -396,6 +422,14 @@ function addToGitignore(filePath) {
   } catch (error) {
     console.log(chalk.yellow(`⚠️  Note: Could not update .gitignore. Please manually add ${fileName} to .gitignore`));
   }
+}
+
+function getEnvCredentialPaths() {
+  return Array.from(new Set([
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '.env'),
+    USER_ENV_FILE
+  ]));
 }
 
 function removeApiKeyFromEnvFile(envPath) {
@@ -450,13 +484,7 @@ function getFromEnvironment() {
   }
 
   // Check .env file in multiple locations
-  const possibleEnvPaths = [
-    path.join(process.cwd(), '.env'),
-    path.join(__dirname, '..', '.env'),
-    path.join(os.homedir(), '.openrouter-mcp.env')
-  ];
-
-  for (const envPath of possibleEnvPaths) {
+  for (const envPath of getEnvCredentialPaths()) {
     if (fs.existsSync(envPath)) {
       try {
         const envContent = fs.readFileSync(envPath, 'utf8');
@@ -533,27 +561,34 @@ async function rotateApiKey(newApiKey) {
   // Update encrypted file
   if (fs.existsSync(ENCRYPTED_FILE)) {
     try {
-      storeInEncryptedFile(newApiKey);
+      await storeInEncryptedFile(newApiKey);
       locations.push('Encrypted file');
     } catch (error) {
       console.log(chalk.yellow(`⚠️  Could not update encrypted file: ${error.message}`));
     }
   }
 
-  // Update .env file
-  const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
+  // Update .env-style credential files
+  for (const envPath of getEnvCredentialPaths()) {
+    if (!fs.existsSync(envPath)) {
+      continue;
+    }
+
     try {
       const envContent = fs.readFileSync(envPath, 'utf8');
+      if (!envContent.includes('OPENROUTER_API_KEY=')) {
+        continue;
+      }
+
       const newContent = envContent.replace(
         /OPENROUTER_API_KEY=.+/,
         `OPENROUTER_API_KEY=${newApiKey}`
       );
       fs.writeFileSync(envPath, newContent, { mode: 0o600 });
       setSecurePermissions(envPath);
-      locations.push('.env file');
+      locations.push(path.basename(envPath));
     } catch (error) {
-      console.log(chalk.yellow(`⚠️  Could not update .env: ${error.message}`));
+      console.log(chalk.yellow(`⚠️  Could not update ${envPath}: ${error.message}`));
     }
   }
 
@@ -616,11 +651,12 @@ async function deleteAllCredentials() {
     locations.push('Encrypted file');
   }
 
-  // Delete .env file
-  const envPath = path.join(process.cwd(), '.env');
-  if (removeApiKeyFromEnvFile(envPath)) {
-    auditLog('key-deleted', { method: 'env-file' });
-    locations.push('.env file');
+  // Delete from .env-style credential files
+  for (const envPath of getEnvCredentialPaths()) {
+    if (removeApiKeyFromEnvFile(envPath)) {
+      auditLog('key-deleted', { method: 'env-file', path: envPath });
+      locations.push(path.basename(envPath));
+    }
   }
 
   // Remove from Claude configs (just the API key, not the entire config)
@@ -758,9 +794,6 @@ function validateApiKey(apiKey) {
 
   return { valid: true, key: apiKey };
 }
-
-// Import crypto manager v2.0
-const cryptoManager = require('./crypto-manager');
 
 /**
  * Generate encryption key from machine-specific data (DEPRECATED - v1.0 only)
@@ -1024,9 +1057,12 @@ async function performSecurityAudit() {
     }
   }
 
-  // Check .env file
-  const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
+  // Check .env-style credential files
+  for (const envPath of getEnvCredentialPaths()) {
+    if (!fs.existsSync(envPath)) {
+      continue;
+    }
+
     const stats = fs.statSync(envPath);
     const mode = stats.mode & parseInt('777', 8);
     const content = fs.readFileSync(envPath, 'utf8');
@@ -1095,11 +1131,12 @@ function fixPermissions() {
       fixed.push({ path: ENCRYPTED_FILE, type: 'file' });
     }
 
-    // Fix .env file
-    const envPath = path.join(process.cwd(), '.env');
-    if (fs.existsSync(envPath)) {
-      setSecurePermissions(envPath);
-      fixed.push({ path: envPath, type: 'file' });
+    // Fix .env-style credential files
+    for (const envPath of getEnvCredentialPaths()) {
+      if (fs.existsSync(envPath)) {
+        setSecurePermissions(envPath);
+        fixed.push({ path: envPath, type: 'file' });
+      }
     }
 
     if (fixed.length > 0) {
@@ -1122,6 +1159,7 @@ module.exports = {
   storeInKeychain,
   getFromKeychain,
   deleteFromKeychain,
+  getCredentialStorageCapabilities,
   storeInEncryptedFile,
   getFromEncryptedFile,
   deleteEncryptedFile,

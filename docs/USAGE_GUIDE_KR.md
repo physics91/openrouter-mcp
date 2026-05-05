@@ -19,16 +19,13 @@
 
 ## 🚀 빠른 시작
 
-### 3단계로 시작하기
+### 한 번에 시작하기
 
 ```bash
-# 1. 초기화 (API 키 설정)
-npx @physics91/openrouter-mcp init
+# API 키 저장 + 지원 MCP 클라이언트 등록
+npx @physics91/openrouter-mcp@latest setup
 
-# 2. 서버 시작
-npx @physics91/openrouter-mcp start
-
-# 3. 상태 확인
+# 상태 확인
 npx @physics91/openrouter-mcp@latest status
 ```
 
@@ -39,17 +36,18 @@ npx @physics91/openrouter-mcp@latest status
 ```json
 {
   "command": "npx",
-  "args": ["@physics91/openrouter-mcp", "start"]
+  "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
 }
 ```
 
 권장 방식:
-- `npx @physics91/openrouter-mcp@latest init`로 API 키를 안전 저장
+- `npx @physics91/openrouter-mcp@latest setup`으로 API 키 저장과 클라이언트 등록을 진행
 - MCP 클라이언트는 `openrouter-mcp start`를 실행만 하도록 구성
 
 대표적인 클라이언트별 형식:
 - Claude Desktop: `mcpServers`
 - Claude Code: `claude mcp add ...` 또는 `.mcp.json`
+- Codex: `codex mcp add ...` 또는 `install-codex`
 - VS Code: `.vscode/mcp.json`의 `servers`
 
 지원되는 자동 설정 예시:
@@ -59,6 +57,9 @@ npx @physics91/openrouter-mcp@latest install-claude
 
 # Claude Code CLI 자동 설정
 npx @physics91/openrouter-mcp@latest install-claude-code
+
+# Codex CLI 자동 설정
+npx @physics91/openrouter-mcp@latest install-codex
 ```
 
 ---
@@ -77,8 +78,8 @@ npx @physics91/openrouter-mcp@latest install-claude-code
 # NPM으로 글로벌 설치
 npm install -g @physics91/openrouter-mcp
 
-# 또는 npx로 직접 실행
-npx @physics91/openrouter-mcp init
+# 또는 npx로 직접 설정
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 ### 환경 설정
@@ -146,10 +147,10 @@ npx @physics91/openrouter-mcp@latest start --port 9000
 
 ```bash
 # 1. API 키를 안전하게 초기화
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
 # 2. Claude Code에 MCP 서버 등록
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 
 # 3. Claude Code 재시작
 # 또는 새 Claude Code 세션 시작
@@ -207,8 +208,8 @@ list_available_models(filter_by="gpt")
 
 **초기 설정**:
 ```bash
-# API 키를 안전하게 저장 (OS Keychain 사용)
-npx @physics91/openrouter-mcp@latest init
+# API 키를 안전하게 저장하고 지원 MCP 클라이언트 등록
+npx @physics91/openrouter-mcp@latest setup
 
 # 상태 확인 (키 출처 확인 가능)
 npx @physics91/openrouter-mcp@latest status
@@ -976,10 +977,10 @@ npx @physics91/openrouter-mcp@latest status
 # 출력 예시:
 # ✗ No API key found
 #
-# Please run: npx @physics91/openrouter-mcp@latest init
+# Please run: npx @physics91/openrouter-mcp@latest setup
 
 # API 키 재설정
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 #### 4. 캐시 손상

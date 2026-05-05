@@ -36,7 +36,8 @@
   },
   "files": [
     "bin/",
-    "src/",
+    "src/**/*.py",
+    "src/**/*.json",
     "requirements.txt",
     "requirements-dev.txt",
     "pytest.ini",

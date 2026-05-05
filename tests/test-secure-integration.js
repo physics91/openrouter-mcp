@@ -27,7 +27,7 @@ async function testCredentialRetrieval() {
       console.log(chalk.gray(`  Masked key: ${maskedKey}`));
     } else {
       console.log(chalk.yellow('⚠️  No API key found in any storage location'));
-      console.log(chalk.blue('💡 Run "openrouter-mcp init" to configure'));
+      console.log(chalk.blue('💡 Run "openrouter-mcp setup" to configure'));
     }
 
     console.log('\n' + chalk.cyan('─────────────────────────────────────────────────────────────'));
@@ -102,7 +102,7 @@ async function testCredentialRetrieval() {
         console.log(chalk.green('✓ Ready to start server!'));
       } else {
         console.log(chalk.yellow('⚠️  No API key found in secure storage'));
-        console.log(chalk.blue('💡 To configure API key, run: openrouter-mcp init'));
+        console.log(chalk.blue('💡 To configure API key, run: openrouter-mcp setup'));
         console.log(chalk.gray('   Server would start but API calls will fail without a valid key'));
       }
     } else {
@@ -117,7 +117,7 @@ async function testCredentialRetrieval() {
 
     if (!keyResult.key) {
       console.log(chalk.bold('Next Steps:'));
-      console.log(chalk.gray('  1. Run: openrouter-mcp init'));
+      console.log(chalk.gray('  1. Run: openrouter-mcp setup'));
       console.log(chalk.gray('  2. Configure your API key with preferred storage method'));
       console.log(chalk.gray('  3. Run this test again to verify integration'));
       console.log('');

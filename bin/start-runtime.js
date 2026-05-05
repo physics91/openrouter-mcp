@@ -22,7 +22,7 @@ async function resolveApiKeyForStart({ env = process.env, secureCredentials } = 
   }
 
   throw new Error(
-    "OpenRouter API key is required to start the MCP server. Run 'openrouter-mcp init' first or set OPENROUTER_API_KEY."
+    "OpenRouter API key is required to start the MCP server. Run 'openrouter-mcp setup' first or set OPENROUTER_API_KEY."
   );
 }
 

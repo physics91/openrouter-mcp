@@ -7,13 +7,13 @@ This guide covers the current Claude Code-native way to register OpenRouter MCP 
 1. Store the API key once:
 
 ```bash
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 2. Register the server in Claude Code user scope:
 
 ```bash
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 3. Verify the registration:
@@ -35,7 +35,7 @@ If you want the server to live with the repository, create `.mcp.json` in the pr
     "openrouter": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     }
   }
 }
@@ -63,7 +63,7 @@ claude mcp list
 
 ### Package Shortcut
 
-This package still ships:
+This package also ships:
 
 ```bash
 npx @physics91/openrouter-mcp@latest install-claude-code
@@ -93,12 +93,12 @@ claude mcp get openrouter
 If the server is missing, add it again:
 
 ```bash
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 ### Authentication issues
 
-- Re-run `npx @physics91/openrouter-mcp@latest init`
+- Re-run `npx @physics91/openrouter-mcp@latest setup`
 - Or export `OPENROUTER_API_KEY` before launching Claude Code
 - Confirm package status with `npx @physics91/openrouter-mcp@latest status`
 

@@ -9,7 +9,7 @@ Most local stdio MCP clients need these values:
 ```json
 {
   "command": "npx",
-  "args": ["@physics91/openrouter-mcp", "start"]
+  "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
 }
 ```
 
@@ -27,7 +27,7 @@ If the client cannot resolve `npx`, install the package globally and use:
 ### Preferred
 
 ```bash
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 Then let `openrouter-mcp start` resolve the API key from secure storage or the current environment when the client launches the server.
@@ -59,7 +59,7 @@ Claude Desktop uses `mcpServers` in `claude_desktop_config.json`.
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"
       }
@@ -80,8 +80,8 @@ Claude Code has its own native MCP workflow. Recommended options:
 1. Native CLI registration
 
 ```bash
-npx @physics91/openrouter-mcp@latest init
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+npx @physics91/openrouter-mcp@latest setup
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 2. Project-scoped `.mcp.json`
@@ -92,7 +92,7 @@ claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openr
     "openrouter": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     }
   }
 }
@@ -104,6 +104,31 @@ Notes:
 - `claude mcp add-from-claude-desktop` can import supported Claude Desktop entries.
 - This package still ships `install-claude-code`, but the Claude Code-native workflow above is the current recommended path.
 
+### Codex
+
+Codex can register the server as `openrouter-local`.
+
+```bash
+npx @physics91/openrouter-mcp@latest setup
+codex mcp add openrouter-local \
+  --env OPENROUTER_APP_NAME=codex-openrouter-local \
+  --env OPENROUTER_HTTP_REFERER=https://localhost:3000 \
+  --env HOST=localhost \
+  --env PORT=8000 \
+  --env LOG_LEVEL=info \
+  -- npx -y @physics91/openrouter-mcp@latest start
+```
+
+Shortcut:
+
+```bash
+npx @physics91/openrouter-mcp@latest install-codex
+```
+
+Notes:
+- Codex stores this in `~/.codex/config.toml`.
+- The generated entry does not inline `OPENROUTER_API_KEY`; runtime startup resolves the key.
+
 ### VS Code
 
 VS Code stores MCP config in `mcp.json`, usually `.vscode/mcp.json` for a workspace. Its root key is `servers`, not `mcpServers`.
@@ -114,7 +139,7 @@ VS Code stores MCP config in `mcp.json`, usually `.vscode/mcp.json` for a worksp
     "openrouter": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     }
   }
 }

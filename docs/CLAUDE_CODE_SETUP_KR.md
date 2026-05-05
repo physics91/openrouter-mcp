@@ -7,13 +7,13 @@ Claude Code에서 OpenRouter MCP를 붙이는 최신 권장 흐름은 `claude mc
 1. API 키를 한 번 안전하게 저장합니다.
 
 ```bash
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 2. Claude Code 사용자 범위에 MCP 서버를 등록합니다.
 
 ```bash
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 3. 등록 상태를 확인합니다.
@@ -35,7 +35,7 @@ claude mcp get openrouter
     "openrouter": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     }
   }
 }
@@ -91,12 +91,12 @@ claude mcp get openrouter
 없다면 다시 등록합니다.
 
 ```bash
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 ### 인증 문제가 있을 때
 
-- `npx @physics91/openrouter-mcp@latest init` 재실행
+- `npx @physics91/openrouter-mcp@latest setup` 재실행
 - 또는 Claude Code를 실행하는 셸에 `OPENROUTER_API_KEY` 설정
 - `npx @physics91/openrouter-mcp@latest status`로 상태 확인
 

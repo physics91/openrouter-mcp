@@ -96,9 +96,9 @@ class MCPManager:
         "openrouter": {
             "command": "cmd" if sys.platform == "win32" else "npx",
             "args": (
-                ["/c", "npx", "@physics91/openrouter-mcp", "start"]
+                ["/c", "npx", "-y", "@physics91/openrouter-mcp@latest", "start"]
                 if sys.platform == "win32"
-                else ["@physics91/openrouter-mcp", "start"]
+                else ["-y", "@physics91/openrouter-mcp@latest", "start"]
             ),
             "type": "stdio",
             "env": {
@@ -353,7 +353,7 @@ class MCPManager:
                 raise MCPConfigError(
                     "SECURITY ERROR: API keys must NOT be stored in configuration files. "
                     f"Please remove {EnvVars.API_KEY} from the config and provide it at runtime. "
-                    "Run openrouter-mcp init, or set it in the runtime environment "
+                    "Run openrouter-mcp setup, or set it in the runtime environment "
                     "without placing the live key in shell history."
                 )
 
@@ -362,7 +362,7 @@ class MCPManager:
         if not env_api_key:
             logger.warning(
                 f"WARNING: {EnvVars.API_KEY} environment variable is not set. "
-                "The server will fail to start without it. Run openrouter-mcp init, "
+                "The server will fail to start without it. Run openrouter-mcp setup, "
                 "or set it in the runtime environment without placing the live key in shell history."
             )
 

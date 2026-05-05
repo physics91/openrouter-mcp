@@ -39,7 +39,7 @@ def configure_cli_logging() -> None:
 def _print_openrouter_next_steps() -> None:
     """Print post-install instructions for the OpenRouter preset."""
     click.echo("\n📝 Next steps:")
-    click.echo("1. Configure credentials with 'openrouter-mcp init' or OPENROUTER_API_KEY")
+    click.echo("1. Configure credentials with 'openrouter-mcp setup' or OPENROUTER_API_KEY")
     click.echo("2. Start a new Claude Code session")
     click.echo("3. The OpenRouter MCP tools will be available")
     click.echo("\nExample commands:")

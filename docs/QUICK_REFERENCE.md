@@ -76,7 +76,7 @@ $ unset OPENROUTER_API_KEY
 $ openrouter-mcp start
 🔑 Retrieving API key from secure storage...
 ⚠️  No API key found in secure storage
-💡 To configure API key, run: openrouter-mcp init
+💡 To configure API key, run: openrouter-mcp setup
    Server will start but API calls will fail without a valid key
 
 Starting server on localhost:8000
@@ -169,7 +169,7 @@ The system checks sources in this order:
 
 ```bash
 # Initialize with secure storage
-openrouter-mcp init
+openrouter-mcp setup
 
 # Start server (uses secure storage)
 openrouter-mcp start
@@ -236,7 +236,7 @@ if (keyResult.key) {
 ### "No API key found"
 ```bash
 # Run initialization wizard
-openrouter-mcp init
+openrouter-mcp setup
 ```
 
 ### "Failed to decrypt credentials"
@@ -308,7 +308,7 @@ Example:
 
 2. **Configure secure storage:**
    ```bash
-   openrouter-mcp init
+   openrouter-mcp setup
    ```
 
 3. **Start the server:**

@@ -22,6 +22,11 @@ const {
   configContainsPlaintextOpenRouterKey,
   getClaudeCodeUserConfigPath,
 } = require('./claude-config-utils');
+const {
+  buildCodexInstallCommand,
+  buildCodexRemoveCommand,
+} = require('./codex-config-utils');
+const { buildNpxStartArgs } = require('./package-launch-utils');
 const MCP_PACKAGE_NAME = packageJson.name || 'openrouter-mcp';
 
 function isInteractiveSession() {
@@ -87,6 +92,18 @@ program
     await initializeConfig();
   });
 
+// One-command setup shortcut
+program
+  .command('setup')
+  .description('Run one-command setup for credentials and supported MCP clients')
+  .action(async () => {
+    console.log(chalk.green('🔧 Running OpenRouter MCP one-command setup...'));
+    await initializeConfig({
+      defaultIntegrations: await detectAvailableMcpClients(),
+      envFilePath: path.join(os.homedir(), '.openrouter-mcp.env'),
+    });
+  });
+
 // Status command
 program
   .command('status')
@@ -112,6 +129,15 @@ program
   .action(async () => {
     console.log(chalk.green('💻 Registering OpenRouter in Claude Code user scope...'));
     await installClaudeCodeConfig();
+  });
+
+// Install command for Codex CLI
+program
+  .command('install-codex')
+  .description('Register OpenRouter in Codex as openrouter-local')
+  .action(async () => {
+    console.log(chalk.green('💻 Registering OpenRouter in Codex...'));
+    await installCodexConfig();
   });
 
 // Rotate API key command
@@ -279,8 +305,33 @@ async function startServer(options, pythonCommand, keyResult) {
   });
 }
 
-async function initializeConfig() {
+async function commandAvailable(command) {
+  try {
+    await runCommand(command, ['--version']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function detectAvailableMcpClients() {
+  const integrations = [];
+  if (await commandAvailable('codex')) {
+    integrations.push('codex');
+  }
+  if (await commandAvailable('claude')) {
+    integrations.push('code');
+  }
+  return integrations;
+}
+
+async function initializeConfig(options = {}) {
   const inquirer = (await import('inquirer')).default;
+  const defaultIntegrations = new Set(options.defaultIntegrations || []);
+  const envFilePath = options.envFilePath || '.env';
+  const envFileLabel = envFilePath === '.env'
+    ? '.env file'
+    : `user env file (${envFilePath})`;
 
   console.log(chalk.cyan('\n═══════════════════════════════════════════════════════════'));
   console.log(chalk.cyan('  OpenRouter MCP - Secure Configuration Wizard'));
@@ -344,26 +395,31 @@ async function initializeConfig() {
 
   // Show available storage options
   const storageChoices = [];
+  const storageCapabilities = await secureCredentials.getCredentialStorageCapabilities();
 
-  if (secureCredentials.keytarAvailable) {
+  if (storageCapabilities.keychain.available) {
     storageChoices.push({
       name: `${chalk.green('●')} ${secureCredentials.StorageOptions.KEYCHAIN.name} ${chalk.green('[RECOMMENDED]')}`,
       short: 'OS Keychain',
       value: 'keychain'
     });
   } else {
-    console.log(chalk.yellow('⚠️  OS Keychain not available. To enable, run: npm install keytar\n'));
+    console.log(chalk.yellow(`⚠️  OS Keychain not available: ${storageCapabilities.keychain.reason}`));
+  }
+
+  if (storageCapabilities.encryptedFile.available) {
+    storageChoices.push({
+      name: `${chalk.cyan('●')} ${secureCredentials.StorageOptions.ENCRYPTED_FILE.name} ${chalk.cyan('[RECOMMENDED FOR CI/CD]')}`,
+      short: 'Encrypted File',
+      value: 'encrypted'
+    });
+  } else {
+    console.log(chalk.yellow(`⚠️  Encrypted file storage not available: ${storageCapabilities.encryptedFile.reason}`));
   }
 
   storageChoices.push({
-    name: `${chalk.cyan('●')} ${secureCredentials.StorageOptions.ENCRYPTED_FILE.name} ${chalk.cyan('[RECOMMENDED FOR CI/CD]')}`,
-    short: 'Encrypted File',
-    value: 'encrypted'
-  });
-
-  storageChoices.push({
-    name: `${chalk.yellow('●')} ${secureCredentials.StorageOptions.ENV_FILE.name}`,
-    short: '.env file',
+    name: `${chalk.yellow('●')} ${secureCredentials.StorageOptions.ENV_FILE.name} ${chalk.gray(`[${envFileLabel}]`)}`,
+    short: envFileLabel,
     value: 'env'
   });
 
@@ -374,7 +430,9 @@ async function initializeConfig() {
       name: 'storageMethod',
       message: 'Where would you like to store your API key?',
       choices: storageChoices,
-      default: secureCredentials.keytarAvailable ? 'keychain' : 'env'
+      default: storageCapabilities.keychain.available
+        ? 'keychain'
+        : (storageCapabilities.encryptedFile.available ? 'encrypted' : 'env')
     }
   ]);
 
@@ -402,7 +460,7 @@ LOG_LEVEL=info
       console.log(chalk.yellow('Falling back to encrypted file storage...'));
 
       try {
-        secureCredentials.storeInEncryptedFile(answers.apiKey);
+        await secureCredentials.storeInEncryptedFile(answers.apiKey);
 
         // Also create .env file WITHOUT the API key
         const envContent = `# OpenRouter Configuration
@@ -427,7 +485,7 @@ LOG_LEVEL=info
           {
             type: 'confirm',
             name: 'confirmPlaintext',
-            message: 'Store API key in plaintext .env file?',
+            message: `Store API key in plaintext ${envFileLabel}?`,
             default: false
           }
         ]);
@@ -437,12 +495,12 @@ LOG_LEVEL=info
           return;
         }
 
-        secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+        secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer, envFilePath);
       }
     }
   } else if (storageMethod === 'encrypted') {
     try {
-      secureCredentials.storeInEncryptedFile(answers.apiKey);
+      await secureCredentials.storeInEncryptedFile(answers.apiKey);
 
       // Also create .env file WITHOUT the API key
       const envContent = `# OpenRouter Configuration
@@ -467,7 +525,7 @@ LOG_LEVEL=info
         {
           type: 'confirm',
           name: 'confirmPlaintext',
-          message: 'Store API key in plaintext .env file?',
+          message: `Store API key in plaintext ${envFileLabel}?`,
           default: false
         }
       ]);
@@ -477,7 +535,7 @@ LOG_LEVEL=info
         return;
       }
 
-      secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+      secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer, envFilePath);
     }
   } else if (storageMethod === 'env') {
     // Show security warning for plaintext storage
@@ -487,29 +545,28 @@ LOG_LEVEL=info
       {
         type: 'confirm',
         name: 'confirmPlaintext',
-        message: chalk.yellow('I understand the risks. Store API key in plaintext .env file?'),
+        message: chalk.yellow(`I understand the risks. Store API key in plaintext ${envFileLabel}?`),
         default: false
       }
     ]);
 
     if (!confirmPlaintext) {
-      console.log(chalk.blue('Setup cancelled. Consider installing keytar for secure storage:'));
-      console.log(chalk.gray('  npm install keytar'));
+      console.log(chalk.blue('Setup cancelled. Consider OS keychain storage or export OPENROUTER_API_KEY at runtime.'));
       return;
     }
 
-    secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer);
+    secureCredentials.storeInEnvFile(answers.apiKey, answers.appName, answers.httpReferer, envFilePath);
   }
 
   console.log(chalk.cyan('\n─────────────────────────────────────────────────────────────\n'));
-  console.log(chalk.bold('Claude Integration Configuration\n'));
+  console.log(chalk.bold('MCP Client Integration Configuration\n'));
 
-  // Ask about Claude integrations with security warnings
+  // Ask about MCP client integrations with security warnings
   const { integrations } = await inquirer.prompt([
     {
       type: 'checkbox',
       name: 'integrations',
-      message: 'Which Claude integrations would you like to configure?',
+      message: 'Which MCP clients would you like to configure?',
       choices: [
         {
           name: `Claude Desktop ${chalk.gray('(stores API key in config file)')}`,
@@ -519,7 +576,12 @@ LOG_LEVEL=info
         {
           name: `Claude Code CLI ${chalk.gray('(registers via claude mcp add)')}`,
           value: 'code',
-          checked: false
+          checked: defaultIntegrations.has('code')
+        },
+        {
+          name: `Codex CLI ${chalk.gray('(registers openrouter-local via codex mcp add)')}`,
+          value: 'codex',
+          checked: defaultIntegrations.has('codex')
         }
       ]
     }
@@ -548,6 +610,10 @@ LOG_LEVEL=info
 
     if (integrations.includes('code')) {
       await installClaudeCodeConfig();
+    }
+
+    if (integrations.includes('codex')) {
+      await installCodexConfig();
     }
   }
 
@@ -610,7 +676,7 @@ async function installClaudeConfig(apiKey = null) {
   if (!apiKey) {
     const keyResult = await secureCredentials.getApiKey();
     if (!keyResult.key) {
-      console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp init" first.'));
+      console.log(chalk.red('✗ No API key found. Please run "openrouter-mcp setup" first.'));
       return;
     }
     apiKey = keyResult.key;
@@ -656,7 +722,7 @@ async function installClaudeConfig(apiKey = null) {
   config.mcpServers = config.mcpServers || {};
   config.mcpServers.openrouter = {
     command: "npx",
-    args: [MCP_PACKAGE_NAME, "start"],
+    args: buildNpxStartArgs(MCP_PACKAGE_NAME),
     env: {
       OPENROUTER_API_KEY: apiKey
     }
@@ -707,11 +773,49 @@ async function installClaudeCodeConfig() {
   console.log(chalk.blue('💡 Claude Code stores only the MCP command, not your API key.'));
   console.log(chalk.blue('💡 openrouter-mcp start resolves the key from secure storage or environment at runtime.'));
   if (!keyResult.key) {
-    console.log(chalk.yellow('⚠️  No API key is configured yet. Run "openrouter-mcp init" or export OPENROUTER_API_KEY before use.'));
+    console.log(chalk.yellow('⚠️  No API key is configured yet. Run "openrouter-mcp setup" or export OPENROUTER_API_KEY before use.'));
   }
   console.log(chalk.blue('💡 Use commands like: "List available AI models using OpenRouter"'));
 
   console.log(chalk.cyan('\n📝 Claude Code registration command:'));
+  console.log(chalk.gray(`  ${formatCommand(installCommand.command, installCommand.args)}`));
+}
+
+async function installCodexConfig() {
+  const keyResult = await secureCredentials.getApiKey();
+  const installCommand = buildCodexInstallCommand(MCP_PACKAGE_NAME);
+  const removeCommand = buildCodexRemoveCommand();
+
+  try {
+    try {
+      await runCommand(removeCommand.command, removeCommand.args);
+      console.log(chalk.gray('ℹ️  Replacing existing Codex openrouter-local entry'));
+    } catch (error) {
+      // Ignore if the server is not already registered.
+    }
+
+    await runCommand(installCommand.command, installCommand.args);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      console.log(chalk.red('✗ Codex CLI not found in PATH'));
+      console.log(chalk.blue('Install Codex first, then rerun this command.'));
+    } else {
+      console.log(chalk.red(`✗ Failed to configure Codex CLI: ${error.message}`));
+    }
+
+    console.log(chalk.blue('\nRun this command manually in a Codex-enabled shell:'));
+    console.log(chalk.gray(`  ${formatCommand(installCommand.command, installCommand.args)}`));
+    return;
+  }
+
+  console.log(chalk.green('✓ Codex MCP configuration updated: openrouter-local'));
+  console.log(chalk.blue('💡 Codex stores only the MCP command and non-secret metadata, not your API key.'));
+  console.log(chalk.blue('💡 openrouter-mcp start resolves the key from secure storage or environment at runtime.'));
+  if (!keyResult.key) {
+    console.log(chalk.yellow('⚠️  No API key is configured yet. Run "openrouter-mcp setup" or export OPENROUTER_API_KEY before use.'));
+  }
+
+  console.log(chalk.cyan('\n📝 Codex registration command:'));
   console.log(chalk.gray(`  ${formatCommand(installCommand.command, installCommand.args)}`));
 }
 
@@ -757,7 +861,7 @@ async function rotateApiKey() {
       console.log(chalk.gray('  3. Test the new key: openrouter-mcp start'));
     } else {
       console.log(chalk.yellow('\n⚠️  No existing credential storage found.'));
-      console.log(chalk.blue('Run "openrouter-mcp init" to configure credentials.'));
+      console.log(chalk.blue('Run "openrouter-mcp setup" to configure credentials.'));
     }
   } catch (error) {
     console.log(chalk.red(`\n✗ Rotation failed: ${error.message}`));
@@ -798,7 +902,7 @@ async function deleteCredentials() {
 
     if (locations.length > 0) {
       console.log(chalk.green('\n✅ Credentials deleted successfully!'));
-      console.log(chalk.gray('Run "openrouter-mcp init" to reconfigure.'));
+      console.log(chalk.gray('Run "openrouter-mcp setup" to reconfigure.'));
     } else {
       console.log(chalk.yellow('\n⚠️  No credentials found to delete.'));
     }
@@ -879,34 +983,46 @@ async function securityAudit() {
     console.log(chalk.gray('  ○ Encrypted File: Not configured'));
   }
 
-  // Check .env file
-  const envPath = path.join(process.cwd(), '.env');
-  if (fs.existsSync(envPath)) {
+  // Check .env-style files
+  const envPaths = Array.from(new Set([
+    path.join(process.cwd(), '.env'),
+    path.join(os.homedir(), '.openrouter-mcp.env')
+  ]));
+  let foundEnvFile = false;
+  for (const envPath of envPaths) {
+    if (!fs.existsSync(envPath)) {
+      continue;
+    }
+
+    foundEnvFile = true;
+    const envDisplayName = path.basename(envPath);
     const stats = fs.statSync(envPath);
     const envContent = fs.readFileSync(envPath, 'utf8');
     const hasApiKey = envContent.includes('OPENROUTER_API_KEY=sk-or-');
 
     if (hasApiKey) {
-      console.log(chalk.yellow('  ⚠  .env file: Contains API key (plaintext)'));
-      warnings.push('⚠ API key stored in plaintext .env file');
+      console.log(chalk.yellow(`  ⚠  ${envDisplayName}: Contains API key (plaintext)`));
+      warnings.push(`⚠ API key stored in plaintext ${envDisplayName}`);
 
       // Check file permissions
       if (os.platform() !== 'win32') {
         const mode = stats.mode & parseInt('777', 8);
         if (mode === parseInt('600', 8)) {
-          good.push('✓ .env file has secure permissions (600)');
+          good.push(`✓ ${envDisplayName} has secure permissions (600)`);
           console.log(chalk.green('    ✓ Permissions: 600 (secure)'));
         } else {
-          issues.push(`! .env file has insecure permissions (${mode.toString(8)})`);
+          issues.push(`! ${envDisplayName} has insecure permissions (${mode.toString(8)})`);
           console.log(chalk.red(`    ! Permissions: ${mode.toString(8)} (should be 600)`));
         }
       }
     } else {
-      console.log(chalk.green('  ✓ .env file: No API key (settings only)'));
-      good.push('✓ .env file does not contain API key');
+      console.log(chalk.green(`  ✓ ${envDisplayName}: No API key (settings only)`));
+      good.push(`✓ ${envDisplayName} does not contain API key`);
     }
-  } else {
-    console.log(chalk.gray('  ○ .env file: Not found'));
+  }
+
+  if (!foundEnvFile) {
+    console.log(chalk.gray('  ○ .env files: Not found'));
   }
 
   // Check .gitignore

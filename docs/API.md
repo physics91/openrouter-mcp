@@ -7,7 +7,7 @@ The server runs over stdio as an MCP server, not as a standalone HTTP API.
 
 - Protocol: Model Context Protocol (MCP)
 - Transport: stdio via `openrouter-mcp start`
-- Authentication: `OPENROUTER_API_KEY` from environment or secure storage initialized by `openrouter-mcp init`
+- Authentication: `OPENROUTER_API_KEY` from environment or secure storage initialized by `openrouter-mcp setup`
 - Schema discovery: MCP clients can inspect the live parameter schema through `list_tools()`
 
 ## Core Chat Tools

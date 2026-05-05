@@ -37,7 +37,7 @@ The easiest way to set up Claude Desktop integration:
 ### Step 1: Initialize OpenRouter MCP
 
 ```bash
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 This will prompt you for:
@@ -93,7 +93,7 @@ If the file doesn't exist, create it. If it exists, add to the existing `mcpServ
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY"
       }
@@ -111,7 +111,7 @@ Here's a complete configuration file with multiple MCP servers:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY",
         "OPENROUTER_APP_NAME": "claude-desktop",
@@ -266,8 +266,8 @@ npx @physics91/openrouter-mcp@latest status
 # Test API key
 curl -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models
 
-# Re-initialize if needed
-npx @physics91/openrouter-mcp@latest init
+# Re-run setup if needed
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 #### 3. Server Won't Start
@@ -345,7 +345,7 @@ You can customize the server behavior with environment variables:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "9000"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start", "--port", "9000"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY",
         "OPENROUTER_APP_NAME": "my-custom-app",
@@ -368,14 +368,14 @@ You can run multiple OpenRouter instances with different configurations:
   "mcpServers": {
     "openrouter-main": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "8000"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start", "--port", "8000"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_MAIN_OPENROUTER_API_KEY"
       }
     },
     "openrouter-experimental": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start", "--port", "8001"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start", "--port", "8001"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_EXPERIMENT_OPENROUTER_API_KEY"
       }
@@ -393,7 +393,7 @@ For high-volume usage:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"],
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"],
       "env": {
         "OPENROUTER_API_KEY": "REPLACE_WITH_OPENROUTER_API_KEY",
         "LOG_LEVEL": "warning",
@@ -433,7 +433,7 @@ OpenRouter MCP works well with other MCP servers:
   "mcpServers": {
     "openrouter": {
       "command": "npx",
-      "args": ["@physics91/openrouter-mcp", "start"]
+      "args": ["-y", "@physics91/openrouter-mcp@latest", "start"]
     },
     "filesystem": {
       "command": "npx",

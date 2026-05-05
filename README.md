@@ -19,31 +19,30 @@ A Model Context Protocol (MCP) server for OpenRouter. Register it in MCP-compati
 
 ## Quick start
 ```bash
-npx @physics91/openrouter-mcp init
-npx @physics91/openrouter-mcp start
+npx @physics91/openrouter-mcp@latest setup
 ```
 
 Global install:
 ```bash
 npm install -g @physics91/openrouter-mcp
-openrouter-mcp init
-openrouter-mcp start
+openrouter-mcp setup
 ```
 
 ## MCP client setup
 Client config formats differ, but the launch information is usually the same:
 - `command`: `npx`
-- `args`: `["@physics91/openrouter-mcp", "start"]`
+- `args`: `["-y", "@physics91/openrouter-mcp@latest", "start"]`
 - `env`:
-  Use only when the client cannot rely on `openrouter-mcp init` or inherited environment variables.
+  Use only when the client cannot rely on `openrouter-mcp setup` or inherited environment variables.
 
 Recommended credential flow:
-- Run `npx @physics91/openrouter-mcp init`
-- Let `openrouter-mcp start` resolve the API key from secure storage or runtime environment
+- Run `npx @physics91/openrouter-mcp@latest setup`
+- Let `openrouter-mcp start` resolve the API key from secure storage, `~/.openrouter-mcp.env`, or runtime environment
 
 Client-specific examples:
 - Claude Desktop: `mcpServers` in `claude_desktop_config.json`
 - Claude Code: `claude mcp add ...` or project `.mcp.json`
+- Codex: `codex mcp add ...` or `openrouter-mcp install-codex`
 - VS Code: `servers` in `.vscode/mcp.json`
 
 See `docs/MCP_CLIENT_GUIDE.md` for the common flow and client-specific examples.
@@ -94,11 +93,13 @@ Notes:
 Use `openrouter-mcp <command>` or `npx @physics91/openrouter-mcp <command>`.
 
 Commands:
+- `setup` One-command guided setup for credentials and supported MCP clients
 - `start` Start the MCP server (stdio)
 - `init` Initialize API key storage
 - `status` Show configuration status
 - `install-claude` Configure Claude Desktop
 - `install-claude-code` Configure Claude Code CLI
+- `install-codex` Configure Codex CLI as `openrouter-local`
 - `rotate-key` Rotate API key across storage
 - `delete-credentials` Remove stored credentials
 - `security-audit` Audit credential storage and permissions
@@ -111,7 +112,8 @@ Global options: `--verbose`, `--debug`
 - Common MCP client setup: `docs/MCP_CLIENT_GUIDE.md`
 - Claude Desktop shortcut: `openrouter-mcp install-claude`
 - Claude Code CLI shortcut: `openrouter-mcp install-claude-code`
-- Generated server entries use: `npx @physics91/openrouter-mcp start`
+- Codex CLI shortcut: `openrouter-mcp install-codex`
+- Generated server entries use: `npx -y @physics91/openrouter-mcp@latest start`
 
 See:
 - `docs/MCP_CLIENT_GUIDE.md`

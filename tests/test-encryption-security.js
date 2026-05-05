@@ -534,8 +534,12 @@ test('Claude Code installer command uses native claude mcp add flow', () => {
     'Installer command should register the openrouter server name'
   );
   assert(
-    command.args.includes('@physics91/openrouter-mcp'),
-    'Installer command should reference the package name'
+    command.args.includes('@physics91/openrouter-mcp@latest'),
+    'Installer command should reference the latest package specifier'
+  );
+  assert(
+    command.args.includes('-y'),
+    'Installer command should allow non-interactive npx execution'
   );
 });
 
@@ -624,14 +628,26 @@ console.log(chalk.cyan('\n══════════════════
 
 // Check for OS Keystore availability
 console.log(chalk.bold('📌 Environment Check:\n'));
-if (cryptoManager.isKeystoreAvailable()) {
-  console.log(chalk.green('✓ OS Keystore available (keytar installed)'));
-} else {
-  console.log(chalk.yellow('⚠ OS Keystore NOT available'));
-  console.log(chalk.gray('  Install keytar for full v2.0 functionality:'));
-  console.log(chalk.gray('  npm install keytar\n'));
-}
+cryptoManager.checkKeystoreUsability()
+  .then(keystore => {
+    if (keystore.available) {
+      console.log(chalk.green('✓ OS Keystore usable'));
+    } else if (cryptoManager.isKeystoreAvailable()) {
+      console.log(chalk.yellow('⚠ OS Keystore installed but not usable'));
+      console.log(chalk.gray(`  ${keystore.reason}`));
+      console.log(chalk.gray('  Use env-file storage or start a Secret Service daemon.\n'));
+    } else {
+      console.log(chalk.yellow('⚠ OS Keystore NOT available'));
+      console.log(chalk.gray('  Install keytar for full v2.0 functionality:'));
+      console.log(chalk.gray('  npm install keytar\n'));
+    }
 
-console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
-
-process.exit(0);
+    console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+    process.exit(0);
+  })
+  .catch(error => {
+    console.log(chalk.yellow('⚠ OS Keystore usability check failed'));
+    console.log(chalk.gray(`  ${error.message}\n`));
+    console.log(chalk.cyan('═══════════════════════════════════════════════════════════\n'));
+    process.exit(0);
+  });

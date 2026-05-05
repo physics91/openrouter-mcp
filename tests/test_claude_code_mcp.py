@@ -154,7 +154,7 @@ def show_usage_instructions():
     print("   - https://openrouter.ai 에서 계정 생성")
     print("   - API Keys 섹션에서 새 API 키 생성")
     config_path = Path.home() / ".claude.json"
-    print("   - npx @physics91/openrouter-mcp@latest init 실행")
+    print("   - npx @physics91/openrouter-mcp@latest setup 실행")
     print("   - 또는 Claude Code를 실행하는 셸에 OPENROUTER_API_KEY 설정")
     print(f"   - 등록 상태 확인: {config_path}")
 

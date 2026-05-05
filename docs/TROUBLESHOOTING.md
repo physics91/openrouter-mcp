@@ -87,25 +87,25 @@ npm install -g @physics91/openrouter-mcp
 1. **Verify API key**:
 ```bash
 # Re-run initialization
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
-# Check .env without printing the key
-if grep -q '^OPENROUTER_API_KEY=' .env; then
-  echo "OPENROUTER_API_KEY is present in .env"
+# Check local or user-level env files without printing the key
+if grep -q '^OPENROUTER_API_KEY=' .env ~/.openrouter-mcp.env 2>/dev/null; then
+  echo "OPENROUTER_API_KEY is present in an env file"
 else
-  echo "OPENROUTER_API_KEY is missing from .env"
+  echo "OPENROUTER_API_KEY is missing from env files"
 fi
 ```
 
 2. **Check API key format**:
 ```bash
 # Use an API key generated from your OpenRouter dashboard
-# No quotes or extra spaces in .env file
+# No quotes or extra spaces in .env or ~/.openrouter-mcp.env
 OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
 ```
 `.env` is plaintext. Do not commit, paste, or share it.
 ```bash
-chmod 600 .env
+chmod 600 .env ~/.openrouter-mcp.env 2>/dev/null || true
 ```
 
 3. **Verify API key on OpenRouter**:
@@ -120,7 +120,7 @@ chmod 600 .env
 **Solution**:
 ```bash
 # Preferred: create/update credentials through interactive setup
-npx @physics91/openrouter-mcp@latest init
+npx @physics91/openrouter-mcp@latest setup
 
 # Manual fallback: edit .env in a private editor and add:
 OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_API_KEY
@@ -480,7 +480,7 @@ cat .mcp.json | python -m json.tool
 2. **Update configuration**:
 ```bash
 # Re-register in Claude Code user scope
-claude mcp add --transport stdio --scope user openrouter -- npx @physics91/openrouter-mcp start
+claude mcp add --transport stdio --scope user openrouter -- npx -y @physics91/openrouter-mcp@latest start
 ```
 
 ## Debug Mode

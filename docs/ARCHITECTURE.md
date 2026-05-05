@@ -284,7 +284,7 @@ npm start
 ### Production Deployment
 ```bash
 npm install -g @physics91/openrouter-mcp
-openrouter-mcp init
+openrouter-mcp setup
 openrouter-mcp start
 ```
 

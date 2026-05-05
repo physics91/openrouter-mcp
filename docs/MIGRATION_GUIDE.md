@@ -259,13 +259,13 @@ sudo yum install libsecret-devel      # Fedora/RHEL
 ```bash
 # Option 1: Delete and re-initialize
 openrouter-mcp delete-credentials
-openrouter-mcp init
+openrouter-mcp setup
 
 # Option 2: Use environment variable temporarily
 read -rsp "OpenRouter API key: " OPENROUTER_API_KEY
 export OPENROUTER_API_KEY
 echo
-openrouter-mcp init
+openrouter-mcp setup
 unset OPENROUTER_API_KEY
 ```
 
@@ -349,7 +349,7 @@ openrouter-mcp delete-credentials
 
 ```bash
 # Will automatically use v2.0
-openrouter-mcp init
+openrouter-mcp setup
 
 # When prompted, enter your API key
 ```
