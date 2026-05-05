@@ -484,14 +484,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up environment
+      - name: Run tests
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          # Key is only available in this step
-          echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" >> $GITHUB_ENV
-
-      - name: Run tests
+        # Key is only available to this step.
         run: npm test
 
       # Key is automatically cleared after workflow
