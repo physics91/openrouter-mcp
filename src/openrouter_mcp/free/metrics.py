@@ -110,15 +110,12 @@ class MetricsCollector:
         ) as e:
             logger.warning("메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e)
 
-    def save(self) -> None:
-        """Persist metrics to disk using atomic write (tmp → rename)."""
-        if not self._persistence_path:
-            return
-        dir_path = os.path.dirname(self._persistence_path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-
-        data = {mid: m.to_dict() for mid, m in self._metrics.items()}
+    def _write_metrics_atomically(
+        self,
+        data: Dict[str, Dict[str, Any]],
+        dir_path: str,
+    ) -> None:
+        """Write a metrics snapshot with temp-file replacement and cleanup."""
         try:
             fd, tmp_path = tempfile.mkstemp(dir=dir_path or ".", suffix=".tmp")
             try:
@@ -130,6 +127,17 @@ class MetricsCollector:
                 raise
         except OSError as e:
             logger.warning("메트릭 저장 실패: %s", e)
+
+    def save(self) -> None:
+        """Persist metrics to disk using atomic write (tmp → rename)."""
+        if not self._persistence_path:
+            return
+        dir_path = os.path.dirname(self._persistence_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+
+        data = {mid: m.to_dict() for mid, m in self._metrics.items()}
+        self._write_metrics_atomically(data, dir_path)
 
     def _maybe_auto_save(self) -> None:
         """Auto-save every N records."""

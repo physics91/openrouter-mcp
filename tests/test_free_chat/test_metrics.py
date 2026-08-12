@@ -2,6 +2,8 @@
 
 import json
 import os
+import tempfile
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -216,6 +218,98 @@ class TestMetricsPersistence:
         collector.record_success("model-a", latency_ms=10.0, tokens_used=1)
         collector.save()
         assert os.path.exists(path)
+
+    def test_save_delegates_exact_snapshot_after_directory_creation(self, tmp_path):
+        directory = tmp_path / "subdir"
+        path = str(directory / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        collector.record_success("model-a", latency_ms=12.5, tokens_used=7)
+        metric = collector.get_metrics("model-a")
+        writer = Mock()
+        collector._write_metrics_atomically = writer
+
+        collector.save()
+
+        writer.assert_called_once_with(
+            {
+                "model-a": {
+                    "total_requests": 1,
+                    "success_count": 1,
+                    "failure_count": 0,
+                    "total_latency_ms": 12.5,
+                    "total_tokens": 7,
+                    "error_counts": {},
+                }
+            },
+            str(directory),
+        )
+        assert collector.get_metrics("model-a") is metric
+
+    def test_atomic_metrics_writer_replaces_destination(self, tmp_path):
+        path = str(tmp_path / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        data = {"model-a": {"total_requests": 1}}
+
+        collector._write_metrics_atomically(data, str(tmp_path))
+
+        with open(path) as saved:
+            assert json.load(saved) == data
+
+    def test_atomic_metrics_writer_cleans_temp_and_propagates_keyboard_interrupt(
+        self, tmp_path
+    ):
+        path = str(tmp_path / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        interrupt = KeyboardInterrupt()
+        created_paths = []
+        real_mkstemp = tempfile.mkstemp
+
+        def tracking_mkstemp(*args, **kwargs):
+            result = real_mkstemp(*args, **kwargs)
+            created_paths.append(result[1])
+            return result
+
+        with patch(
+            "src.openrouter_mcp.free.metrics.tempfile.mkstemp",
+            side_effect=tracking_mkstemp,
+        ), patch(
+            "src.openrouter_mcp.free.metrics.json.dump",
+            side_effect=interrupt,
+        ):
+            with pytest.raises(KeyboardInterrupt) as raised:
+                collector._write_metrics_atomically({}, str(tmp_path))
+
+        assert raised.value is interrupt
+        assert len(created_paths) == 1
+        assert not os.path.exists(created_paths[0])
+
+    def test_atomic_metrics_writer_swallows_replace_oserror_and_cleans_temp(
+        self, tmp_path
+    ):
+        path = str(tmp_path / "metrics.json")
+        collector = MetricsCollector(persistence_path=path)
+        created_paths = []
+        real_mkstemp = tempfile.mkstemp
+
+        def tracking_mkstemp(*args, **kwargs):
+            result = real_mkstemp(*args, **kwargs)
+            created_paths.append(result[1])
+            return result
+
+        with patch(
+            "src.openrouter_mcp.free.metrics.tempfile.mkstemp",
+            side_effect=tracking_mkstemp,
+        ), patch(
+            "src.openrouter_mcp.free.metrics.os.replace",
+            side_effect=OSError("disk full"),
+        ), patch(
+            "src.openrouter_mcp.free.metrics.logger.warning"
+        ) as warning:
+            collector._write_metrics_atomically({}, str(tmp_path))
+
+        assert len(created_paths) == 1
+        assert not os.path.exists(created_paths[0])
+        warning.assert_called_once()
 
     def test_atomic_write_preserves_original_on_failure(self, tmp_path, monkeypatch):
         path = str(tmp_path / "metrics.json")
