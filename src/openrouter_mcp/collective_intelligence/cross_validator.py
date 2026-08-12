@@ -16,6 +16,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from ..utils.async_utils import raise_first_fatal_result
 from .base import (
     CollectiveIntelligenceComponent,
     ModelCapability,
@@ -666,6 +667,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             *[self._execute_validation_task(model_id, task) for model_id, task in validation_tasks],
             return_exceptions=True,
         )
+        raise_first_fatal_result(validation_results)
 
         all_issues, validator_failures = self._collect_peer_review_results(
             validation_results, validator_models
