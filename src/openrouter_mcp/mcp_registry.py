@@ -26,7 +26,7 @@ Usage:
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional
 
 from fastmcp import FastMCP
 
@@ -83,7 +83,7 @@ def _inspect_shared_client_reuse(
     owner_loop: Optional[asyncio.AbstractEventLoop],
     current_loop: asyncio.AbstractEventLoop,
     env_key: Optional[str],
-) -> Tuple[bool, bool, bool]:
+) -> tuple[bool, bool, bool]:
     loop_matches = owner_loop is None or owner_loop is current_loop
     loop_closed = owner_loop.is_closed() if owner_loop is not None else False
     key_matches = (not env_key) or getattr(client, "api_key", None) == env_key
