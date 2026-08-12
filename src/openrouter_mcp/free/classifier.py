@@ -1,7 +1,6 @@
 """Task type classification for optimized model selection."""
 
 from enum import Enum
-from typing import Dict, List
 
 
 class FreeTaskType(Enum):
@@ -14,7 +13,7 @@ class FreeTaskType(Enum):
     GENERAL = "general"
 
 
-TASK_PATTERNS: Dict[FreeTaskType, List[str]] = {
+TASK_PATTERNS: dict[FreeTaskType, list[str]] = {
     FreeTaskType.CODING: [
         "코드",
         "code",
@@ -80,7 +79,7 @@ TASK_PATTERNS: Dict[FreeTaskType, List[str]] = {
     ],
 }
 
-TASK_MODEL_AFFINITY: Dict[FreeTaskType, Dict[str, float]] = {
+TASK_MODEL_AFFINITY: dict[FreeTaskType, dict[str, float]] = {
     FreeTaskType.CODING: {"deepseek": 0.15, "qwen": 0.10},
     FreeTaskType.CREATIVE: {"google": 0.10, "meta": 0.10},
     FreeTaskType.TRANSLATION: {"google": 0.10, "qwen": 0.10},
