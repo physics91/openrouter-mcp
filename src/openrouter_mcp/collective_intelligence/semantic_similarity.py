@@ -528,12 +528,7 @@ class ResponseGrouper:
         Returns:
             List of indices representing each group
         """
-        representatives = []
-
-        for group in groups:
-            representatives.append(self._select_group_representative(texts, group))
-
-        return representatives
+        return [self._select_group_representative(texts, group) for group in groups]
 
 
 def calculate_response_similarity(response1: str, response2: str) -> float:

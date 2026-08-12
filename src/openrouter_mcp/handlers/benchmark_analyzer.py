@@ -120,10 +120,11 @@ class ModelPerformanceAnalyzer:
 
         successful_results: list[
             tuple[EnhancedBenchmarkResult, EnhancedBenchmarkMetrics]
-        ] = []
-        for result in results:
-            if result.success and result.metrics is not None:
-                successful_results.append((result, result.metrics))
+        ] = [
+            (result, result.metrics)
+            for result in results
+            if result.success and result.metrics is not None
+        ]
 
         if not successful_results:
             return {
