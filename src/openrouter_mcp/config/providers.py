@@ -62,7 +62,9 @@ def load_provider_config() -> dict[str, Any]:
         return _config_cache
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse provider config: {e}")
-        raise ProviderConfigError(f"Provider config is invalid JSON: {config_path}") from e
+        raise ProviderConfigError(
+            f"Provider config is invalid JSON: {config_path}"
+        ) from e
     except Exception as e:
         logger.error(f"Error loading provider config: {e}")
         raise ProviderConfigError(f"Provider config load failed: {config_path}") from e
@@ -98,7 +100,9 @@ def resolve_provider_alias(provider_name: str) -> str:
 
     # Check for partial matches
     for alias, canonical in aliases.items():
-        if isinstance(canonical, str) and (alias in provider_lower or provider_lower in alias):
+        if isinstance(canonical, str) and (
+            alias in provider_lower or provider_lower in alias
+        ):
             return canonical
 
     return provider_lower
