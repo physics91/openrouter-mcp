@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Optional, Protocol
 
 
 class TaskType(Enum):
@@ -47,13 +47,13 @@ class ModelInfo:
     model_id: str
     name: str
     provider: str
-    capabilities: Dict[ModelCapability, float] = field(default_factory=dict)
+    capabilities: dict[ModelCapability, float] = field(default_factory=dict)
     context_length: int = 4096
     cost_per_token: float = 0.0
     response_time_avg: float = 0.0
     accuracy_score: float = 0.0
     availability: float = 1.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,11 +63,11 @@ class TaskContext:
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     task_type: TaskType = TaskType.REASONING
     content: str = ""
-    requirements: Dict[str, Any] = field(default_factory=dict)
-    constraints: Dict[str, Any] = field(default_factory=dict)
+    requirements: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
     priority: int = 5  # 1-10 scale
     deadline: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -81,7 +81,7 @@ class ProcessingResult:
     processing_time: float = 0.0
     tokens_used: int = 0
     cost: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -94,7 +94,7 @@ class ModelProvider(Protocol):
         """Process a task using the specified model."""
         ...
 
-    async def get_available_models(self) -> List[ModelInfo]:
+    async def get_available_models(self) -> list[ModelInfo]:
         """Get list of available models."""
         ...
 
@@ -104,18 +104,18 @@ class CollectiveIntelligenceComponent(ABC):
 
     def __init__(self, model_provider: ModelProvider) -> None:
         self.model_provider = model_provider
-        self.metrics: Dict[str, Any] = {}
+        self.metrics: dict[str, Any] = {}
 
     @abstractmethod
     async def process(self, *args: Any, **kwargs: Any) -> Any:
         """Process a task using this component."""
         pass
 
-    def update_metrics(self, metrics: Dict[str, Any]) -> None:
+    def update_metrics(self, metrics: dict[str, Any]) -> None:
         """Update component metrics."""
         self.metrics.update(metrics)
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Get current component metrics."""
         return self.metrics.copy()
 
