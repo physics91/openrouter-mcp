@@ -11,6 +11,7 @@ This test verifies that:
 import asyncio
 import os
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,62 @@ import pytest
 @pytest.fixture(autouse=True)
 def _set_test_api_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-123")
+
+
+def test_inspect_shared_client_reuse_preserves_contract():
+    from openrouter_mcp.mcp_registry import _inspect_shared_client_reuse
+
+    class FakeLoop:
+        def __init__(self, closed=False):
+            self.closed = closed
+
+        def is_closed(self):
+            return self.closed
+
+    current_loop = FakeLoop()
+    other_loop = FakeLoop()
+    closed_loop = FakeLoop(closed=True)
+    open_client = SimpleNamespace(
+        api_key="matching-key",
+        _client=SimpleNamespace(is_closed=False),
+    )
+    closed_client = SimpleNamespace(
+        api_key="matching-key",
+        _client=SimpleNamespace(is_closed=True),
+    )
+
+    assert _inspect_shared_client_reuse(
+        open_client, None, current_loop, "matching-key"
+    ) == (True, False, False)
+    assert _inspect_shared_client_reuse(
+        open_client, current_loop, current_loop, "matching-key"
+    ) == (True, False, False)
+    assert _inspect_shared_client_reuse(
+        open_client, current_loop, current_loop, None
+    ) == (
+        True,
+        False,
+        False,
+    )
+    assert _inspect_shared_client_reuse(
+        open_client, current_loop, current_loop, ""
+    ) == (
+        True,
+        False,
+        False,
+    )
+    assert _inspect_shared_client_reuse(
+        open_client, other_loop, current_loop, "matching-key"
+    ) == (False, False, False)
+    assert _inspect_shared_client_reuse(
+        open_client, closed_loop, closed_loop, "matching-key"
+    ) == (False, True, False)
+    assert _inspect_shared_client_reuse(
+        closed_client, current_loop, current_loop, "matching-key"
+    ) == (False, False, True)
+    assert _inspect_shared_client_reuse(
+        open_client, current_loop, current_loop, "different-key"
+    ) == (False, False, False)
 
 
 @pytest.mark.asyncio
@@ -220,10 +277,32 @@ async def test_closed_shared_client_is_reinitialized():
 
 
 @pytest.mark.asyncio
+async def test_api_key_change_reinitializes_and_closes_shared_client(monkeypatch):
+    from openrouter_mcp.mcp_registry import cleanup_shared_client, get_shared_client
+
+    await cleanup_shared_client()
+    monkeypatch.setenv("OPENROUTER_API_KEY", "old-key")
+
+    try:
+        old_client = await get_shared_client()
+        monkeypatch.setenv("OPENROUTER_API_KEY", "new-key")
+
+        replacement = await get_shared_client()
+
+        assert replacement is not old_client
+        assert replacement.api_key == "new-key"
+        assert old_client._client.is_closed
+    finally:
+        await cleanup_shared_client()
+
+
+@pytest.mark.asyncio
 async def test_handlers_use_shared_client():
     """Test that handlers actually use the shared client (integration test)."""
     from openrouter_mcp.handlers.chat import get_openrouter_client as chat_get_client
-    from openrouter_mcp.handlers.multimodal import get_openrouter_client as multimodal_get_client
+    from openrouter_mcp.handlers.multimodal import (
+        get_openrouter_client as multimodal_get_client,
+    )
     from openrouter_mcp.mcp_registry import cleanup_shared_client
 
     try:
