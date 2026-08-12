@@ -18,13 +18,11 @@ from .requests import (
 )
 
 __all__ = [
-    # Cache
-    "ModelCache",
-    # Request models
-    "ChatMessage",
-    "BaseCompletionParams",
-    "StreamableRequest",
     "BaseChatRequest",
     "BaseCollectiveRequest",
+    "BaseCompletionParams",
     "BaseConsensusRequest",
+    "ChatMessage",
+    "ModelCache",
+    "StreamableRequest",
 ]
