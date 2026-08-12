@@ -354,6 +354,42 @@ def _normalize_performance_weights(
     return weights
 
 
+def _build_performance_comparison_data(
+    successful_results: Dict[str, EnhancedBenchmarkResult],
+    models: List[str],
+    weights: Dict[str, float],
+    include_cost_analysis: bool,
+) -> Dict[str, Any]:
+    """Build the serialized analysis for successful benchmark results."""
+    analyzer = ModelPerformanceAnalyzer()
+    ranking = analyzer.rank_models_with_weights(
+        list(successful_results.values()), weights
+    )
+
+    comparison_data: Dict[str, Any] = {
+        "timestamp": datetime.now().isoformat(),
+        "config": {
+            "models": models,
+            "weights": weights,
+            "include_cost_analysis": include_cost_analysis,
+        },
+        "ranking": _serialize_weighted_performance_ranking(ranking),
+        "detailed_metrics": _serialize_detailed_performance_metrics(successful_results),
+        "analysis": {},
+    }
+
+    if include_cost_analysis:
+        cost_analysis = _analyze_cost_efficiency(successful_results)
+        comparison_data["analysis"]["cost_efficiency"] = cost_analysis
+
+    performance_analysis = _analyze_performance_distribution(successful_results)
+    comparison_data["analysis"]["performance_distribution"] = performance_analysis
+
+    recommendations = _generate_recommendations(ranking, weights)
+    comparison_data["recommendations"] = recommendations
+    return comparison_data
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -809,41 +845,12 @@ async def compare_model_performance(
         if not successful_results:
             return {"error": "성공한 벤치마크 결과가 없습니다.", "models": models}
 
-        # 성능 분석기로 상세 분석
-        analyzer = ModelPerformanceAnalyzer()
-
-        # 가중치 적용한 랭킹
-        ranking = analyzer.rank_models_with_weights(
-            list(successful_results.values()), weights
+        comparison_data = _build_performance_comparison_data(
+            successful_results,
+            models,
+            weights,
+            include_cost_analysis,
         )
-
-        # 결과 구성
-        comparison_data: Dict[str, Any] = {
-            "timestamp": datetime.now().isoformat(),
-            "config": {
-                "models": models,
-                "weights": weights,
-                "include_cost_analysis": include_cost_analysis,
-            },
-            "ranking": _serialize_weighted_performance_ranking(ranking),
-            "detailed_metrics": _serialize_detailed_performance_metrics(
-                successful_results
-            ),
-            "analysis": {},
-        }
-
-        # 비용 분석 추가
-        if include_cost_analysis:
-            cost_analysis = _analyze_cost_efficiency(successful_results)
-            comparison_data["analysis"]["cost_efficiency"] = cost_analysis
-
-        # 성능 분포 분석
-        performance_analysis = _analyze_performance_distribution(successful_results)
-        comparison_data["analysis"]["performance_distribution"] = performance_analysis
-
-        # 추천 사항
-        recommendations = _generate_recommendations(ranking, weights)
-        comparison_data["recommendations"] = recommendations
 
         logger.info(f"고급 성능 비교 완료: {len(successful_results)} 모델 분석")
         return comparison_data

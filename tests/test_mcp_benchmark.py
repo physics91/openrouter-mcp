@@ -20,6 +20,7 @@ from src.openrouter_mcp.handlers.benchmark import (
     EnhancedBenchmarkResult,
 )
 from src.openrouter_mcp.handlers.mcp_benchmark import (
+    _build_performance_comparison_data,
     _serialize_category_benchmark_result,
     benchmark_models,
     compare_model_categories,
@@ -30,6 +31,274 @@ from src.openrouter_mcp.handlers.mcp_benchmark import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_build_performance_comparison_data_preserves_pipeline_order_and_identity():
+    events = []
+    benchmark_result = Mock()
+    successful_results = {"model-a": benchmark_result}
+    models = ["model-a"]
+    weights = {"speed": 0.6, "quality": 0.4}
+    ranking = [(benchmark_result, 0.75)]
+    serialized_ranking = [{"rank": 1}]
+    detailed_metrics = {"model-a": {"quality": 0.8}}
+    cost_analysis = {"most_cost_efficient": "model-a"}
+    performance_analysis = {"quality": {"avg": 0.8}}
+    recommendations = [{"model": "model-a"}]
+    analyzer = Mock()
+
+    def rank(results, received_weights):
+        events.append("rank")
+        assert results == [benchmark_result]
+        assert results[0] is benchmark_result
+        assert received_weights is weights
+        return ranking
+
+    analyzer.rank_models_with_weights.side_effect = rank
+
+    class FrozenTimestamp:
+        def isoformat(self):
+            events.append("isoformat")
+            return "2026-08-12T12:34:56"
+
+    class FrozenDatetime:
+        @classmethod
+        def now(cls):
+            events.append("now")
+            return FrozenTimestamp()
+
+    def create_analyzer():
+        events.append("analyzer")
+        return analyzer
+
+    def serialize_ranking(received_ranking):
+        events.append("serialize-ranking")
+        assert received_ranking is ranking
+        return serialized_ranking
+
+    def serialize_metrics(results):
+        events.append("serialize-metrics")
+        assert results is successful_results
+        return detailed_metrics
+
+    def analyze_cost(results):
+        events.append("cost")
+        assert results is successful_results
+        return cost_analysis
+
+    def analyze_performance(results):
+        events.append("performance")
+        assert results is successful_results
+        return performance_analysis
+
+    def generate_recommendations(received_ranking, received_weights):
+        events.append("recommendations")
+        assert received_ranking is ranking
+        assert received_weights is weights
+        return recommendations
+
+    with patch.object(
+        mcp_benchmark,
+        "ModelPerformanceAnalyzer",
+        side_effect=create_analyzer,
+    ), patch.object(
+        mcp_benchmark,
+        "datetime",
+        FrozenDatetime,
+    ), patch.object(
+        mcp_benchmark,
+        "_serialize_weighted_performance_ranking",
+        side_effect=serialize_ranking,
+    ), patch.object(
+        mcp_benchmark,
+        "_serialize_detailed_performance_metrics",
+        side_effect=serialize_metrics,
+    ), patch.object(
+        mcp_benchmark,
+        "_analyze_cost_efficiency",
+        side_effect=analyze_cost,
+    ), patch.object(
+        mcp_benchmark,
+        "_analyze_performance_distribution",
+        side_effect=analyze_performance,
+    ), patch.object(
+        mcp_benchmark,
+        "_generate_recommendations",
+        side_effect=generate_recommendations,
+    ):
+        result = _build_performance_comparison_data(
+            successful_results,
+            models,
+            weights,
+            include_cost_analysis=True,
+        )
+
+    assert list(result) == [
+        "timestamp",
+        "config",
+        "ranking",
+        "detailed_metrics",
+        "analysis",
+        "recommendations",
+    ]
+    assert result == {
+        "timestamp": "2026-08-12T12:34:56",
+        "config": {
+            "models": models,
+            "weights": weights,
+            "include_cost_analysis": True,
+        },
+        "ranking": serialized_ranking,
+        "detailed_metrics": detailed_metrics,
+        "analysis": {
+            "cost_efficiency": cost_analysis,
+            "performance_distribution": performance_analysis,
+        },
+        "recommendations": recommendations,
+    }
+    assert result["config"]["models"] is models
+    assert result["config"]["weights"] is weights
+    assert events == [
+        "analyzer",
+        "rank",
+        "now",
+        "isoformat",
+        "serialize-ranking",
+        "serialize-metrics",
+        "cost",
+        "performance",
+        "recommendations",
+    ]
+
+
+def test_build_performance_comparison_data_skips_cost_analysis():
+    benchmark_result = Mock()
+    successful_results = {"model-a": benchmark_result}
+    ranking = [(benchmark_result, 0.75)]
+    analyzer = Mock()
+    analyzer.rank_models_with_weights.return_value = ranking
+
+    with patch.object(
+        mcp_benchmark,
+        "ModelPerformanceAnalyzer",
+        return_value=analyzer,
+    ), patch.object(
+        mcp_benchmark,
+        "_serialize_weighted_performance_ranking",
+        return_value=[],
+    ), patch.object(
+        mcp_benchmark,
+        "_serialize_detailed_performance_metrics",
+        return_value={},
+    ), patch.object(
+        mcp_benchmark,
+        "_analyze_cost_efficiency",
+    ) as analyze_cost, patch.object(
+        mcp_benchmark,
+        "_analyze_performance_distribution",
+        return_value={"distribution": True},
+    ), patch.object(
+        mcp_benchmark,
+        "_generate_recommendations",
+        return_value=[],
+    ):
+        result = _build_performance_comparison_data(
+            successful_results,
+            ["model-a"],
+            {"quality": 1.0},
+            include_cost_analysis=False,
+        )
+
+    analyze_cost.assert_not_called()
+    assert result["analysis"] == {"performance_distribution": {"distribution": True}}
+
+
+@pytest.mark.asyncio
+async def test_compare_model_performance_delegates_only_successful_results():
+    models = ["model-a", "model-b"]
+    input_weights = {"speed": 2.0}
+    normalized_weights = {"speed": 1.0}
+    successful = Mock(success=True)
+    failed = Mock(success=False)
+    raw_results = {"model-a": successful, "model-b": failed}
+    expected = {"comparison": True}
+    handler = Mock()
+    events = []
+
+    async def benchmark(**kwargs):
+        events.append("benchmark")
+        return raw_results
+
+    handler.benchmark_models = Mock(side_effect=benchmark)
+
+    def build(results, received_models, received_weights, include_cost_analysis):
+        events.append("build")
+        assert list(results) == ["model-a"]
+        assert results["model-a"] is successful
+        assert received_models is models
+        assert received_weights is normalized_weights
+        assert include_cost_analysis is False
+        return expected
+
+    def log(message):
+        events.append(f"log:{message}")
+
+    with patch.object(
+        mcp_benchmark,
+        "get_benchmark_handler",
+        new=AsyncMock(return_value=handler),
+    ), patch.object(
+        mcp_benchmark,
+        "_normalize_performance_weights",
+        return_value=normalized_weights,
+    ), patch.object(
+        mcp_benchmark,
+        "_build_performance_comparison_data",
+        side_effect=build,
+    ) as build_comparison, patch.object(
+        mcp_benchmark.logger,
+        "info",
+        side_effect=log,
+    ):
+        result = await compare_model_performance(
+            models,
+            input_weights,
+            include_cost_analysis=False,
+        )
+
+    assert result is expected
+    build_comparison.assert_called_once()
+    assert events == [
+        f"log:고급 성능 비교 시작: {models}",
+        f"log:가중치: {normalized_weights}",
+        "benchmark",
+        "build",
+        "log:고급 성능 비교 완료: 1 모델 분석",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_compare_model_performance_preserves_all_failed_early_return():
+    models = ["model-a"]
+    handler = Mock()
+    handler.benchmark_models = AsyncMock(return_value={"model-a": Mock(success=False)})
+
+    with patch.object(
+        mcp_benchmark,
+        "get_benchmark_handler",
+        new=AsyncMock(return_value=handler),
+    ), patch.object(
+        mcp_benchmark,
+        "_build_performance_comparison_data",
+    ) as build_comparison:
+        result = await compare_model_performance(models)
+
+    build_comparison.assert_not_called()
+    assert result == {
+        "error": "성공한 벤치마크 결과가 없습니다.",
+        "models": models,
+    }
+    assert result["models"] is models
 
 
 class TestMCPBenchmarkTools:
