@@ -87,6 +87,20 @@ def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
         return None
 
 
+async def _extract_http_error_message(response: httpx.Response) -> str:
+    """Extract an API error message without exposing an unsanitized body."""
+    try:
+        error_data = await maybe_await(response.json())
+        return error_data.get("error", {}).get("message", "Unknown error")
+    except (json_lib.JSONDecodeError, KeyError):
+        response_preview = (
+            SensitiveDataSanitizer.truncate_content(response.text, max_length=100)
+            if response.text
+            else "No response body"
+        )
+        return f"HTTP {response.status_code}: {response_preview}"
+
+
 def _build_model_pricing_result(
     pricing: Dict[str, Any],
     *,
@@ -473,18 +487,7 @@ class OpenRouterClient:
 
         SECURITY: Response bodies are sanitized to prevent leaking sensitive data in error messages.
         """
-        try:
-            error_data = await maybe_await(response.json())
-            error_message = error_data.get("error", {}).get("message", "Unknown error")
-        except (json_lib.JSONDecodeError, KeyError):
-            # SECURITY: Don't include raw response.text - it may contain sensitive data
-            # Truncate and sanitize the response body
-            response_preview = (
-                SensitiveDataSanitizer.truncate_content(response.text, max_length=100)
-                if response.text
-                else "No response body"
-            )
-            error_message = f"HTTP {response.status_code}: {response_preview}"
+        error_message = await _extract_http_error_message(response)
 
         if response.status_code == 401:
             raise AuthenticationError(error_message)
