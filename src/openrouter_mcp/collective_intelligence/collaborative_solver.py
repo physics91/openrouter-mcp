@@ -233,9 +233,8 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             raise
 
         except Exception as e:
-            logger.error(
-                f"Collaborative solving failed for session {session_id}: {e!s}",
-                exc_info=True,
+            logger.exception(
+                f"Collaborative solving failed for session {session_id}: {e!s}"
             )
 
             # Record failure and check if we should cancel pending tasks
