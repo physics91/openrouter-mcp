@@ -267,6 +267,51 @@ def _build_cache_deadspots(
     }
 
 
+def _build_cache_efficiency_summary(
+    *,
+    request_count: int,
+    saved_prompt_tokens: int,
+    cached_prompt_tokens: int,
+    cache_write_prompt_tokens: int,
+    cache_hit_requests: int,
+    cache_write_requests: int,
+) -> Dict[str, Any]:
+    cache_hit_share_pct = 0.0
+    if saved_prompt_tokens > 0:
+        cache_hit_share_pct = round(
+            (cached_prompt_tokens / saved_prompt_tokens) * 100.0,
+            2,
+        )
+
+    reuse_to_write_ratio = None
+    if cache_write_prompt_tokens > 0:
+        reuse_to_write_ratio = round(
+            cached_prompt_tokens / cache_write_prompt_tokens, 4
+        )
+
+    cache_hit_request_rate_pct = 0.0
+    cache_write_request_rate_pct = 0.0
+    if request_count > 0:
+        cache_hit_request_rate_pct = round(
+            (cache_hit_requests / request_count) * 100.0, 2
+        )
+        cache_write_request_rate_pct = round(
+            (cache_write_requests / request_count) * 100.0,
+            2,
+        )
+
+    return {
+        "cached_prompt_tokens": cached_prompt_tokens,
+        "cache_write_prompt_tokens": cache_write_prompt_tokens,
+        "cache_hit_requests": cache_hit_requests,
+        "cache_write_requests": cache_write_requests,
+        "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
+        "cache_write_request_rate_pct": cache_write_request_rate_pct,
+        "cache_hit_share_of_saved_prompt_tokens_pct": cache_hit_share_pct,
+        "reuse_to_write_ratio": reuse_to_write_ratio,
+    }
+
+
 def build_thrift_summary(stats: Dict[str, Any], thrift_metrics: Dict[str, Any]) -> Dict[str, Any]:
     """Build a compact, human-readable thrift summary."""
     saved_cost_usd = round(_as_float(thrift_metrics.get("saved_cost_usd")), 8)
@@ -296,25 +341,14 @@ def build_thrift_summary(stats: Dict[str, Any], thrift_metrics: Dict[str, Any]) 
             2,
         )
 
-    cache_hit_share_pct = 0.0
-    if saved_prompt_tokens > 0:
-        cache_hit_share_pct = round(
-            (cached_prompt_tokens / saved_prompt_tokens) * 100.0,
-            2,
-        )
-
-    reuse_to_write_ratio = None
-    if cache_write_prompt_tokens > 0:
-        reuse_to_write_ratio = round(cached_prompt_tokens / cache_write_prompt_tokens, 4)
-
-    cache_hit_request_rate_pct = 0.0
-    cache_write_request_rate_pct = 0.0
-    if request_count > 0:
-        cache_hit_request_rate_pct = round((cache_hit_requests / request_count) * 100.0, 2)
-        cache_write_request_rate_pct = round(
-            (cache_write_requests / request_count) * 100.0,
-            2,
-        )
+    cache_efficiency = _build_cache_efficiency_summary(
+        request_count=request_count,
+        saved_prompt_tokens=saved_prompt_tokens,
+        cached_prompt_tokens=cached_prompt_tokens,
+        cache_write_prompt_tokens=cache_write_prompt_tokens,
+        cache_hit_requests=cache_hit_requests,
+        cache_write_requests=cache_write_requests,
+    )
 
     provider_breakdown = _build_cache_efficiency_breakdown(
         thrift_metrics,
@@ -340,16 +374,7 @@ def build_thrift_summary(stats: Dict[str, Any], thrift_metrics: Dict[str, Any]) 
             "recent_reuse_requests": recent_reuse_requests,
             "deferred_requests": deferred_requests,
         },
-        "cache_efficiency": {
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cache_write_prompt_tokens": cache_write_prompt_tokens,
-            "cache_hit_requests": cache_hit_requests,
-            "cache_write_requests": cache_write_requests,
-            "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
-            "cache_write_request_rate_pct": cache_write_request_rate_pct,
-            "cache_hit_share_of_saved_prompt_tokens_pct": cache_hit_share_pct,
-            "reuse_to_write_ratio": reuse_to_write_ratio,
-        },
+        "cache_efficiency": cache_efficiency,
         "cache_efficiency_by_provider": provider_breakdown,
         "cache_efficiency_by_model": model_breakdown,
         "cache_hotspots": _build_cache_hotspots(

@@ -8,6 +8,7 @@ from src.openrouter_mcp.runtime_thrift.response_metadata import (
 )
 from src.openrouter_mcp.runtime_thrift.summary import (
     _build_cache_deadspot_reason,
+    _build_cache_efficiency_summary,
     _build_cache_hotspot_reason,
     _summarize_cache_deadspots,
 )
@@ -79,6 +80,27 @@ def test_summarize_cache_deadspots_excludes_unwarmed_and_healthy_buckets():
     }
 
     assert _summarize_cache_deadspots(breakdown, key_name="provider") == []
+
+
+@pytest.mark.unit
+def test_build_cache_efficiency_summary_handles_zero_denominators():
+    assert _build_cache_efficiency_summary(
+        request_count=0,
+        saved_prompt_tokens=0,
+        cached_prompt_tokens=0,
+        cache_write_prompt_tokens=0,
+        cache_hit_requests=0,
+        cache_write_requests=0,
+    ) == {
+        "cached_prompt_tokens": 0,
+        "cache_write_prompt_tokens": 0,
+        "cache_hit_requests": 0,
+        "cache_write_requests": 0,
+        "cache_hit_request_rate_pct": 0.0,
+        "cache_write_request_rate_pct": 0.0,
+        "cache_hit_share_of_saved_prompt_tokens_pct": 0.0,
+        "reuse_to_write_ratio": None,
+    }
 
 
 class TestResponseMetadata:
