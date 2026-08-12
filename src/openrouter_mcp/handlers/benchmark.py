@@ -367,6 +367,52 @@ class BenchmarkResult:
         )
 
 
+def _calculate_optional_benchmark_averages(
+    successful_results: List[BenchmarkResult],
+) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    """Calculate averages for optional quality, throughput, and token metrics."""
+    quality_scores = [
+        result.quality_score
+        for result in successful_results
+        if result.quality_score is not None
+    ]
+    avg_quality_score = (
+        sum(quality_scores) / len(quality_scores) if quality_scores else None
+    )
+
+    throughputs = [
+        result.throughput_tokens_per_second
+        for result in successful_results
+        if result.throughput_tokens_per_second is not None
+    ]
+    avg_throughput = sum(throughputs) / len(throughputs) if throughputs else None
+
+    prompt_tokens = [
+        result.prompt_tokens
+        for result in successful_results
+        if result.prompt_tokens is not None
+    ]
+    avg_prompt_tokens = (
+        sum(prompt_tokens) / len(prompt_tokens) if prompt_tokens else None
+    )
+
+    completion_tokens = [
+        result.completion_tokens
+        for result in successful_results
+        if result.completion_tokens is not None
+    ]
+    avg_completion_tokens = (
+        sum(completion_tokens) / len(completion_tokens) if completion_tokens else None
+    )
+
+    return (
+        avg_quality_score,
+        avg_throughput,
+        avg_prompt_tokens,
+        avg_completion_tokens,
+    )
+
+
 @dataclass
 class BenchmarkMetrics:
     """Aggregated metrics for a set of benchmark results."""
@@ -403,35 +449,23 @@ class BenchmarkMetrics:
         avg_response_time = sum(r.response_time_ms for r in successful_results) / len(
             successful_results
         )
-        avg_tokens = sum(r.tokens_used for r in successful_results) / len(successful_results)
+        avg_tokens = sum(r.tokens_used for r in successful_results) / len(
+            successful_results
+        )
         avg_cost = sum(r.cost for r in successful_results) / len(successful_results)
         total_cost = sum(r.cost for r in results)
 
-        # Calculate enhanced metrics
-        quality_scores = [
-            r.quality_score for r in successful_results if r.quality_score is not None
-        ]
-        avg_quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else None
-
-        throughputs = [
-            r.throughput_tokens_per_second
-            for r in successful_results
-            if r.throughput_tokens_per_second is not None
-        ]
-        avg_throughput = sum(throughputs) / len(throughputs) if throughputs else None
-
-        prompt_tokens = [r.prompt_tokens for r in successful_results if r.prompt_tokens is not None]
-        avg_prompt_tokens = sum(prompt_tokens) / len(prompt_tokens) if prompt_tokens else None
-
-        completion_tokens = [
-            r.completion_tokens for r in successful_results if r.completion_tokens is not None
-        ]
-        avg_completion_tokens = (
-            sum(completion_tokens) / len(completion_tokens) if completion_tokens else None
-        )
+        (
+            avg_quality_score,
+            avg_throughput,
+            avg_prompt_tokens,
+            avg_completion_tokens,
+        ) = _calculate_optional_benchmark_averages(successful_results)
 
         cost_per_quality_point = (
-            avg_cost / avg_quality_score if avg_quality_score and avg_quality_score > 0 else None
+            avg_cost / avg_quality_score
+            if avg_quality_score and avg_quality_score > 0
+            else None
         )
 
         return cls(
