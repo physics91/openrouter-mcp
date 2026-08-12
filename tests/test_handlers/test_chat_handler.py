@@ -39,7 +39,6 @@ async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
         "choices": [{"message": {"content": "hello"}}],
         "usage": {"total_tokens": 19},
     }
-    thrift_metrics = {"compacted_tokens": 3}
     client = MagicMock()
 
     async def complete(**kwargs):
@@ -55,10 +54,6 @@ async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
     )
     messages = [{"role": "user", "content": "serialized"}]
 
-    def snapshot():
-        events.append("snapshot")
-        return thrift_metrics
-
     async def enrich(*args, **kwargs):
         events.append("enrich")
         return enriched_response
@@ -67,10 +62,8 @@ async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
         events.append(f"log:{message}")
 
     with patch(
-        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot",
-        side_effect=snapshot,
-    ) as get_snapshot, patch(
-        "src.openrouter_mcp.handlers.chat.enrich_response_with_thrift_metadata",
+        "src.openrouter_mcp.handlers.chat."
+        "enrich_response_with_request_thrift_metadata",
         new=AsyncMock(side_effect=enrich),
     ) as enrich_response, patch(
         "src.openrouter_mcp.handlers.chat.logger.info",
@@ -86,14 +79,12 @@ async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
         max_tokens=33,
         stream=False,
     )
-    get_snapshot.assert_called_once_with()
     enrich_response.assert_awaited_once()
     enrich_args = enrich_response.await_args
     assert enrich_args.args == (
         client,
         "openai/gpt-4",
         response,
-        thrift_metrics,
     )
     assert enrich_args.kwargs == {
         "logger": chat_module.logger,
@@ -102,7 +93,6 @@ async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
     assert events == [
         "log:Initiating non-streaming chat completion",
         "complete",
-        "snapshot",
         "enrich",
         "log:Chat completion successful, tokens used: 19",
     ]
@@ -119,9 +109,8 @@ async def test_complete_chat_pipeline_rejects_invalid_response_before_enrichment
     )
 
     with patch(
-        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot"
-    ) as get_snapshot, patch(
-        "src.openrouter_mcp.handlers.chat.enrich_response_with_thrift_metadata",
+        "src.openrouter_mcp.handlers.chat."
+        "enrich_response_with_request_thrift_metadata",
         new_callable=AsyncMock,
     ) as enrich_response:
         with pytest.raises(
@@ -130,7 +119,6 @@ async def test_complete_chat_pipeline_rejects_invalid_response_before_enrichment
         ):
             await _complete_chat_with_thrift_metadata(client, request, [])
 
-    get_snapshot.assert_not_called()
     enrich_response.assert_not_awaited()
 
 
@@ -180,7 +168,6 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
     events = []
     chunk = {"choices": [{"delta": {"content": "hello"}}]}
     enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
-    thrift_metrics = {"compacted_tokens": 3}
     client = MagicMock()
 
     async def stream():
@@ -202,10 +189,6 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
     )
     messages = [{"role": "user", "content": "serialized"}]
 
-    def snapshot():
-        events.append("snapshot")
-        return thrift_metrics
-
     async def enrich(*args, **kwargs):
         events.append("enrich")
         return enriched_chunks
@@ -214,10 +197,8 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
         events.append(f"log:{message}")
 
     with patch(
-        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot",
-        side_effect=snapshot,
-    ) as get_snapshot, patch(
-        "src.openrouter_mcp.handlers.chat.enrich_final_stream_chunk_with_thrift_metadata",
+        "src.openrouter_mcp.handlers.chat."
+        "enrich_final_stream_chunk_with_request_thrift_metadata",
         new=AsyncMock(side_effect=enrich),
     ) as enrich_chunks, patch(
         "src.openrouter_mcp.handlers.chat.logger.info",
@@ -232,14 +213,12 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
         temperature=0.25,
         max_tokens=33,
     )
-    get_snapshot.assert_called_once_with()
     enrich_chunks.assert_awaited_once()
     enrich_args = enrich_chunks.await_args
     assert enrich_args.args == (
         client,
         "openai/gpt-4",
         [chunk],
-        thrift_metrics,
     )
     assert enrich_args.kwargs == {
         "logger": chat_module.logger,
@@ -250,7 +229,6 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
         "stream-call",
         "stream-start",
         "stream-end",
-        "snapshot",
         "enrich",
         "log:Streaming completed with 2 chunks",
     ]
@@ -275,16 +253,14 @@ async def test_stream_chat_pipeline_skips_snapshot_and_enrichment_on_collection_
     messages = [{"role": "user", "content": "serialized"}]
 
     with patch(
-        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot"
-    ) as get_snapshot, patch(
-        "src.openrouter_mcp.handlers.chat.enrich_final_stream_chunk_with_thrift_metadata",
+        "src.openrouter_mcp.handlers.chat."
+        "enrich_final_stream_chunk_with_request_thrift_metadata",
         new_callable=AsyncMock,
     ) as enrich_chunks:
         with pytest.raises(RuntimeError) as raised:
             await _stream_chat_with_thrift_metadata(client, request, messages)
 
     assert raised.value is error
-    get_snapshot.assert_not_called()
     enrich_chunks.assert_not_awaited()
 
 

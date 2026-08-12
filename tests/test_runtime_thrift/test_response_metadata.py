@@ -1,10 +1,13 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.openrouter_mcp.runtime_thrift import response_metadata as metadata_module
 from src.openrouter_mcp.runtime_thrift.response_metadata import (
     attach_thrift_metadata_from_payload,
+    enrich_final_stream_chunk_with_request_thrift_metadata,
     enrich_final_stream_chunk_with_thrift_metadata,
+    enrich_response_with_request_thrift_metadata,
     enrich_response_with_thrift_metadata,
 )
 from src.openrouter_mcp.runtime_thrift.summary import (
@@ -105,6 +108,133 @@ def test_build_cache_efficiency_summary_handles_zero_denominators():
 
 
 class TestResponseMetadata:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_request_response_enrichment_snapshots_then_delegates(
+        self, monkeypatch
+    ):
+        events = []
+        client = AsyncMock()
+        payload = {"usage": {"total_tokens": 3}}
+        thrift_metrics = {"compacted_tokens": 5}
+        enriched = {"thrift_metrics": thrift_metrics}
+        test_logger = MagicMock()
+
+        def snapshot():
+            events.append("snapshot")
+            return thrift_metrics
+
+        async def enrich(*args, **kwargs):
+            events.append("enrich")
+            return enriched
+
+        monkeypatch.setattr(
+            metadata_module,
+            "get_request_thrift_metrics_snapshot",
+            MagicMock(side_effect=snapshot),
+        )
+        delegate = AsyncMock(side_effect=enrich)
+        monkeypatch.setattr(
+            metadata_module,
+            "enrich_response_with_thrift_metadata",
+            delegate,
+        )
+
+        result = await enrich_response_with_request_thrift_metadata(
+            client,
+            "openai/gpt-4o",
+            payload,
+            logger=test_logger,
+            log_context="chat response",
+            total_cost_override_usd=0.0,
+        )
+
+        assert result is enriched
+        delegate.assert_awaited_once_with(
+            client,
+            "openai/gpt-4o",
+            payload,
+            thrift_metrics,
+            logger=test_logger,
+            log_context="chat response",
+            total_cost_override_usd=0.0,
+        )
+        assert events == ["snapshot", "enrich"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_request_stream_enrichment_snapshots_even_for_empty_stream(
+        self, monkeypatch
+    ):
+        events = []
+        chunks = []
+        thrift_metrics = {"compacted_tokens": 5}
+
+        def snapshot():
+            events.append("snapshot")
+            return thrift_metrics
+
+        async def enrich(*args, **kwargs):
+            events.append("enrich")
+            return chunks
+
+        monkeypatch.setattr(
+            metadata_module,
+            "get_request_thrift_metrics_snapshot",
+            MagicMock(side_effect=snapshot),
+        )
+        delegate = AsyncMock(side_effect=enrich)
+        monkeypatch.setattr(
+            metadata_module,
+            "enrich_final_stream_chunk_with_thrift_metadata",
+            delegate,
+        )
+
+        result = await enrich_final_stream_chunk_with_request_thrift_metadata(
+            AsyncMock(),
+            "openai/gpt-4o",
+            chunks,
+            log_context="vision response",
+        )
+
+        assert result is chunks
+        delegate.assert_awaited_once()
+        assert delegate.await_args.args[2] is chunks
+        assert delegate.await_args.args[3] is thrift_metrics
+        assert delegate.await_args.kwargs == {
+            "logger": None,
+            "log_context": "vision response",
+        }
+        assert events == ["snapshot", "enrich"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_request_enrichment_propagates_snapshot_failure_before_delegate(
+        self, monkeypatch
+    ):
+        error = RuntimeError("snapshot failed")
+        monkeypatch.setattr(
+            metadata_module,
+            "get_request_thrift_metrics_snapshot",
+            MagicMock(side_effect=error),
+        )
+        delegate = AsyncMock()
+        monkeypatch.setattr(
+            metadata_module,
+            "enrich_response_with_thrift_metadata",
+            delegate,
+        )
+
+        with pytest.raises(RuntimeError) as raised:
+            await enrich_response_with_request_thrift_metadata(
+                AsyncMock(),
+                "openai/gpt-4o",
+                {},
+            )
+
+        assert raised.value is error
+        delegate.assert_not_awaited()
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_empty_stream_enrichment_preserves_list_identity(self):
@@ -213,10 +343,7 @@ class TestResponseMetadata:
         assert enriched["thrift_summary"]["saved_cost_usd"] == 0.01
         assert enriched["thrift_summary"]["estimated_cost_without_thrift_usd"] == 0.1
         assert enriched["thrift_summary"]["effective_cost_reduction_pct"] == 10.0
-        assert (
-            enriched["thrift_summary"]["prompt_savings_breakdown"]["recent_reuse_prompt_tokens"]
-            == 0
-        )
+        assert enriched["thrift_summary"]["prompt_savings_breakdown"]["recent_reuse_prompt_tokens"] == 0
         assert enriched["thrift_summary"]["request_savings_breakdown"] == {
             "coalesced_requests": 1,
             "recent_reuse_requests": 0,

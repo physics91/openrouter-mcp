@@ -42,7 +42,6 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
     events = []
     chunk = {"choices": [{"delta": {"content": "image"}}]}
     enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
-    thrift_metrics = {"compacted_tokens": 3}
     client = MagicMock()
 
     async def stream():
@@ -65,10 +64,6 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
     )
     vision_messages = [{"role": "user", "content": "vision payload"}]
 
-    def snapshot():
-        events.append("snapshot")
-        return thrift_metrics
-
     async def enrich(*args, **kwargs):
         events.append("enrich")
         return enriched_chunks
@@ -78,11 +73,7 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
 
     with patch.object(
         multimodal_module,
-        "get_request_thrift_metrics_snapshot",
-        side_effect=snapshot,
-    ) as get_snapshot, patch.object(
-        multimodal_module,
-        "enrich_final_stream_chunk_with_thrift_metadata",
+        "enrich_final_stream_chunk_with_request_thrift_metadata",
         new=AsyncMock(side_effect=enrich),
     ) as enrich_chunks, patch.object(
         multimodal_module.logger,
@@ -100,14 +91,12 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
         temperature=0.25,
         max_tokens=33,
     )
-    get_snapshot.assert_called_once_with()
     enrich_chunks.assert_awaited_once()
     enrich_args = enrich_chunks.await_args
     assert enrich_args.args == (
         client,
         "openai/gpt-4o",
         [chunk],
-        thrift_metrics,
     )
     assert enrich_args.kwargs == {
         "logger": multimodal_module.logger,
@@ -118,7 +107,6 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
         "stream-call",
         "stream-start",
         "stream-end",
-        "snapshot",
         "enrich",
         "log:Streaming completed with 2 chunks",
     ]
@@ -143,17 +131,13 @@ async def test_stream_vision_pipeline_skips_enrichment_on_collection_error():
 
     with patch.object(
         multimodal_module,
-        "get_request_thrift_metrics_snapshot",
-    ) as get_snapshot, patch.object(
-        multimodal_module,
-        "enrich_final_stream_chunk_with_thrift_metadata",
+        "enrich_final_stream_chunk_with_request_thrift_metadata",
         new_callable=AsyncMock,
     ) as enrich_chunks:
         with pytest.raises(RuntimeError) as raised:
             await _stream_vision_chat_with_thrift_metadata(client, request, [])
 
     assert raised.value is error
-    get_snapshot.assert_not_called()
     enrich_chunks.assert_not_awaited()
 
 

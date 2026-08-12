@@ -16,9 +16,8 @@ from ..mcp_registry import get_openrouter_client, mcp
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
-    enrich_final_stream_chunk_with_thrift_metadata,
-    enrich_response_with_thrift_metadata,
-    get_request_thrift_metrics_snapshot,
+    enrich_final_stream_chunk_with_request_thrift_metadata,
+    enrich_response_with_request_thrift_metadata,
     thrift_request_scope,
 )
 from ..utils.async_utils import collect_async_iterable
@@ -364,12 +363,10 @@ async def _stream_vision_chat_with_thrift_metadata(
             )
         ),
     )
-    thrift_metrics = get_request_thrift_metrics_snapshot()
-    chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+    chunks = await enrich_final_stream_chunk_with_request_thrift_metadata(
         client,
         request.model,
         chunks,
-        thrift_metrics,
         logger=logger,
         log_context="vision response",
     )
@@ -394,12 +391,10 @@ async def _complete_vision_chat_with_thrift_metadata(
     if not isinstance(response, dict):
         raise ValueError("Invalid response format from vision chat completion")
 
-    thrift_metrics = get_request_thrift_metrics_snapshot()
-    response = await enrich_response_with_thrift_metadata(
+    response = await enrich_response_with_request_thrift_metadata(
         client,
         request.model,
         response,
-        thrift_metrics,
         logger=logger,
         log_context="vision response",
     )

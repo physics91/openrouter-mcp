@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict
 
 from ..utils import estimate_cost_from_usage
+from .metrics import get_request_thrift_metrics_snapshot
 from .summary import build_thrift_summary
 
 
@@ -132,10 +133,54 @@ async def enrich_final_stream_chunk_with_thrift_metadata(
     return [*chunks[:-1], enriched_final_chunk]
 
 
+async def enrich_response_with_request_thrift_metadata(
+    client: Any,
+    model: str,
+    payload: Dict[str, Any],
+    *,
+    logger: logging.Logger | None = None,
+    log_context: str = "response",
+    total_cost_override_usd: float | None = None,
+) -> Dict[str, Any]:
+    """Snapshot request metrics and enrich one response payload."""
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    return await enrich_response_with_thrift_metadata(
+        client,
+        model,
+        payload,
+        thrift_metrics,
+        logger=logger,
+        log_context=log_context,
+        total_cost_override_usd=total_cost_override_usd,
+    )
+
+
+async def enrich_final_stream_chunk_with_request_thrift_metadata(
+    client: Any,
+    model: str,
+    chunks: list[Dict[str, Any]],
+    *,
+    logger: logging.Logger | None = None,
+    log_context: str = "response",
+) -> list[Dict[str, Any]]:
+    """Snapshot request metrics and enrich the final stream chunk."""
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    return await enrich_final_stream_chunk_with_thrift_metadata(
+        client,
+        model,
+        chunks,
+        thrift_metrics,
+        logger=logger,
+        log_context=log_context,
+    )
+
+
 __all__ = [
     "attach_thrift_metadata",
     "attach_thrift_metadata_from_payload",
+    "enrich_final_stream_chunk_with_request_thrift_metadata",
     "enrich_final_stream_chunk_with_thrift_metadata",
+    "enrich_response_with_request_thrift_metadata",
     "enrich_response_with_thrift_metadata",
     "estimate_response_cost_usd",
 ]

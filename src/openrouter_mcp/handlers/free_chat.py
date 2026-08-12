@@ -21,8 +21,7 @@ from ..free.router import FreeModelRouter
 from ..mcp_registry import get_openrouter_client, mcp
 from ..runtime_thrift import (
     compact_messages_for_model,
-    enrich_response_with_thrift_metadata,
-    get_request_thrift_metrics_snapshot,
+    enrich_response_with_request_thrift_metadata,
     thrift_request_scope,
 )
 from ..utils.async_utils import collect_async_iterable
@@ -355,8 +354,7 @@ async def _build_result(
     usage = exec_result["usage"]
     total_tokens = usage.get("total_tokens", 0)
     metrics.record_success(actual_model, elapsed_ms, total_tokens)
-    thrift_metrics = get_request_thrift_metrics_snapshot()
-    return await enrich_response_with_thrift_metadata(
+    return await enrich_response_with_request_thrift_metadata(
         client=client,
         model=actual_model,
         payload={
@@ -366,7 +364,6 @@ async def _build_result(
             "task_type": task_type.value,
             "streamed": exec_result["streamed"],
         },
-        thrift_metrics=thrift_metrics,
         total_cost_override_usd=0.0,
     )
 

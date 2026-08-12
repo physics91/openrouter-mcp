@@ -13,9 +13,8 @@ from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
     attach_thrift_metadata_from_payload,
     compact_messages_for_model,
-    enrich_final_stream_chunk_with_thrift_metadata,
-    enrich_response_with_thrift_metadata,
-    get_request_thrift_metrics_snapshot,
+    enrich_final_stream_chunk_with_request_thrift_metadata,
+    enrich_response_with_request_thrift_metadata,
     get_thrift_metrics_snapshot_for_dates,
     thrift_request_scope,
 )
@@ -64,12 +63,10 @@ async def _stream_chat_with_thrift_metadata(
             )
         ),
     )
-    thrift_metrics = get_request_thrift_metrics_snapshot()
-    chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+    chunks = await enrich_final_stream_chunk_with_request_thrift_metadata(
         client,
         request.model,
         chunks,
-        thrift_metrics,
         logger=logger,
         log_context="chat response",
     )
@@ -95,12 +92,10 @@ async def _complete_chat_with_thrift_metadata(
     if not isinstance(response, dict):
         raise ValueError("Invalid response format from chat completion")
 
-    thrift_metrics = get_request_thrift_metrics_snapshot()
-    response = await enrich_response_with_thrift_metadata(
+    response = await enrich_response_with_request_thrift_metadata(
         client,
         request.model,
         response,
-        thrift_metrics,
         logger=logger,
         log_context="chat response",
     )

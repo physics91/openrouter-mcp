@@ -27,31 +27,21 @@ async def test_complete_vision_pipeline_preserves_enrichment_and_event_order(
     events = []
     response = {"choices": [{"message": {"content": "image"}}]}
     enriched_response = {"choices": [], "thrift": {"saved_tokens": 3}}
-    thrift_metrics = {"compacted_tokens": 3}
     client = MagicMock()
 
     async def complete(**kwargs):
         events.append("complete")
         return response
 
-    def snapshot():
-        events.append("snapshot")
-        return thrift_metrics
-
     async def enrich(*args, **kwargs):
         events.append("enrich")
         return enriched_response
 
     client.chat_completion = AsyncMock(side_effect=complete)
-    monkeypatch.setattr(
-        multimodal,
-        "get_request_thrift_metrics_snapshot",
-        MagicMock(side_effect=snapshot),
-    )
     enrich_response = AsyncMock(side_effect=enrich)
     monkeypatch.setattr(
         multimodal,
-        "enrich_response_with_thrift_metadata",
+        "enrich_response_with_request_thrift_metadata",
         enrich_response,
     )
     monkeypatch.setattr(
@@ -78,14 +68,12 @@ async def test_complete_vision_pipeline_preserves_enrichment_and_event_order(
         client,
         "openai/gpt-4o",
         response,
-        thrift_metrics,
         logger=multimodal.logger,
         log_context="vision response",
     )
     assert events == [
         "log:Initiating non-streaming vision chat completion",
         "complete",
-        "snapshot",
         "enrich",
         "log:Vision chat completion successful",
     ]
@@ -103,12 +91,10 @@ async def test_complete_vision_pipeline_rejects_non_dict_before_enrichment(
         return []
 
     client.chat_completion = AsyncMock(side_effect=complete)
-    snapshot = MagicMock(side_effect=lambda: events.append("snapshot"))
     enrich_response = AsyncMock()
-    monkeypatch.setattr(multimodal, "get_request_thrift_metrics_snapshot", snapshot)
     monkeypatch.setattr(
         multimodal,
-        "enrich_response_with_thrift_metadata",
+        "enrich_response_with_request_thrift_metadata",
         enrich_response,
     )
     monkeypatch.setattr(
@@ -127,7 +113,6 @@ async def test_complete_vision_pipeline_rejects_non_dict_before_enrichment(
             [],
         )
 
-    snapshot.assert_not_called()
     enrich_response.assert_not_awaited()
     assert events == [
         "log:Initiating non-streaming vision chat completion",
@@ -147,10 +132,6 @@ async def test_complete_vision_pipeline_propagates_enrichment_failure_before_suc
         events.append("complete")
         return {"choices": []}
 
-    def snapshot():
-        events.append("snapshot")
-        return {"compacted_tokens": 3}
-
     async def enrich(*args, **kwargs):
         events.append("enrich")
         raise error
@@ -158,12 +139,7 @@ async def test_complete_vision_pipeline_propagates_enrichment_failure_before_suc
     client.chat_completion = AsyncMock(side_effect=complete)
     monkeypatch.setattr(
         multimodal,
-        "get_request_thrift_metrics_snapshot",
-        MagicMock(side_effect=snapshot),
-    )
-    monkeypatch.setattr(
-        multimodal,
-        "enrich_response_with_thrift_metadata",
+        "enrich_response_with_request_thrift_metadata",
         AsyncMock(side_effect=enrich),
     )
     monkeypatch.setattr(
@@ -183,7 +159,6 @@ async def test_complete_vision_pipeline_propagates_enrichment_failure_before_suc
     assert events == [
         "log:Initiating non-streaming vision chat completion",
         "complete",
-        "snapshot",
         "enrich",
     ]
 
