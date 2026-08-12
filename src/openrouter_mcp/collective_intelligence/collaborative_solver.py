@@ -145,6 +145,10 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         handler = strategy_dispatch.get(strategy, self._solve_adaptive)
         return await handler(session, request_id)
 
+    def _discard_active_session(self, session_id: str) -> None:
+        """Remove a session from active tracking if it is still registered."""
+        self.active_sessions.pop(session_id, None)
+
     async def process(self, task: TaskContext, **kwargs: Any) -> SolvingResult:
         """
         Solve a complex problem using collaborative AI components.
@@ -206,7 +210,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             session.final_result = result
 
             # Move to storage with TTL management
-            del self.active_sessions[session_id]
+            self._discard_active_session(session_id)
             await self.storage_manager.add_item(session_id, session)
 
             # Record success for circuit breaker
@@ -239,12 +243,10 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
 
             self.failure_controller.record_circuit_breaker_failure("collaborative_solver")
-
-            if session_id in self.active_sessions:
-                del self.active_sessions[session_id]
             raise
 
         finally:
+            self._discard_active_session(session_id)
             # Always release the execution slot
             self.concurrency_limiter.release_task_slot(session_id)
             # Reset quota tracking for this request
