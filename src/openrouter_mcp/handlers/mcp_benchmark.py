@@ -1048,6 +1048,50 @@ def _calculate_std(values: List[float]) -> float:
     return float(variance**0.5)
 
 
+def _build_primary_metric_recommendation(
+    ranking: List[Tuple[Any, float]], metric_name: str
+) -> Optional[Dict[str, Any]]:
+    """Build the recommendation for the highest-weight performance metric."""
+    if metric_name == "speed":
+        fastest_model = min(
+            ranking,
+            key=lambda x: (
+                x[0].metrics.avg_response_time if x[0].metrics else float("inf")
+            ),
+        )
+        return {
+            "type": "fastest",
+            "model": fastest_model[0].model_id,
+            "reason": f"평균 응답 시간이 가장 빠름 ({fastest_model[0].metrics.avg_response_time:.2f}초)",
+            "use_case": "빠른 응답이 필요한 실시간 애플리케이션에 적합",
+        }
+
+    if metric_name == "cost":
+        cheapest_model = min(
+            ranking,
+            key=lambda x: x[0].metrics.avg_cost if x[0].metrics else float("inf"),
+        )
+        return {
+            "type": "most_economical",
+            "model": cheapest_model[0].model_id,
+            "reason": f"평균 비용이 가장 저렴함 (${cheapest_model[0].metrics.avg_cost:.6f})",
+            "use_case": "대량 처리나 예산 제약이 있는 프로젝트에 적합",
+        }
+
+    if metric_name == "quality":
+        highest_quality = max(
+            ranking, key=lambda x: x[0].metrics.quality_score if x[0].metrics else 0
+        )
+        return {
+            "type": "highest_quality",
+            "model": highest_quality[0].model_id,
+            "reason": f"품질 점수가 가장 높음 ({highest_quality[0].metrics.quality_score:.1f}점)",
+            "use_case": "고품질 응답이 중요한 중요한 업무에 최적",
+        }
+
+    return None
+
+
 def _generate_recommendations(
     ranking: List[Tuple[Any, float]], weights: Dict[str, float]
 ) -> List[Dict[str, Any]]:
@@ -1070,47 +1114,11 @@ def _generate_recommendations(
 
     # 가장 중요한 가중치에 따른 추천
     primary_metric = max(weights.items(), key=lambda x: x[1])
-
-    if primary_metric[0] == "speed":
-        fastest_model = min(
-            ranking,
-            key=lambda x: (x[0].metrics.avg_response_time if x[0].metrics else float("inf")),
-        )
-        recommendations.append(
-            {
-                "type": "fastest",
-                "model": fastest_model[0].model_id,
-                "reason": f"평균 응답 시간이 가장 빠름 ({fastest_model[0].metrics.avg_response_time:.2f}초)",
-                "use_case": "빠른 응답이 필요한 실시간 애플리케이션에 적합",
-            }
-        )
-
-    elif primary_metric[0] == "cost":
-        cheapest_model = min(
-            ranking,
-            key=lambda x: x[0].metrics.avg_cost if x[0].metrics else float("inf"),
-        )
-        recommendations.append(
-            {
-                "type": "most_economical",
-                "model": cheapest_model[0].model_id,
-                "reason": f"평균 비용이 가장 저렴함 (${cheapest_model[0].metrics.avg_cost:.6f})",
-                "use_case": "대량 처리나 예산 제약이 있는 프로젝트에 적합",
-            }
-        )
-
-    elif primary_metric[0] == "quality":
-        highest_quality = max(
-            ranking, key=lambda x: x[0].metrics.quality_score if x[0].metrics else 0
-        )
-        recommendations.append(
-            {
-                "type": "highest_quality",
-                "model": highest_quality[0].model_id,
-                "reason": f"품질 점수가 가장 높음 ({highest_quality[0].metrics.quality_score:.1f}점)",
-                "use_case": "고품질 응답이 중요한 중요한 업무에 최적",
-            }
-        )
+    primary_recommendation = _build_primary_metric_recommendation(
+        ranking, primary_metric[0]
+    )
+    if primary_recommendation is not None:
+        recommendations.append(primary_recommendation)
 
     return recommendations
 

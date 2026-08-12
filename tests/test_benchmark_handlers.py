@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import src.openrouter_mcp.handlers.benchmark as benchmark_module
+import src.openrouter_mcp.handlers.mcp_benchmark as mcp_benchmark_module
 from src.openrouter_mcp.handlers.benchmark import (
     BenchmarkError,
     BenchmarkReportExporter,
@@ -798,6 +799,85 @@ class TestModelPerformanceAnalyzer:
 
         assert "error" in comparison
         assert comparison["successful_models"] == 0
+
+
+class TestPrimaryMetricRecommendation:
+    @pytest.fixture
+    def ranking(self):
+        first = SimpleNamespace(
+            model_id="model-first",
+            metrics=SimpleNamespace(
+                avg_response_time=2.0,
+                avg_cost=0.001,
+                quality_score=0.9,
+            ),
+        )
+        second = SimpleNamespace(
+            model_id="model-second",
+            metrics=SimpleNamespace(
+                avg_response_time=1.0,
+                avg_cost=0.002,
+                quality_score=0.8,
+            ),
+        )
+        return [(first, 0.9), (second, 0.8)]
+
+    def test_builds_exact_recommendation_for_each_supported_metric(self, ranking):
+        original = list(ranking)
+
+        assert mcp_benchmark_module._build_primary_metric_recommendation(
+            ranking, "speed"
+        ) == {
+            "type": "fastest",
+            "model": "model-second",
+            "reason": "평균 응답 시간이 가장 빠름 (1.00초)",
+            "use_case": "빠른 응답이 필요한 실시간 애플리케이션에 적합",
+        }
+        assert mcp_benchmark_module._build_primary_metric_recommendation(
+            ranking, "cost"
+        ) == {
+            "type": "most_economical",
+            "model": "model-first",
+            "reason": "평균 비용이 가장 저렴함 ($0.001000)",
+            "use_case": "대량 처리나 예산 제약이 있는 프로젝트에 적합",
+        }
+        assert mcp_benchmark_module._build_primary_metric_recommendation(
+            ranking, "quality"
+        ) == {
+            "type": "highest_quality",
+            "model": "model-first",
+            "reason": "품질 점수가 가장 높음 (0.9점)",
+            "use_case": "고품질 응답이 중요한 중요한 업무에 최적",
+        }
+        assert ranking == original
+        assert all(current is previous for current, previous in zip(ranking, original))
+
+    def test_unsupported_metric_returns_none_and_missing_metrics_are_skipped(
+        self, ranking
+    ):
+        missing = SimpleNamespace(model_id="missing", metrics=None)
+
+        assert (
+            mcp_benchmark_module._build_primary_metric_recommendation(
+                ranking, "throughput"
+            )
+            is None
+        )
+        assert (
+            mcp_benchmark_module._build_primary_metric_recommendation(
+                [(missing, 1.0), ranking[1]], "speed"
+            )["model"]
+            == "model-second"
+        )
+
+    @pytest.mark.parametrize("metric_name", ["speed", "quality"])
+    def test_all_missing_metrics_preserve_attribute_error(self, metric_name):
+        ranking = [(SimpleNamespace(model_id="missing", metrics=None), 1.0)]
+
+        with pytest.raises(AttributeError):
+            mcp_benchmark_module._build_primary_metric_recommendation(
+                ranking, metric_name
+            )
 
 
 class TestMCPBenchmarkTools:
