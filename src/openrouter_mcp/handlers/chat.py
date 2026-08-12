@@ -155,7 +155,7 @@ async def chat_with_model(
                 )
 
         except Exception as e:
-            logger.error(f"Chat completion failed: {str(e)}")
+            logger.error(f"Chat completion failed: {e!s}")
             raise
 
 
@@ -199,7 +199,7 @@ async def list_available_models(request: ModelListRequest) -> list[dict[str, Any
         return models
 
     except Exception as e:
-        logger.error(f"Failed to list models: {str(e)}")
+        logger.error(f"Failed to list models: {e!s}")
         raise
 
 
@@ -253,5 +253,5 @@ async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
         return stats
 
     except Exception as e:
-        logger.error(f"Failed to get usage stats: {str(e)}")
+        logger.error(f"Failed to get usage stats: {e!s}")
         raise
