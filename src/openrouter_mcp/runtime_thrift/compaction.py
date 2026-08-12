@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Optional
 
 from ..collective_intelligence.semantic_similarity import ResponseGrouper
 from ..utils.token_counter import count_message_tokens
@@ -28,7 +29,7 @@ NOISY_ROLES = {"tool", "function"}
 class CompactionResult:
     """Result of applying prompt compaction."""
 
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
     was_compacted: bool
     original_prompt_tokens: int
     compacted_prompt_tokens: int
@@ -40,7 +41,7 @@ class CompactionResult:
         return max(0, self.original_prompt_tokens - self.compacted_prompt_tokens)
 
 
-def _leading_system_prefix_length(messages: Sequence[Dict[str, Any]]) -> int:
+def _leading_system_prefix_length(messages: Sequence[dict[str, Any]]) -> int:
     prefix_length = 0
     for message in messages:
         if message.get("role") != "system":
@@ -58,7 +59,7 @@ def _extract_text(content: Any) -> str:
         return _normalize_text(content)
 
     if isinstance(content, list):
-        parts: List[str] = []
+        parts: list[str] = []
         for item in content:
             if not isinstance(item, dict):
                 continue
@@ -76,9 +77,9 @@ def _truncate(text: str, limit: int = SUMMARY_TEXT_LIMIT) -> str:
     return text[: limit - 3].rstrip() + "..."
 
 
-def _select_assistant_representatives(messages: Sequence[Dict[str, Any]]) -> Set[int]:
-    assistant_texts: List[str] = []
-    assistant_indices: List[int] = []
+def _select_assistant_representatives(messages: Sequence[dict[str, Any]]) -> set[int]:
+    assistant_texts: list[str] = []
+    assistant_indices: list[int] = []
 
     for idx, message in enumerate(messages):
         if message.get("role") != "assistant":
@@ -92,19 +93,19 @@ def _select_assistant_representatives(messages: Sequence[Dict[str, Any]]) -> Set
     if len(assistant_texts) <= 1:
         return set(assistant_indices)
 
-    groups = ResponseGrouper(similarity_threshold=ASSISTANT_SIMILARITY_THRESHOLD).group_responses(
-        assistant_texts
-    )
-    representatives: Set[int] = set()
+    groups = ResponseGrouper(
+        similarity_threshold=ASSISTANT_SIMILARITY_THRESHOLD
+    ).group_responses(assistant_texts)
+    representatives: set[int] = set()
     for group in groups:
         chosen = max(group, key=lambda text_idx: len(assistant_texts[text_idx]))
         representatives.add(assistant_indices[chosen])
     return representatives
 
 
-def _build_summary_message(messages: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_summary_message(messages: Sequence[dict[str, Any]]) -> dict[str, Any]:
     assistant_representatives = _select_assistant_representatives(messages)
-    lines: List[str] = []
+    lines: list[str] = []
     noisy_count = 0
 
     for idx, message in enumerate(messages):
@@ -136,7 +137,7 @@ def _build_summary_message(messages: Sequence[Dict[str, Any]]) -> Dict[str, Any]
 
 
 def _build_noop_result(
-    messages: Sequence[Dict[str, Any]],
+    messages: Sequence[dict[str, Any]],
     prompt_tokens: int,
     context_window_tokens: int,
     trigger_threshold_tokens: int,
@@ -152,9 +153,9 @@ def _build_noop_result(
 
 
 def _partition_compaction_messages(
-    messages: Sequence[Dict[str, Any]],
+    messages: Sequence[dict[str, Any]],
     recent_message_count: int,
-) -> Optional[tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]]:
+) -> Optional[tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]]:
     prefix_length = _leading_system_prefix_length(messages)
     prefix = list(messages[:prefix_length])
     body = list(messages[prefix_length:])
@@ -196,7 +197,7 @@ def _calculate_compaction_trigger_threshold(
 
 
 def compact_messages(
-    messages: Sequence[Dict[str, Any]],
+    messages: Sequence[dict[str, Any]],
     model_id: str,
     context_window_tokens: int,
     max_completion_tokens: Optional[int] = None,
@@ -239,7 +240,9 @@ def compact_messages(
         )
     prefix, archived_messages, recent_messages = partition
 
-    compacted_messages = prefix + [_build_summary_message(archived_messages)] + recent_messages
+    compacted_messages = (
+        prefix + [_build_summary_message(archived_messages)] + recent_messages
+    )
     compacted_prompt_tokens = count_message_tokens(compacted_messages, model_id)
 
     if compacted_prompt_tokens >= prompt_tokens:
@@ -271,7 +274,9 @@ async def _resolve_context_window_tokens(client: Any, model_id: str) -> int:
         try:
             model_info = await cache.get_model_info(model_id)
             context_length = (
-                model_info.get("context_length") if isinstance(model_info, dict) else None
+                model_info.get("context_length")
+                if isinstance(model_info, dict)
+                else None
             )
             if isinstance(context_length, (int, float)) and context_length > 0:
                 return int(context_length)
@@ -284,7 +289,7 @@ async def _resolve_context_window_tokens(client: Any, model_id: str) -> int:
 async def compact_messages_for_model(
     client: Any,
     model_id: str,
-    messages: Sequence[Dict[str, Any]],
+    messages: Sequence[dict[str, Any]],
     max_completion_tokens: Optional[int] = None,
     trigger_ratio: Optional[float] = None,
     recent_message_count: int = DEFAULT_RECENT_MESSAGE_COUNT,
