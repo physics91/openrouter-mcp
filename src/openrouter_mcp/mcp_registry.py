@@ -78,6 +78,24 @@ def _inspect_shared_client_reuse(
     return reusable, loop_closed, client_closed
 
 
+async def _cleanup_stale_shared_client(
+    client: "OpenRouterClient",
+    *,
+    loop_closed: bool,
+    client_closed: bool,
+) -> None:
+    """Clean up a stale shared client when its owning resources are usable."""
+    try:
+        if not loop_closed and not client_closed:
+            await client.__aexit__(None, None, None)
+        else:
+            logger.info(
+                "Skipping shared client cleanup during reinitialization because the client or owning loop is already closed"
+            )
+    except Exception as e:
+        logger.error(f"Error during client reinitialization cleanup: {e}")
+
+
 async def get_shared_client() -> "OpenRouterClient":
     """
     Get or create the singleton OpenRouterClient instance.
@@ -137,14 +155,11 @@ async def get_shared_client() -> "OpenRouterClient":
                 "Reinitializing shared OpenRouterClient due to loop or key change"
             )
             try:
-                if not loop_closed and not client_closed:
-                    await _client_instance.__aexit__(None, None, None)
-                else:
-                    logger.info(
-                        "Skipping shared client cleanup during reinitialization because the client or owning loop is already closed"
-                    )
-            except Exception as e:
-                logger.error(f"Error during client reinitialization cleanup: {e}")
+                await _cleanup_stale_shared_client(
+                    _client_instance,
+                    loop_closed=loop_closed,
+                    client_closed=client_closed,
+                )
             finally:
                 _client_instance = None
                 _client_initialized = False
