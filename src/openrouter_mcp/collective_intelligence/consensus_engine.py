@@ -609,14 +609,13 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         """Calculate agreement level based on consensus ratio."""
         if agreement_ratio >= 1.0:
             return AgreementLevel.UNANIMOUS
-        elif agreement_ratio >= 0.8:
+        if agreement_ratio >= 0.8:
             return AgreementLevel.HIGH_CONSENSUS
-        elif agreement_ratio >= 0.6:
+        if agreement_ratio >= 0.6:
             return AgreementLevel.MODERATE_CONSENSUS
-        elif agreement_ratio >= 0.4:
+        if agreement_ratio >= 0.4:
             return AgreementLevel.LOW_CONSENSUS
-        else:
-            return AgreementLevel.NO_CONSENSUS
+        return AgreementLevel.NO_CONSENSUS
 
     def _calculate_consensus_confidence(
         self, consensus_group: list[ModelResponse], all_responses: list[ModelResponse]

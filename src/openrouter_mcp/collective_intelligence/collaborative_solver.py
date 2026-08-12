@@ -478,12 +478,11 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         if complexity < 0.3:
             # Simple task - use sequential
             return await self._solve_sequential(session, request_id)
-        elif complexity < 0.7:
+        if complexity < 0.7:
             # Medium complexity - use hierarchical
             return await self._solve_hierarchical(session, request_id)
-        else:
-            # High complexity - use iterative
-            return await self._solve_iterative(session, request_id)
+        # High complexity - use iterative
+        return await self._solve_iterative(session, request_id)
 
     def _assess_task_complexity(self, task: TaskContext) -> float:
         """Assess the complexity of a task (0.0 to 1.0)."""
