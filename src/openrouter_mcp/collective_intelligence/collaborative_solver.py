@@ -47,9 +47,11 @@ def _parse_solving_strategy(strategy_input: Any) -> Any:
 
     try:
         return SolvingStrategy(strategy_input.lower())
-    except ValueError:
+    except ValueError as exc:
         valid = ", ".join(sorted(strategy.value for strategy in SolvingStrategy))
-        raise ValueError(f"Invalid strategy '{strategy_input}'. Valid: {valid}")
+        raise ValueError(
+            f"Invalid strategy '{strategy_input}'. Valid: {valid}"
+        ) from exc
 
 
 @dataclass

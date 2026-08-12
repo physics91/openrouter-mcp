@@ -70,9 +70,9 @@ def create_task_context(
     """Create a TaskContext from request parameters."""
     try:
         task_type_enum = TaskType(task_type.lower())
-    except ValueError:
+    except ValueError as exc:
         valid = ", ".join(sorted(e.value for e in TaskType))
-        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}")
+        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}") from exc
 
     return TaskContext(
         task_type=task_type_enum,

@@ -756,8 +756,10 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 self.model_provider.process_task(validation_task, validator_model_id),
                 timeout=self.config.timeout_seconds,
             )
-        except asyncio.TimeoutError:
-            raise Exception(f"Validation task timed out for model {validator_model_id}")
+        except asyncio.TimeoutError as exc:
+            raise Exception(
+                f"Validation task timed out for model {validator_model_id}"
+            ) from exc
 
     def _parse_peer_review_result(
         self, validation_result: ProcessingResult, validator_model_id: str
