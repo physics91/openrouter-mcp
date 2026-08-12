@@ -46,6 +46,38 @@ class UsageStatsRequest(BaseModel):
     end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
 
 
+async def _stream_chat_with_thrift_metadata(
+    client: Any,
+    request: ChatCompletionRequest,
+    messages: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Collect a streaming chat response and enrich its final chunk."""
+    logger.info("Initiating streaming chat completion")
+    chunks = cast(
+        List[Dict[str, Any]],
+        await collect_async_iterable(
+            client.stream_chat_completion(
+                model=request.model,
+                messages=messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            )
+        ),
+    )
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+        client,
+        request.model,
+        chunks,
+        thrift_metrics,
+        logger=logger,
+        log_context="chat response",
+    )
+
+    logger.info(f"Streaming completed with {len(chunks)} chunks")
+    return chunks
+
+
 @mcp.tool()
 async def chat_with_model(
     request: ChatCompletionRequest,
@@ -96,30 +128,7 @@ async def chat_with_model(
 
         try:
             if request.stream:
-                logger.info("Initiating streaming chat completion")
-                chunks = cast(
-                    List[Dict[str, Any]],
-                    await collect_async_iterable(
-                        client.stream_chat_completion(
-                            model=request.model,
-                            messages=messages,
-                            temperature=request.temperature,
-                            max_tokens=request.max_tokens,
-                        )
-                    ),
-                )
-                thrift_metrics = get_request_thrift_metrics_snapshot()
-                chunks = await enrich_final_stream_chunk_with_thrift_metadata(
-                    client,
-                    request.model,
-                    chunks,
-                    thrift_metrics,
-                    logger=logger,
-                    log_context="chat response",
-                )
-
-                logger.info(f"Streaming completed with {len(chunks)} chunks")
-                return chunks
+                return await _stream_chat_with_thrift_metadata(client, request, messages)
             else:
                 logger.info("Initiating non-streaming chat completion")
                 response = await client.chat_completion(

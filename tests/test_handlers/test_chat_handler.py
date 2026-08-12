@@ -1,18 +1,23 @@
 from datetime import datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.openrouter_mcp.client.openrouter import OpenRouterClient, OpenRouterError
+from src.openrouter_mcp.handlers import chat as chat_module
 from src.openrouter_mcp.handlers.chat import (
     ChatCompletionRequest,
     ModelListRequest,
     UsageStatsRequest,
+    _stream_chat_with_thrift_metadata,
     chat_with_model,
     get_usage_stats,
     list_available_models,
 )
-from src.openrouter_mcp.runtime_thrift import ThriftMetricsCollector, get_thrift_metrics_snapshot
+from src.openrouter_mcp.runtime_thrift import (
+    ThriftMetricsCollector,
+    get_thrift_metrics_snapshot,
+)
 from src.openrouter_mcp.runtime_thrift import metrics as thrift_metrics_module
 from src.openrouter_mcp.runtime_thrift import (
     record_coalesced_savings,
@@ -22,6 +27,149 @@ from src.openrouter_mcp.runtime_thrift import (
     record_recent_reuse_savings,
     reset_thrift_metrics,
 )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
+    events = []
+    chunk = {"choices": [{"delta": {"content": "hello"}}]}
+    enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
+    thrift_metrics = {"compacted_tokens": 3}
+    client = MagicMock()
+
+    async def stream():
+        events.append("stream-start")
+        yield chunk
+        events.append("stream-end")
+
+    def stream_chat_completion(**kwargs):
+        events.append("stream-call")
+        return stream()
+
+    client.stream_chat_completion.side_effect = stream_chat_completion
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0.25,
+        max_tokens=33,
+        stream=True,
+    )
+    messages = [{"role": "user", "content": "serialized"}]
+
+    def snapshot():
+        events.append("snapshot")
+        return thrift_metrics
+
+    async def enrich(*args, **kwargs):
+        events.append("enrich")
+        return enriched_chunks
+
+    def log(message):
+        events.append(f"log:{message}")
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot",
+        side_effect=snapshot,
+    ) as get_snapshot, patch(
+        "src.openrouter_mcp.handlers.chat.enrich_final_stream_chunk_with_thrift_metadata",
+        new=AsyncMock(side_effect=enrich),
+    ) as enrich_chunks, patch(
+        "src.openrouter_mcp.handlers.chat.logger.info",
+        side_effect=log,
+    ):
+        result = await _stream_chat_with_thrift_metadata(client, request, messages)
+
+    assert result is enriched_chunks
+    client.stream_chat_completion.assert_called_once_with(
+        model="openai/gpt-4",
+        messages=messages,
+        temperature=0.25,
+        max_tokens=33,
+    )
+    get_snapshot.assert_called_once_with()
+    enrich_chunks.assert_awaited_once()
+    enrich_args = enrich_chunks.await_args
+    assert enrich_args.args == (
+        client,
+        "openai/gpt-4",
+        [chunk],
+        thrift_metrics,
+    )
+    assert enrich_args.kwargs == {
+        "logger": chat_module.logger,
+        "log_context": "chat response",
+    }
+    assert events == [
+        "log:Initiating streaming chat completion",
+        "stream-call",
+        "stream-start",
+        "stream-end",
+        "snapshot",
+        "enrich",
+        "log:Streaming completed with 2 chunks",
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stream_chat_pipeline_skips_snapshot_and_enrichment_on_collection_error():
+    client = MagicMock()
+    error = RuntimeError("stream failed")
+
+    async def failing_stream():
+        raise error
+        yield
+
+    client.stream_chat_completion.return_value = failing_stream()
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+        stream=True,
+    )
+    messages = [{"role": "user", "content": "serialized"}]
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot"
+    ) as get_snapshot, patch(
+        "src.openrouter_mcp.handlers.chat.enrich_final_stream_chunk_with_thrift_metadata",
+        new_callable=AsyncMock,
+    ) as enrich_chunks:
+        with pytest.raises(RuntimeError) as raised:
+            await _stream_chat_with_thrift_metadata(client, request, messages)
+
+    assert raised.value is error
+    get_snapshot.assert_not_called()
+    enrich_chunks.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_chat_with_model_streaming_delegates_to_pipeline():
+    client = MagicMock()
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+        stream=True,
+    )
+    compacted_messages = [{"role": "user", "content": "compacted"}]
+    compaction = MagicMock(messages=compacted_messages)
+    expected = [{"choices": [{"delta": {"content": "hello"}}]}]
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.get_openrouter_client",
+        new=AsyncMock(return_value=client),
+    ), patch(
+        "src.openrouter_mcp.handlers.chat.compact_messages_for_model",
+        new=AsyncMock(return_value=compaction),
+    ), patch(
+        "src.openrouter_mcp.handlers.chat._stream_chat_with_thrift_metadata",
+        new=AsyncMock(return_value=expected),
+    ) as stream_pipeline:
+        result = await chat_with_model(request)
+
+    assert result is expected
+    stream_pipeline.assert_awaited_once_with(client, request, compacted_messages)
 
 
 class TestChatHandler:
