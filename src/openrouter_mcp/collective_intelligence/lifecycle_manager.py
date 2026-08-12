@@ -15,7 +15,7 @@ Key Features:
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Callable, Optional, TypeVar, cast
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional, TypeVar, cast
 
 from .adaptive_router import AdaptiveRouter
 from .base import ModelProvider
@@ -155,26 +155,9 @@ class CollectiveIntelligenceLifecycleManager:
             "CrossValidator",
         )
 
-    async def shutdown(self) -> None:
-        """
-        Gracefully shutdown all collective intelligence components.
-
-        This method:
-        1. Marks the manager as shutdown (prevents new instance creation)
-        2. Shuts down each component if it was created
-        3. Cancels all background cleanup tasks
-        4. Waits for tasks to complete gracefully
-        """
-        if self._is_shutdown:
-            logger.warning("LifecycleManager already shutdown")
-            return
-
-        logger.info("Shutting down CollectiveIntelligenceLifecycleManager...")
-        self._is_shutdown = True
-        self._shutdown_event.set()
-
-        # Shutdown all created components
-        shutdown_tasks = []
+    def _collect_shutdown_tasks(self) -> list[Awaitable[Any]]:
+        """Collect component shutdown tasks in lifecycle order."""
+        shutdown_tasks: list[Awaitable[Any]] = []
 
         if self._consensus_engine is not None:
             logger.info("Shutting down ConsensusEngine...")
@@ -198,6 +181,29 @@ class CollectiveIntelligenceLifecycleManager:
             logger.info("Shutting down CrossValidator...")
             if hasattr(self._cross_validator, "shutdown"):
                 shutdown_tasks.append(self._cross_validator.shutdown())
+
+        return shutdown_tasks
+
+    async def shutdown(self) -> None:
+        """
+        Gracefully shutdown all collective intelligence components.
+
+        This method:
+        1. Marks the manager as shutdown (prevents new instance creation)
+        2. Shuts down each component if it was created
+        3. Cancels all background cleanup tasks
+        4. Waits for tasks to complete gracefully
+        """
+        if self._is_shutdown:
+            logger.warning("LifecycleManager already shutdown")
+            return
+
+        logger.info("Shutting down CollectiveIntelligenceLifecycleManager...")
+        self._is_shutdown = True
+        self._shutdown_event.set()
+
+        # Shutdown all created components
+        shutdown_tasks = self._collect_shutdown_tasks()
 
         # Execute all shutdown tasks
         if shutdown_tasks:
