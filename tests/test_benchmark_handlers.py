@@ -18,6 +18,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,6 +38,72 @@ from src.openrouter_mcp.handlers.benchmark import (
 from tests.fixtures.benchmark_samples import build_enhanced_metric_results
 
 pytestmark = pytest.mark.unit
+
+
+class TestAnalyzeBenchmarkResponse:
+    def test_comprehensive_analysis_preserves_identity_and_precedence(self):
+        analysis = {"quality_score": 0.91, "response_length": 123, "extra": "value"}
+        comprehensive = MagicMock(return_value=analysis)
+        fallback = MagicMock(return_value=0.1)
+        handler = SimpleNamespace(
+            analyze_response_comprehensive=comprehensive,
+            assess_response_quality=fallback,
+        )
+
+        quality, response_length, returned_analysis = (
+            benchmark_module._analyze_benchmark_response(handler, "prompt", "response")
+        )
+
+        assert quality == 0.91
+        assert response_length == 123
+        assert returned_analysis is analysis
+        comprehensive.assert_called_once_with("prompt", "response")
+        fallback.assert_not_called()
+
+    def test_comprehensive_analysis_missing_fields_blocks_fallback(self):
+        analysis = {}
+        fallback = MagicMock(return_value=0.5)
+        handler = SimpleNamespace(
+            analyze_response_comprehensive=MagicMock(return_value=analysis),
+            assess_response_quality=fallback,
+        )
+
+        assert benchmark_module._analyze_benchmark_response(
+            handler, "prompt", "response"
+        ) == (None, None, analysis)
+        fallback.assert_not_called()
+
+    def test_fallback_analysis_uses_length_and_optional_assessor(self):
+        assessor = MagicMock(return_value=0.75)
+        handler = SimpleNamespace(assess_response_quality=assessor)
+
+        assert benchmark_module._analyze_benchmark_response(
+            handler, "prompt", "response"
+        ) == (0.75, len("response"), {})
+        assessor.assert_called_once_with("prompt", "response")
+
+        assert benchmark_module._analyze_benchmark_response(
+            SimpleNamespace(), "prompt", "response"
+        ) == (None, len("response"), {})
+
+    def test_falsey_responses_skip_analysis_methods(self):
+        comprehensive = MagicMock()
+        fallback = MagicMock()
+        handler = SimpleNamespace(
+            analyze_response_comprehensive=comprehensive,
+            assess_response_quality=fallback,
+        )
+
+        assert benchmark_module._analyze_benchmark_response(
+            handler, "prompt", None
+        ) == (None, None, {})
+        assert benchmark_module._analyze_benchmark_response(handler, "prompt", "") == (
+            None,
+            None,
+            {},
+        )
+        comprehensive.assert_not_called()
+        fallback.assert_not_called()
 
 
 class TestResponseQualityAnalyzer:
@@ -322,6 +389,14 @@ This computes the factorial recursively."""
         handler.model_cache.get_model_info = AsyncMock(
             return_value={"pricing": {"prompt": 0.03, "completion": 0.06}}
         )
+        handler.analyze_response_comprehensive = MagicMock(
+            return_value={
+                "quality_score": 0.88,
+                "response_length": 13,
+                "contains_code_example": True,
+                "language_coherence_score": 0.77,
+            }
+        )
 
         result = await handler.benchmark_model(
             model_id="test-model", prompt="test prompt", temperature=0.7, max_tokens=100
@@ -333,7 +408,10 @@ This computes the factorial recursively."""
         assert result.prompt_tokens == 20
         assert result.completion_tokens == 30
         assert result.error is None
-        assert result.quality_score is not None
+        assert result.quality_score == 0.88
+        assert result.response_length == 13
+        assert result.contains_code_example is True
+        assert result.language_coherence_score == 0.77
 
     @pytest.mark.asyncio
     async def test_benchmark_model_timeout(self, handler):

@@ -75,6 +75,29 @@ def _extract_benchmark_response_data(
     )
 
 
+def _analyze_benchmark_response(
+    handler: Any,
+    prompt: str,
+    response_text: Optional[str],
+) -> tuple[Optional[float], Optional[int], Dict[str, Any]]:
+    quality_score = None
+    response_length = None
+    comprehensive_analysis: Dict[str, Any] = {}
+
+    if response_text and hasattr(handler, "analyze_response_comprehensive"):
+        comprehensive_analysis = handler.analyze_response_comprehensive(
+            prompt, response_text
+        )
+        quality_score = comprehensive_analysis.get("quality_score")
+        response_length = comprehensive_analysis.get("response_length")
+    elif response_text:
+        response_length = len(response_text)
+        if hasattr(handler, "assess_response_quality"):
+            quality_score = handler.assess_response_quality(prompt, response_text)
+
+    return quality_score, response_length, comprehensive_analysis
+
+
 class ResponseQualityAnalyzer:
     """Advanced response quality analysis with multiple metrics."""
 
@@ -1089,17 +1112,9 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
                 _extract_benchmark_response_data(response, model_id)
             )
 
-            # Enhanced response analysis
-            if response_text and hasattr(self, "analyze_response_comprehensive"):
-                comprehensive_analysis = self.analyze_response_comprehensive(
-                    prompt, response_text
-                )
-                quality_score = comprehensive_analysis.get("quality_score")
-                response_length = comprehensive_analysis.get("response_length")
-            elif response_text:
-                response_length = len(response_text)
-                if hasattr(self, "assess_response_quality"):
-                    quality_score = self.assess_response_quality(prompt, response_text)
+            quality_score, response_length, comprehensive_analysis = (
+                _analyze_benchmark_response(self, prompt, response_text)
+            )
 
             # Enhanced cost calculation
             model_info = await self.model_cache.get_model_info(model_id) or {}
