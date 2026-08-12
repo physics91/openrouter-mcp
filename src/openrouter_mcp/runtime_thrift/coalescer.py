@@ -60,7 +60,10 @@ class RequestCoalescer(Generic[T]):
                 on_follower_join()
 
         try:
-            result = await task
+            if created_task:
+                result = await task
+            else:
+                result = await asyncio.shield(task)
         except BaseException:
             if created_task:
                 await self._remove_inflight_task_if_current(key, task)

@@ -110,6 +110,80 @@ async def test_follower_joins_single_factory_and_leader_owns_cleanup():
     assert coalescer._recent["key"].value is result
 
 
+@pytest.mark.parametrize("ttl_seconds", [0, 5])
+@pytest.mark.asyncio
+async def test_cancelled_follower_does_not_cancel_shared_work_or_peers(ttl_seconds):
+    coalescer = RequestCoalescer(time_fn=lambda: 100.0)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    cancelled_joined = asyncio.Event()
+    survivor_joined = asyncio.Event()
+    factory_calls = 0
+    result = object()
+
+    async def factory():
+        nonlocal factory_calls
+        factory_calls += 1
+        started.set()
+        await release.wait()
+        return result
+
+    leader = asyncio.create_task(coalescer.run("key", factory, ttl_seconds=ttl_seconds))
+    await started.wait()
+    cancelled_follower = asyncio.create_task(
+        coalescer.run(
+            "key",
+            factory,
+            ttl_seconds=ttl_seconds,
+            on_follower_join=cancelled_joined.set,
+        )
+    )
+    await cancelled_joined.wait()
+    surviving_follower = asyncio.create_task(
+        coalescer.run(
+            "key",
+            factory,
+            ttl_seconds=ttl_seconds,
+            on_follower_join=survivor_joined.set,
+        )
+    )
+    await survivor_joined.wait()
+    shared_task = coalescer._inflight["key"]
+
+    try:
+        cancelled_follower.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled_follower
+
+        assert not shared_task.cancelled()
+        assert not leader.done()
+        assert not surviving_follower.done()
+
+        release.set()
+        leader_result, follower_result = await asyncio.gather(
+            leader,
+            surviving_follower,
+        )
+
+        assert leader_result is result
+        assert follower_result is result
+        assert factory_calls == 1
+        assert coalescer._inflight == {}
+        if ttl_seconds == 0:
+            assert coalescer._recent == {}
+        else:
+            assert coalescer._recent["key"].value is result
+            assert coalescer._recent["key"].expires_at == 105.0
+    finally:
+        release.set()
+        await asyncio.gather(
+            leader,
+            cancelled_follower,
+            surviving_follower,
+            return_exceptions=True,
+        )
+
+
 @pytest.mark.asyncio
 async def test_failed_leader_does_not_remove_replacement_task():
     coalescer = RequestCoalescer(time_fn=lambda: 100.0)
