@@ -15,7 +15,7 @@ from ..client.openrouter import (
 )
 from ..config.constants import FreeChatConfig, ModelDefaults
 from ..free.classifier import FreeTaskType, TaskClassifier
-from ..free.metrics import MetricsCollector
+from ..free.metrics import MetricsCollector, ModelMetrics
 from ..free.quota import QuotaTracker
 from ..free.router import FreeModelRouter
 from ..mcp_registry import get_openrouter_client, mcp
@@ -483,6 +483,24 @@ async def list_free_models() -> Dict[str, Any]:
     }
 
 
+def _serialize_free_model_metrics(
+    metrics: MetricsCollector,
+    model_id: str,
+    model_metrics: ModelMetrics,
+) -> Dict[str, Any]:
+    """Serialize one model's metrics for the MCP response."""
+    return {
+        "total_requests": model_metrics.total_requests,
+        "success_count": model_metrics.success_count,
+        "failure_count": model_metrics.failure_count,
+        "success_rate": round(model_metrics.success_rate, 3),
+        "avg_latency_ms": round(model_metrics.avg_latency_ms, 1),
+        "tokens_per_second": round(model_metrics.tokens_per_second, 1),
+        "performance_score": round(metrics.get_performance_score(model_id), 3),
+        "error_counts": dict(model_metrics.error_counts),
+    }
+
+
 @mcp.tool()
 async def get_free_model_metrics() -> Dict[str, Any]:
     """View performance metrics for free models (response time, success rate, throughput)."""
@@ -490,17 +508,12 @@ async def get_free_model_metrics() -> Dict[str, Any]:
     all_metrics = metrics.get_all_metrics()
 
     models: Dict[str, Any] = {}
-    for model_id, m in all_metrics.items():
-        models[model_id] = {
-            "total_requests": m.total_requests,
-            "success_count": m.success_count,
-            "failure_count": m.failure_count,
-            "success_rate": round(m.success_rate, 3),
-            "avg_latency_ms": round(m.avg_latency_ms, 1),
-            "tokens_per_second": round(m.tokens_per_second, 1),
-            "performance_score": round(metrics.get_performance_score(model_id), 3),
-            "error_counts": dict(m.error_counts),
-        }
+    for model_id, model_metrics in all_metrics.items():
+        models[model_id] = _serialize_free_model_metrics(
+            metrics,
+            model_id,
+            model_metrics,
+        )
 
     return {
         "models": models,
