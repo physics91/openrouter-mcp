@@ -12,6 +12,37 @@ if TYPE_CHECKING:
     from .benchmark import EnhancedBenchmarkMetrics, EnhancedBenchmarkResult
 
 
+def _build_best_performers(
+    successful_results: List[
+        Tuple["EnhancedBenchmarkResult", "EnhancedBenchmarkMetrics"]
+    ],
+) -> Dict[str, Dict[str, Any]]:
+    """Build the category winner summary for successful benchmark results."""
+    best_speed = min(successful_results, key=lambda item: item[1].avg_response_time)
+    best_cost = min(successful_results, key=lambda item: item[1].avg_cost)
+    best_quality = max(successful_results, key=lambda item: item[1].quality_score)
+    best_throughput = max(successful_results, key=lambda item: item[1].throughput)
+
+    return {
+        "speed": {
+            "model_id": best_speed[0].model_id,
+            "avg_response_time": best_speed[1].avg_response_time,
+        },
+        "cost": {
+            "model_id": best_cost[0].model_id,
+            "avg_cost": best_cost[1].avg_cost,
+        },
+        "quality": {
+            "model_id": best_quality[0].model_id,
+            "quality_score": best_quality[1].quality_score,
+        },
+        "throughput": {
+            "model_id": best_throughput[0].model_id,
+            "throughput": best_throughput[1].throughput,
+        },
+    }
+
+
 class ModelPerformanceAnalyzer:
     """Advanced model performance analyzer with ranking and comparison capabilities."""
 
@@ -86,33 +117,12 @@ class ModelPerformanceAnalyzer:
                 "successful_models": 0,
             }
 
-        # Find best performer in each category
-        best_speed = min(successful_results, key=lambda item: item[1].avg_response_time)
-        best_cost = min(successful_results, key=lambda item: item[1].avg_cost)
-        best_quality = max(successful_results, key=lambda item: item[1].quality_score)
-        best_throughput = max(successful_results, key=lambda item: item[1].throughput)
+        best_performers = _build_best_performers(successful_results)
 
         return {
             "total_models": len(results),
             "successful_models": len(successful_results),
-            "best_performers": {
-                "speed": {
-                    "model_id": best_speed[0].model_id,
-                    "avg_response_time": best_speed[1].avg_response_time,
-                },
-                "cost": {
-                    "model_id": best_cost[0].model_id,
-                    "avg_cost": best_cost[1].avg_cost,
-                },
-                "quality": {
-                    "model_id": best_quality[0].model_id,
-                    "quality_score": best_quality[1].quality_score,
-                },
-                "throughput": {
-                    "model_id": best_throughput[0].model_id,
-                    "throughput": best_throughput[1].throughput,
-                },
-            },
+            "best_performers": best_performers,
             "averages": {
                 "response_time": sum(metrics.avg_response_time for _, metrics in successful_results)
                 / len(successful_results),
