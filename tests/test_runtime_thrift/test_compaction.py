@@ -6,9 +6,96 @@ from src.openrouter_mcp.runtime_thrift import (
     reset_thrift_metrics,
 )
 from src.openrouter_mcp.runtime_thrift.compaction import (
+    _calculate_compaction_trigger_threshold,
     _partition_compaction_messages,
     compact_messages,
 )
+from src.openrouter_mcp.runtime_thrift.policy import RuntimeThriftPolicy
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    (
+        "context_window_tokens",
+        "max_completion_tokens",
+        "trigger_ratio",
+        "policy",
+        "expected",
+    ),
+    [
+        (8192, None, None, RuntimeThriftPolicy(), 5376),
+        (100, None, None, RuntimeThriftPolicy(), 56),
+        (100, 20, 0.5, RuntimeThriftPolicy(), 40),
+        (
+            100,
+            20,
+            None,
+            RuntimeThriftPolicy(max_interactive_prompt_tokens=30),
+            22,
+        ),
+        (100, -10, 0.5, RuntimeThriftPolicy(), 55),
+        (
+            100,
+            20,
+            None,
+            RuntimeThriftPolicy(max_interactive_prompt_tokens=0),
+            1,
+        ),
+    ],
+)
+def test_calculate_compaction_trigger_threshold_preserves_budget_arithmetic(
+    context_window_tokens,
+    max_completion_tokens,
+    trigger_ratio,
+    policy,
+    expected,
+):
+    assert (
+        _calculate_compaction_trigger_threshold(
+            context_window_tokens,
+            max_completion_tokens,
+            trigger_ratio,
+            policy,
+        )
+        == expected
+    )
+
+
+@pytest.mark.unit
+def test_explicit_trigger_ratio_skips_policy_ratio_access():
+    class ExplicitRatioPolicy:
+        max_interactive_prompt_tokens = None
+
+        @property
+        def compaction_trigger_ratio(self):
+            raise AssertionError("policy ratio must not be read")
+
+    assert (
+        _calculate_compaction_trigger_threshold(
+            context_window_tokens=100,
+            max_completion_tokens=20,
+            trigger_ratio=0.5,
+            policy=ExplicitRatioPolicy(),
+        )
+        == 40
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("trigger_ratio", "error_type"),
+    [(float("nan"), ValueError), (float("inf"), OverflowError)],
+)
+def test_calculate_compaction_trigger_threshold_preserves_non_finite_errors(
+    trigger_ratio, error_type
+):
+    with pytest.raises(error_type):
+        _calculate_compaction_trigger_threshold(
+            context_window_tokens=100,
+            max_completion_tokens=20,
+            trigger_ratio=trigger_ratio,
+            policy=RuntimeThriftPolicy(),
+        )
 
 
 @pytest.mark.unit

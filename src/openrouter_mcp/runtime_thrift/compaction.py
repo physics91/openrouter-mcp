@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set
 from ..collective_intelligence.semantic_similarity import ResponseGrouper
 from ..utils.token_counter import count_message_tokens
 from .metrics import record_compaction_savings
-from .policy import get_runtime_thrift_policy
+from .policy import RuntimeThriftPolicy, get_runtime_thrift_policy
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +170,31 @@ def _partition_compaction_messages(
     return prefix, archived_messages, recent_messages
 
 
+def _calculate_compaction_trigger_threshold(
+    context_window_tokens: int,
+    max_completion_tokens: Optional[int],
+    trigger_ratio: Optional[float],
+    policy: RuntimeThriftPolicy,
+) -> int:
+    """Calculate the prompt-token threshold that triggers compaction."""
+    completion_reserve = (
+        max_completion_tokens
+        if max_completion_tokens is not None
+        else min(DEFAULT_COMPLETION_RESERVE_TOKENS, max(1, context_window_tokens // 4))
+    )
+    available_prompt_budget = max(1, context_window_tokens - completion_reserve)
+    max_interactive_prompt_tokens = policy.max_interactive_prompt_tokens
+    if max_interactive_prompt_tokens is not None:
+        available_prompt_budget = min(
+            available_prompt_budget, max_interactive_prompt_tokens
+        )
+
+    effective_trigger_ratio = (
+        policy.compaction_trigger_ratio if trigger_ratio is None else trigger_ratio
+    )
+    return max(1, int(available_prompt_budget * effective_trigger_ratio))
+
+
 def compact_messages(
     messages: Sequence[Dict[str, Any]],
     model_id: str,
@@ -189,20 +214,12 @@ def compact_messages(
             prompt_tokens,
         )
 
-    completion_reserve = (
-        max_completion_tokens
-        if max_completion_tokens is not None
-        else min(DEFAULT_COMPLETION_RESERVE_TOKENS, max(1, context_window_tokens // 4))
+    trigger_threshold_tokens = _calculate_compaction_trigger_threshold(
+        context_window_tokens,
+        max_completion_tokens,
+        trigger_ratio,
+        policy,
     )
-    available_prompt_budget = max(1, context_window_tokens - completion_reserve)
-    max_interactive_prompt_tokens = policy.max_interactive_prompt_tokens
-    if max_interactive_prompt_tokens is not None:
-        available_prompt_budget = min(available_prompt_budget, max_interactive_prompt_tokens)
-
-    effective_trigger_ratio = (
-        policy.compaction_trigger_ratio if trigger_ratio is None else trigger_ratio
-    )
-    trigger_threshold_tokens = max(1, int(available_prompt_budget * effective_trigger_ratio))
 
     if prompt_tokens <= trigger_threshold_tokens:
         return _build_noop_result(
