@@ -516,7 +516,9 @@ async def benchmark_models(
     delay_seconds: Annotated[
         float, Field(description="Delay between API calls in seconds")
     ] = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
-    save_results: Annotated[bool, Field(description="Whether to save results to a file")] = True,
+    save_results: Annotated[
+        bool, Field(description="Whether to save results to a file")
+    ] = True,
     include_prompts_in_logs: Annotated[
         bool, Field(description="PRIVACY WARNING: enables logging of prompt content")
     ] = False,
@@ -632,11 +634,15 @@ async def get_benchmark_history(
 
 async def compare_model_categories(
     categories: Annotated[
-        Optional[List[str]], Field(description="Categories to compare (None for all categories)")
+        Optional[List[str]],
+        Field(description="Categories to compare (None for all categories)"),
     ] = None,
-    top_n: Annotated[int, Field(description="Number of top models to select per category")] = 3,
+    top_n: Annotated[
+        int, Field(description="Number of top models to select per category")
+    ] = 3,
     metric: Annotated[
-        Literal["overall", "speed", "cost", "quality"], Field(description="Comparison metric")
+        Literal["overall", "speed", "cost", "quality"],
+        Field(description="Comparison metric"),
     ] = "overall",
 ) -> Dict[str, Any]:
     """Compare top-performing models across categories.
@@ -725,7 +731,9 @@ async def compare_model_categories(
 
 
 async def export_benchmark_report(
-    benchmark_file: Annotated[str, Field(description="Benchmark result filename to export")],
+    benchmark_file: Annotated[
+        str, Field(description="Benchmark result filename to export")
+    ],
     format: Annotated[
         Literal["markdown", "csv", "json"], Field(description="Export format")
     ] = "markdown",
@@ -776,7 +784,9 @@ async def export_benchmark_report(
             await exporter.export_json(results, output_path)
         else:
             # Defensive: also validates when called directly outside MCP schema validation
-            raise BenchmarkError(f"Unsupported format: {format}. Use markdown, csv, or json.")
+            raise BenchmarkError(
+                f"Unsupported format: {format}. Use markdown, csv, or json."
+            )
 
         return {
             "message": f"{format.upper()} 보고서가 성공적으로 생성되었습니다.",
@@ -795,7 +805,9 @@ async def export_benchmark_report(
 async def export_benchmark_batch(
     models: Annotated[
         List[str],
-        Field(description="List of model IDs to export for deferred benchmark execution"),
+        Field(
+            description="List of model IDs to export for deferred benchmark execution"
+        ),
     ],
     prompt: Annotated[
         str, Field(description="Benchmark prompt to queue for offline execution")
@@ -960,7 +972,9 @@ def _read_benchmark_files(
             # 모델 필터 적용
             if model_filter:
                 models_in_file = list(data.get("results", {}).keys())
-                if not any(model_filter.lower() in model.lower() for model in models_in_file):
+                if not any(
+                    model_filter.lower() in model.lower() for model in models_in_file
+                ):
                     continue
 
             # 요약 정보 생성
@@ -1017,7 +1031,9 @@ def _analyze_cost_efficiency(results: Dict[str, Any]) -> Dict[str, Any]:
 
     for model_id, result in results.items():
         if result.success and result.metrics:
-            quality_per_cost = result.metrics.quality_score / max(result.metrics.avg_cost, 0.0001)
+            quality_per_cost = result.metrics.quality_score / max(
+                result.metrics.avg_cost, 0.0001
+            )
             cost_data.append(
                 {
                     "model_id": model_id,
