@@ -1,7 +1,7 @@
 # mypy: disable-error-code=untyped-decorator
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 class ChatCompletionRequest(BaseChatRequest):
     """Request for chat completion."""
 
-    pass
-
 
 class ModelListRequest(BaseModel):
     """Request for listing available models."""
@@ -47,8 +45,8 @@ class UsageStatsRequest(BaseModel):
 async def _stream_chat_with_thrift_metadata(
     client: Any,
     request: ChatCompletionRequest,
-    messages: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Collect a streaming chat response and enrich its final chunk."""
     logger.info("Initiating streaming chat completion")
     stream = client.stream_chat_completion(
@@ -72,8 +70,8 @@ async def _stream_chat_with_thrift_metadata(
 async def _complete_chat_with_thrift_metadata(
     client: Any,
     request: ChatCompletionRequest,
-    messages: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    messages: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Complete a chat request and enrich the response with thrift metadata."""
     logger.info("Initiating non-streaming chat completion")
     response = await client.chat_completion(
@@ -103,7 +101,7 @@ async def _complete_chat_with_thrift_metadata(
 @mcp.tool()
 async def chat_with_model(
     request: ChatCompletionRequest,
-) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+) -> Union[dict[str, Any], list[dict[str, Any]]]:
     """
     Generate chat completion using OpenRouter API.
 
@@ -162,7 +160,7 @@ async def chat_with_model(
 
 
 @mcp.tool()
-async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any]]:
+async def list_available_models(request: ModelListRequest) -> list[dict[str, Any]]:
     """
     List all available models from OpenRouter.
 
@@ -206,7 +204,7 @@ async def list_available_models(request: ModelListRequest) -> List[Dict[str, Any
 
 
 @mcp.tool()
-async def get_usage_stats(request: UsageStatsRequest) -> Dict[str, Any]:
+async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
     """
     Get API usage statistics from OpenRouter.
 
