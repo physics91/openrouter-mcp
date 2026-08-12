@@ -29,11 +29,10 @@ _CONSTANT_EXPORT_MAP = {
 _CONSTANT_EXPORTS = [
     name for name in _ALL_CONSTANT_EXPORTS if name in _CONSTANT_EXPORT_MAP
 ]
-
 __all__ = [
-    "load_provider_config",
-    "resolve_provider_alias",
     "get_provider_info",
     "get_quality_tier_info",
-    *_CONSTANT_EXPORTS,
+    "load_provider_config",
+    "resolve_provider_alias",
 ]
+__all__.extend(_CONSTANT_EXPORTS)
