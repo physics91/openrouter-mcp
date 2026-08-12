@@ -245,6 +245,29 @@ def _serialize_category_overall_ranking(
     ]
 
 
+def _serialize_weighted_performance_ranking(
+    ranking: List[Tuple[EnhancedBenchmarkResult, float]],
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "rank": index + 1,
+            "model_id": result.model_id,
+            "weighted_score": round(weighted_score, 3),
+            "individual_scores": (
+                {
+                    "speed": result.metrics.speed_score,
+                    "cost": result.metrics.cost_score,
+                    "quality": result.metrics.quality_score,
+                    "throughput": result.metrics.throughput_score,
+                }
+                if result.metrics
+                else {}
+            ),
+        }
+        for index, (result, weighted_score) in enumerate(ranking)
+    ]
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -744,30 +767,10 @@ async def compare_model_performance(
                 "weights": weights,
                 "include_cost_analysis": include_cost_analysis,
             },
-            "ranking": [],
+            "ranking": _serialize_weighted_performance_ranking(ranking),
             "detailed_metrics": {},
             "analysis": {},
         }
-
-        # 랭킹 결과 추가
-        for i, (result, weighted_score) in enumerate(ranking):
-            comparison_data["ranking"].append(
-                {
-                    "rank": i + 1,
-                    "model_id": result.model_id,
-                    "weighted_score": round(weighted_score, 3),
-                    "individual_scores": (
-                        {
-                            "speed": result.metrics.speed_score,
-                            "cost": result.metrics.cost_score,
-                            "quality": result.metrics.quality_score,
-                            "throughput": result.metrics.throughput_score,
-                        }
-                        if result.metrics
-                        else {}
-                    ),
-                }
-            )
 
         # 상세 메트릭 추가
         for model_id, result in successful_results.items():

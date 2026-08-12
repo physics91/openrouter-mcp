@@ -124,6 +124,56 @@ class TestMCPBenchmarkTools:
             "response_length": 0,
         }
 
+    def test_serialize_weighted_performance_ranking_preserves_contract(self):
+        ranked_result = EnhancedBenchmarkResult(
+            model_id="ranked-model",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=EnhancedBenchmarkMetrics(
+                avg_response_time=1.25,
+                avg_cost=0.002,
+                quality_score=0.91,
+                throughput=42.0,
+                speed_score=0.81,
+                cost_score=0.72,
+                throughput_score=0.63,
+            ),
+            timestamp=datetime.now(),
+        )
+        result_without_metrics = EnhancedBenchmarkResult(
+            model_id="no-metrics-model",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=None,
+            timestamp=datetime.now(),
+        )
+
+        serialized = mcp_benchmark._serialize_weighted_performance_ranking(
+            [(ranked_result, 0.87654), (result_without_metrics, 0.12345)]
+        )
+
+        assert serialized == [
+            {
+                "rank": 1,
+                "model_id": "ranked-model",
+                "weighted_score": 0.877,
+                "individual_scores": {
+                    "speed": 0.81,
+                    "cost": 0.72,
+                    "quality": 0.91,
+                    "throughput": 0.63,
+                },
+            },
+            {
+                "rank": 2,
+                "model_id": "no-metrics-model",
+                "weighted_score": 0.123,
+                "individual_scores": {},
+            },
+        ]
+
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self, mock_env):
         """벤치마크 핸들러 싱글톤 테스트"""
@@ -525,13 +575,28 @@ class TestMCPBenchmarkTools:
                 assert "detailed_metrics" in result
                 assert "analysis" in result
                 assert "recommendations" in result
+                assert result["ranking"] == [
+                    {
+                        "rank": 1,
+                        "model_id": "test-model",
+                        "weighted_score": 0.85,
+                        "individual_scores": {
+                            "speed": 0.8,
+                            "cost": 0.9,
+                            "quality": 8.5,
+                            "throughput": 0.85,
+                        },
+                    }
+                ]
 
                 # 가중치 정규화 검증
                 total_weight = sum(result["config"]["weights"].values())
                 assert abs(total_weight - 1.0) < 0.001  # 부동소수점 오차 고려
 
     @pytest.mark.asyncio
-    async def test_compare_model_performance_no_weights(self, mock_env, mock_benchmark_result):
+    async def test_compare_model_performance_no_weights(
+        self, mock_env, mock_benchmark_result
+    ):
         """가중치 없는 모델 성능 비교 테스트"""
         models = ["gpt-4"]
 
