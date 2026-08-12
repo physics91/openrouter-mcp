@@ -7,6 +7,7 @@ import pytest
 
 from openrouter_mcp.collective_intelligence import TaskContext
 from openrouter_mcp.config.constants import ModelDefaults
+from openrouter_mcp.handlers import _openrouter_model_provider as provider_module
 from openrouter_mcp.handlers.collective_intelligence import OpenRouterModelProvider
 
 
@@ -97,6 +98,191 @@ async def test_process_task_delegates_exact_chat_completion_parameters() -> None
         stream=False,
     )
     assert client.chat_completion.await_args.kwargs["messages"] is prepared_messages
+
+
+@pytest.mark.asyncio
+async def test_build_processing_result_preserves_pipeline_order_and_payloads() -> None:
+    events = []
+
+    class RecordingDict(dict):
+        def __init__(self, *args, label, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.label = label
+
+        def get(self, key, default=None):
+            events.append(f"get:{self.label}:{key}")
+            return super().get(key, default)
+
+    provider = OpenRouterModelProvider(AsyncMock())
+    task = TaskContext(task_id="task-1", content="test")
+    usage = RecordingDict({"total_tokens": 17}, label="usage")
+    response_metadata = object()
+    response = RecordingDict(
+        {"usage": usage, "model": response_metadata},
+        label="response",
+    )
+    first_choice = {"message": {"content": "answer"}}
+
+    def first_response_choice(received_response):
+        events.append("choice")
+        assert received_response is response
+        return True, first_choice
+
+    def calculate_confidence(received_response, content):
+        events.append("confidence")
+        assert received_response is response
+        assert content == "answer"
+        return 0.85
+
+    async def estimate_cost(model_id, received_usage):
+        events.append("cost")
+        assert model_id == "model-a"
+        assert received_usage is usage
+        return 0.004
+
+    with patch.object(
+        provider_module,
+        "_first_response_choice",
+        side_effect=first_response_choice,
+    ) as get_choice, patch.object(
+        provider,
+        "_calculate_confidence",
+        side_effect=calculate_confidence,
+    ) as get_confidence, patch.object(
+        provider,
+        "_estimate_cost",
+        new=AsyncMock(side_effect=estimate_cost),
+    ) as get_cost:
+        result = await provider._build_processing_result(
+            task,
+            "model-a",
+            response,
+            1.25,
+        )
+
+    get_choice.assert_called_once_with(response)
+    get_confidence.assert_called_once_with(response, "answer")
+    get_cost.assert_awaited_once_with("model-a", usage)
+    assert result.task_id == "task-1"
+    assert result.model_id == "model-a"
+    assert result.content == "answer"
+    assert result.confidence == 0.85
+    assert result.processing_time == 1.25
+    assert result.tokens_used == 17
+    assert result.cost == 0.004
+    assert list(result.metadata) == ["usage", "response_metadata"]
+    assert result.metadata["usage"] is usage
+    assert result.metadata["response_metadata"] is response_metadata
+    assert events == [
+        "choice",
+        "confidence",
+        "get:response:usage",
+        "get:usage:total_tokens",
+        "cost",
+        "get:response:model",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_build_processing_result_preserves_no_choice_defaults() -> None:
+    provider = OpenRouterModelProvider(AsyncMock())
+    provider._estimate_cost = AsyncMock(return_value=0.0)
+    task = TaskContext(task_id="task-1", content="test")
+    response = {"choices": [], "usage": {}}
+
+    result = await provider._build_processing_result(
+        task,
+        "model-a",
+        response,
+        0.5,
+    )
+
+    assert result.content == ""
+    assert result.confidence == pytest.approx(0.5)
+    assert result.tokens_used == 0
+    assert result.metadata == {"usage": {}, "response_metadata": {}}
+
+
+@pytest.mark.asyncio
+async def test_build_processing_result_preserves_malformed_choice_failure_boundary() -> (
+    None
+):
+    provider = OpenRouterModelProvider(AsyncMock())
+    task = TaskContext(task_id="task-1", content="test")
+    response = {"choices": [None]}
+
+    with patch.object(
+        provider, "_calculate_confidence"
+    ) as get_confidence, patch.object(
+        provider,
+        "_estimate_cost",
+        new_callable=AsyncMock,
+    ) as get_cost:
+        with pytest.raises(TypeError):
+            await provider._build_processing_result(
+                task,
+                "model-a",
+                response,
+                0.5,
+            )
+
+    get_confidence.assert_not_called()
+    get_cost.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_task_delegates_response_and_elapsed_time_to_result_builder() -> (
+    None
+):
+    client = AsyncMock()
+    response = {"choices": [], "usage": {}}
+    client.chat_completion.return_value = response
+    provider = OpenRouterModelProvider(client)
+    task = TaskContext(task_id="task-1", content="test")
+    expected = MagicMock()
+    start = MagicMock()
+    end = MagicMock()
+    duration = MagicMock()
+    end.__sub__.return_value = duration
+    duration.total_seconds.return_value = 1.25
+    fake_datetime = MagicMock()
+    fake_datetime.now.side_effect = [start, end]
+
+    with patch.object(
+        provider_module,
+        "datetime",
+        fake_datetime,
+    ), patch.object(
+        provider,
+        "_build_processing_result",
+        new=AsyncMock(return_value=expected),
+    ) as build_result:
+        result = await provider.process_task(task, "model-a")
+
+    assert result is expected
+    build_result.assert_awaited_once_with(task, "model-a", response, 1.25)
+
+
+@pytest.mark.asyncio
+async def test_process_task_logs_and_rethrows_result_builder_error() -> None:
+    client = AsyncMock()
+    client.chat_completion.return_value = {"choices": [], "usage": {}}
+    provider = OpenRouterModelProvider(client)
+    task = TaskContext(task_id="task-1", content="test")
+    error = RuntimeError("result failed")
+
+    with patch.object(
+        provider,
+        "_build_processing_result",
+        new=AsyncMock(side_effect=error),
+    ), patch.object(provider_module.logger, "error") as log_error:
+        with pytest.raises(RuntimeError) as raised:
+            await provider.process_task(task, "model-a")
+
+    assert raised.value is error
+    log_error.assert_called_once_with(
+        "Task processing failed for model model-a: result failed"
+    )
 
 
 def test_build_model_info_preserves_raw_access_and_helper_order() -> None:

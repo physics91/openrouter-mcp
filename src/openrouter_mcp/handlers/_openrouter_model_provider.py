@@ -70,6 +70,40 @@ class OpenRouterModelProvider:
 
         return messages, temperature, max_tokens_val
 
+    async def _build_processing_result(
+        self,
+        task: TaskContext,
+        model_id: str,
+        response: Dict[str, Any],
+        processing_time: float,
+    ) -> ProcessingResult:
+        """Convert one chat response into a collective processing result."""
+        has_choice, first_choice = _first_response_choice(response)
+        content = ""
+        if has_choice:
+            content = first_choice["message"]["content"]
+
+        confidence = self._calculate_confidence(response, content)
+
+        usage = response.get("usage", {})
+        tokens_used = usage.get("total_tokens", 0)
+
+        cost = await self._estimate_cost(model_id, usage)
+
+        return ProcessingResult(
+            task_id=task.task_id,
+            model_id=model_id,
+            content=content,
+            confidence=confidence,
+            processing_time=processing_time,
+            tokens_used=tokens_used,
+            cost=cost,
+            metadata={
+                "usage": usage,
+                "response_metadata": response.get("model", {}),
+            },
+        )
+
     async def process_task(
         self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
@@ -92,34 +126,11 @@ class OpenRouterModelProvider:
 
             processing_time = (datetime.now() - start_time).total_seconds()
 
-            # Extract response content
-            has_choice, first_choice = _first_response_choice(response)
-            content = ""
-            if has_choice:
-                content = first_choice["message"]["content"]
-
-            # Calculate confidence (simplified heuristic)
-            confidence = self._calculate_confidence(response, content)
-
-            # Extract usage information
-            usage = response.get("usage", {})
-            tokens_used = usage.get("total_tokens", 0)
-
-            # Calculate actual cost using real pricing
-            cost = await self._estimate_cost(model_id, usage)
-
-            return ProcessingResult(
-                task_id=task.task_id,
-                model_id=model_id,
-                content=content,
-                confidence=confidence,
-                processing_time=processing_time,
-                tokens_used=tokens_used,
-                cost=cost,
-                metadata={
-                    "usage": usage,
-                    "response_metadata": response.get("model", {}),
-                },
+            return await self._build_processing_result(
+                task,
+                model_id,
+                response,
+                processing_time,
             )
 
         except Exception as e:
