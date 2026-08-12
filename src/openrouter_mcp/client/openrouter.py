@@ -1,9 +1,10 @@
 import json as json_lib
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from types import TracebackType
-from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
+from typing import Any, NoReturn, Optional
 
 import httpx
 
@@ -102,12 +103,12 @@ async def _extract_http_error_message(response: httpx.Response) -> str:
 
 
 def _build_model_pricing_result(
-    pricing: Dict[str, Any],
+    pricing: dict[str, Any],
     *,
     pricing_available: bool,
     fallback_used: bool,
     source: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Normalize model pricing and attach availability metadata."""
     if pricing_available:
         normalized = normalize_pricing(pricing, fill_missing=False)
@@ -132,15 +133,15 @@ def _build_model_pricing_result(
 
 
 def _coerce_text_messages(
-    messages: List[Dict[str, Any]],
-) -> Optional[List[Dict[str, str]]]:
+    messages: list[dict[str, Any]],
+) -> Optional[list[dict[str, str]]]:
     """Copy simple text messages into the strict validation shape."""
     if not messages or not all(
         isinstance(message.get("content"), str) for message in messages
     ):
         return None
 
-    text_messages: List[Dict[str, str]] = []
+    text_messages: list[dict[str, str]] = []
     for message in messages:
         role = message.get("role")
         content = message.get("content")
@@ -222,7 +223,7 @@ class OpenRouterClient:
 
         self._client = httpx.AsyncClient(timeout=timeout)
         self._model_cache: Optional[ModelCache] = None
-        self._chat_coalescer: RequestCoalescer[Dict[str, Any]] = RequestCoalescer()
+        self._chat_coalescer: RequestCoalescer[dict[str, Any]] = RequestCoalescer()
 
         # Initialize model cache with client credentials
         if enable_cache:
@@ -253,7 +254,7 @@ class OpenRouterClient:
             http_referer=get_env_value(EnvVars.HTTP_REFERER),
         )
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get HTTP headers for requests."""
         raw_headers = build_openrouter_headers(
             self.api_key,
@@ -272,7 +273,7 @@ class OpenRouterClient:
         if not model or model.strip() == "":
             raise ValueError("Model cannot be empty")
 
-    def _validate_messages(self, messages: List[Dict[str, str]]) -> None:
+    def _validate_messages(self, messages: list[dict[str, str]]) -> None:
         """Validate messages parameter."""
         if not messages:
             raise ValueError("Messages cannot be empty")
@@ -286,7 +287,7 @@ class OpenRouterClient:
             if message["role"] not in valid_roles:
                 raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
 
-    def _validate_messages_if_text(self, messages: List[Dict[str, Any]]) -> None:
+    def _validate_messages_if_text(self, messages: list[dict[str, Any]]) -> None:
         """Validate messages when they are simple text-only payloads."""
         text_messages = _coerce_text_messages(messages)
         if text_messages is not None:
@@ -296,12 +297,12 @@ class OpenRouterClient:
         self,
         *,
         model: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float,
         max_tokens: Optional[int],
         stream: bool,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build a chat completion payload with shared validation."""
         self._validate_model(model)
         self._validate_messages_if_text(messages)
@@ -324,9 +325,9 @@ class OpenRouterClient:
         self,
         method_label: str,
         url: str,
-        headers: Dict[str, str],
-        payload: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        headers: dict[str, str],
+        payload: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> None:
         """Log sanitized request details."""
         sanitized_headers = SensitiveDataSanitizer.sanitize_headers(headers)
@@ -351,7 +352,7 @@ class OpenRouterClient:
         self.logger.error(f"Unexpected error for {context} {url}: {str(e)}")
         raise OpenRouterError(f"Unexpected error: {str(e)}") from e
 
-    def _build_coalescing_key(self, endpoint: str, payload: Dict[str, Any]) -> Optional[str]:
+    def _build_coalescing_key(self, endpoint: str, payload: dict[str, Any]) -> Optional[str]:
         """Build a stable fingerprint for exact-match request coalescing."""
         try:
             serialized = json_lib.dumps(
@@ -365,7 +366,7 @@ class OpenRouterClient:
             return None
         return f"{endpoint}:{serialized}"
 
-    def _log_response_data(self, response_data: Dict[str, Any]) -> None:
+    def _log_response_data(self, response_data: dict[str, Any]) -> None:
         """Log response metadata while sanitizing completion content."""
         if "choices" in response_data or "data" in response_data:
             if "choices" in response_data:
@@ -382,9 +383,9 @@ class OpenRouterClient:
         self,
         method: str,
         endpoint: str,
-        json: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        json: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """Make HTTP request to OpenRouter API.
 
         Args:
@@ -428,7 +429,7 @@ class OpenRouterClient:
             self._handle_request_error(e, method, url)
 
     async def _stream_request(
-        self, endpoint: str, json_data: Dict[str, Any]
+        self, endpoint: str, json_data: dict[str, Any]
     ) -> AsyncGenerator[Any, None]:
         """Make streaming request to OpenRouter API.
 
@@ -515,11 +516,11 @@ class OpenRouterClient:
     async def _get_cached_models(
         self,
         filter_by: Optional[str],
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Optional[list[dict[str, Any]]]:
         """Return usable cached models, or None when the API should be queried."""
         try:
             cached_models_raw = await self._model_cache.get_models()
-            all_models: List[Dict[str, Any]] = [
+            all_models: list[dict[str, Any]] = [
                 model for model in cached_models_raw if isinstance(model, dict)
             ]
             if all_models:
@@ -547,7 +548,7 @@ class OpenRouterClient:
         filter_by: Optional[str] = None,
         use_cache: bool = True,
         _bypass_cache: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List available models from OpenRouter.
 
         Retrieves a list of all available AI models, optionally filtered by name.
@@ -583,7 +584,7 @@ class OpenRouterClient:
         # Fallback: Fetch directly from API if cache is disabled or failed
         self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
 
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         if filter_by:
             params["filter"] = filter_by
 
@@ -593,14 +594,14 @@ class OpenRouterClient:
             self.logger.warning("Unexpected model list format from API")
             return []
 
-        models: List[Dict[str, Any]] = [
+        models: list[dict[str, Any]] = [
             model for model in models_raw if isinstance(model, dict)
         ]
 
         self.logger.info(f"Retrieved {len(models)} models from API")
         return models
 
-    async def get_model_info(self, model: str) -> Dict[str, Any]:
+    async def get_model_info(self, model: str) -> dict[str, Any]:
         """Get information about a specific model.
 
         Args:
@@ -612,7 +613,7 @@ class OpenRouterClient:
         self._validate_model(model)
         return await self._make_request("GET", f"/models/{model}")
 
-    async def get_model_pricing(self, model: str) -> Dict[str, Any]:
+    async def get_model_pricing(self, model: str) -> dict[str, Any]:
         """Get normalized pricing for a specific model.
 
         Pricing values are normalized to per-token dollars to ensure consistent
@@ -621,7 +622,7 @@ class OpenRouterClient:
         whether pricing data was available or a fallback was used.
         """
         self._validate_model(model)
-        pricing: Dict[str, Any] = {}
+        pricing: dict[str, Any] = {}
         pricing_available = False
         fallback_used = False
         source = "cache" if self._model_cache else "api"
@@ -672,7 +673,7 @@ class OpenRouterClient:
         prompt_price = float(pricing.get("prompt") or PricingDefaults.DEFAULT_TOKEN_PRICE)
         return max(0.0, cached_tokens * prompt_price * (1.0 - read_multiplier))
 
-    async def _record_prompt_cache_metrics(self, model: str, response: Dict[str, Any]) -> None:
+    async def _record_prompt_cache_metrics(self, model: str, response: dict[str, Any]) -> None:
         usage = response.get("usage")
         if not isinstance(usage, dict):
             return
@@ -708,8 +709,8 @@ class OpenRouterClient:
     async def _execute_chat_completion_request(
         self,
         endpoint: str,
-        payload: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         response = await self._make_request("POST", endpoint, json=payload)
         if isinstance(response, dict):
             await self._record_prompt_cache_metrics(str(payload.get("model", "default")), response)
@@ -718,12 +719,12 @@ class OpenRouterClient:
     async def chat_completion(
         self,
         model: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         stream: bool = ModelDefaults.STREAM,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a chat completion.
 
         Args:
@@ -783,11 +784,11 @@ class OpenRouterClient:
     async def stream_chat_completion(
         self,
         model: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         temperature: float = ModelDefaults.TEMPERATURE,
         max_tokens: Optional[int] = ModelDefaults.MAX_TOKENS,
         **kwargs: Any,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Create a streaming chat completion.
 
         Args:
@@ -816,7 +817,7 @@ class OpenRouterClient:
 
     async def track_usage(
         self, start_date: Optional[str] = None, end_date: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Track API usage statistics.
 
         Args:
@@ -842,7 +843,7 @@ class OpenRouterClient:
         finally:
             await self._client.aclose()
 
-    def get_cache_info(self) -> Optional[Dict[str, Any]]:
+    def get_cache_info(self) -> Optional[dict[str, Any]]:
         """Get information about the model cache.
 
         Returns:
