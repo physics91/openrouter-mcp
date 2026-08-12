@@ -7,7 +7,7 @@ base64 encoding, model filtering, and chat completion with images.
 
 import base64
 import io
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from PIL import Image
@@ -300,6 +300,95 @@ class TestFormatVisionMessage:
         assert result["content"][2]["type"] == "image_url"
 
 
+class TestBuildVisionMessages:
+    def test_builds_mixed_images_on_last_message_in_order(self):
+        first_message = {"role": "system", "content": "system prompt"}
+        base_messages = [
+            first_message,
+            {"role": "assistant", "content": "analyze images"},
+        ]
+        images = [
+            ImageInput(data="first-base64", type="base64"),
+            ImageInput(data="second-base64", type="base64"),
+            ImageInput(data="https://example.com/image.jpg", type="url"),
+        ]
+
+        with patch.object(
+            multimodal_module,
+            "process_image",
+            side_effect=[("resized-base64", True), ("unchanged-base64", False)],
+        ) as mock_process_image, patch.object(
+            multimodal_module.logger, "info"
+        ) as mock_logger:
+            result = multimodal_module._build_vision_messages(base_messages, images)
+
+        assert result[0] is first_message
+        assert result == [
+            first_message,
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "analyze images"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,resized-base64"},
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,unchanged-base64"},
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "https://example.com/image.jpg"},
+                    },
+                ],
+            },
+        ]
+        assert mock_process_image.call_args_list == [
+            call("first-base64"),
+            call("second-base64"),
+        ]
+        mock_logger.assert_called_once_with("Image was resized for API optimization")
+
+    def test_empty_messages_do_not_process_images(self):
+        with patch.object(multimodal_module, "process_image") as mock_process_image:
+            assert (
+                multimodal_module._build_vision_messages(
+                    [], [ImageInput(data="base64-data", type="base64")]
+                )
+                == []
+            )
+
+        mock_process_image.assert_not_called()
+
+    def test_empty_images_still_reformats_last_message(self):
+        first_message = {"role": "system", "content": "system prompt"}
+
+        assert multimodal_module._build_vision_messages(
+            [first_message, {"role": "assistant", "content": "last message"}], []
+        ) == [
+            first_message,
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "last message"}],
+            },
+        ]
+
+    def test_missing_last_content_processes_images_before_key_error(self):
+        with patch.object(
+            multimodal_module,
+            "process_image",
+            return_value=("processed-base64", False),
+        ) as mock_process_image:
+            with pytest.raises(KeyError, match="content"):
+                multimodal_module._build_vision_messages(
+                    [{"role": "user"}],
+                    [ImageInput(data="base64-data", type="base64")],
+                )
+
+        mock_process_image.assert_called_once_with("base64-data")
+
+
 class TestIsVisionModel:
     """Test vision model detection."""
 
@@ -553,7 +642,9 @@ class TestVisionHandlerThriftMetadata:
                 )
                 return mock_response
 
-            mock_client.chat_completion.side_effect = chat_completion_with_request_local_thrift
+            mock_client.chat_completion.side_effect = (
+                chat_completion_with_request_local_thrift
+            )
             mock_get_client.return_value = mock_client
 
             result = await multimodal_module.chat_with_vision(
@@ -565,6 +656,18 @@ class TestVisionHandlerThriftMetadata:
             )
 
             assert result["thrift_metrics"]["compacted_tokens"] == 7
+            assert mock_client.chat_completion.await_args.kwargs["messages"] == [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "이 이미지 뭐냐"},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "https://example.com/cat.jpg"},
+                        },
+                    ],
+                }
+            ]
             assert result["thrift_summary"]["saved_cost_usd"] == 0.006
             assert result["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 120
             assert (

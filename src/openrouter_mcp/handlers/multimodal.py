@@ -316,6 +316,32 @@ def get_vision_model_names(models: List[Dict[str, Any]]) -> List[str]:
     return [model.get("name", model.get("id", "Unknown")) for model in vision_models]
 
 
+def _build_vision_messages(
+    base_messages: List[Dict[str, Any]],
+    images: List[ImageInput],
+) -> List[Dict[str, Any]]:
+    if not base_messages:
+        return []
+
+    processed_images = []
+    for image in images:
+        if image.type == "base64":
+            processed_data, was_resized = process_image(image.data)
+            if was_resized:
+                logger.info("Image was resized for API optimization")
+            processed_images.append({"data": processed_data, "type": "base64"})
+        else:
+            processed_images.append({"data": image.data, "type": "url"})
+
+    return [
+        *base_messages[:-1],
+        format_vision_message(
+            text=base_messages[-1]["content"],
+            images=processed_images,
+        ),
+    ]
+
+
 @mcp.tool()
 async def chat_with_vision(
     request: VisionChatRequest,
@@ -355,29 +381,7 @@ async def chat_with_vision(
         try:
             # Process images and create vision messages
             base_messages = serialize_messages(request.messages)
-            vision_messages = []
-
-            for i, message_payload in enumerate(base_messages):
-                if i == len(base_messages) - 1:  # Last message, add images
-                    # Process images
-                    processed_images = []
-                    for img in request.images:
-                        if img.type == "base64":
-                            # Process the image (resize if needed)
-                            processed_data, was_resized = process_image(img.data)
-                            if was_resized:
-                                logger.info("Image was resized for API optimization")
-                            processed_images.append({"data": processed_data, "type": "base64"})
-                        else:
-                            processed_images.append({"data": img.data, "type": "url"})
-
-                    # Format vision message
-                    vision_message = format_vision_message(
-                        text=message_payload["content"], images=processed_images
-                    )
-                    vision_messages.append(vision_message)
-                else:
-                    vision_messages.append(message_payload)
+            vision_messages = _build_vision_messages(base_messages, request.images)
 
             if request.stream:
                 logger.info("Initiating streaming vision chat completion")
