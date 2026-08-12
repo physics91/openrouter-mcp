@@ -6,7 +6,11 @@ from src.openrouter_mcp.runtime_thrift.response_metadata import (
     attach_thrift_metadata_from_payload,
     enrich_response_with_thrift_metadata,
 )
-from src.openrouter_mcp.runtime_thrift.summary import _build_cache_hotspot_reason
+from src.openrouter_mcp.runtime_thrift.summary import (
+    _build_cache_deadspot_reason,
+    _build_cache_hotspot_reason,
+    _summarize_cache_deadspots,
+)
 
 
 @pytest.mark.unit
@@ -41,6 +45,40 @@ from src.openrouter_mcp.runtime_thrift.summary import _build_cache_hotspot_reaso
 )
 def test_build_cache_hotspot_reason_for_low_efficiency_boundaries(bucket, expected):
     assert _build_cache_hotspot_reason(bucket) == expected
+
+
+@pytest.mark.unit
+def test_build_cache_deadspot_reason_for_fallback_branch():
+    bucket = {
+        "cache_hit_requests": 2,
+        "cache_hit_request_rate_pct": 40.0,
+        "cache_write_request_rate_pct": 50.0,
+        "reuse_to_write_ratio": 1.2,
+    }
+
+    assert _build_cache_deadspot_reason(bucket) == (
+        "Cache warming is already paying off here, so this bucket is not a real deadspot"
+    )
+
+
+@pytest.mark.unit
+def test_summarize_cache_deadspots_excludes_unwarmed_and_healthy_buckets():
+    breakdown = {
+        "unwarmed": {
+            "cache_write_prompt_tokens": 0,
+            "cache_hit_request_rate_pct": 0.0,
+            "cache_write_request_rate_pct": 0.0,
+            "reuse_to_write_ratio": None,
+        },
+        "healthy": {
+            "cache_write_prompt_tokens": 100,
+            "cache_hit_request_rate_pct": 50.0,
+            "cache_write_request_rate_pct": 50.0,
+            "reuse_to_write_ratio": 1.0,
+        },
+    }
+
+    assert _summarize_cache_deadspots(breakdown, key_name="provider") == []
 
 
 class TestResponseMetadata:

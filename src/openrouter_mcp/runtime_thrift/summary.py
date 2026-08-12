@@ -165,12 +165,49 @@ def _build_cache_hotspots(
     }
 
 
-def _build_cache_deadspots(
-    providers: Dict[str, Any],
-    models: Dict[str, Any],
-) -> Dict[str, Any]:
-    def build_reason(bucket: Dict[str, Any]) -> str:
-        cache_hit_requests = _as_int(bucket.get("cache_hit_requests"))
+def _build_cache_deadspot_reason(bucket: Dict[str, Any]) -> str:
+    cache_hit_requests = _as_int(bucket.get("cache_hit_requests"))
+    cache_hit_request_rate_pct = round(
+        _as_float(bucket.get("cache_hit_request_rate_pct")),
+        2,
+    )
+    cache_write_request_rate_pct = round(
+        _as_float(bucket.get("cache_write_request_rate_pct")),
+        2,
+    )
+    reuse_to_write_ratio = round(
+        _as_float(bucket.get("reuse_to_write_ratio")),
+        4,
+    )
+
+    if cache_hit_requests == 0:
+        return (
+            "Cache writes are piling up, but zero hits means warmups are being wasted"
+        )
+
+    if cache_hit_request_rate_pct < (cache_write_request_rate_pct / 2.0):
+        return "Cache writes are visible, but hit conversion is still weak"
+
+    if reuse_to_write_ratio < 1.0:
+        return "Some hits exist, but reuse depth is still too shallow to justify the warmup cost"
+
+    return "Cache warming is already paying off here, so this bucket is not a real deadspot"
+
+
+def _summarize_cache_deadspots(
+    breakdown: Dict[str, Any],
+    *,
+    key_name: str,
+) -> list[Dict[str, Any]]:
+    items: list[Dict[str, Any]] = []
+    for bucket_key, bucket in breakdown.items():
+        if not isinstance(bucket, dict):
+            continue
+
+        cache_write_prompt_tokens = _as_int(bucket.get("cache_write_prompt_tokens"))
+        if cache_write_prompt_tokens <= 0:
+            continue
+
         cache_hit_request_rate_pct = round(
             _as_float(bucket.get("cache_hit_request_rate_pct")),
             2,
@@ -184,83 +221,49 @@ def _build_cache_deadspots(
             4,
         )
 
-        if cache_hit_requests == 0:
-            return "Cache writes are piling up, but zero hits means warmups are being wasted"
+        if (
+            cache_hit_request_rate_pct >= cache_write_request_rate_pct
+            and reuse_to_write_ratio >= 1.0
+        ):
+            continue
 
-        if cache_hit_request_rate_pct < (cache_write_request_rate_pct / 2.0):
-            return "Cache writes are visible, but hit conversion is still weak"
-
-        if reuse_to_write_ratio < 1.0:
-            return (
-                "Some hits exist, but reuse depth is still too shallow to justify the warmup cost"
-            )
-
-        return "Cache warming is already paying off here, so this bucket is not a real deadspot"
-
-    def summarize(
-        breakdown: Dict[str, Any],
-        *,
-        key_name: str,
-    ) -> list[Dict[str, Any]]:
-        items: list[Dict[str, Any]] = []
-        for bucket_key, bucket in breakdown.items():
-            if not isinstance(bucket, dict):
-                continue
-
-            cache_write_prompt_tokens = _as_int(bucket.get("cache_write_prompt_tokens"))
-            if cache_write_prompt_tokens <= 0:
-                continue
-
-            cache_hit_request_rate_pct = round(
-                _as_float(bucket.get("cache_hit_request_rate_pct")),
-                2,
-            )
-            cache_write_request_rate_pct = round(
-                _as_float(bucket.get("cache_write_request_rate_pct")),
-                2,
-            )
-            reuse_to_write_ratio = round(
-                _as_float(bucket.get("reuse_to_write_ratio")),
-                4,
-            )
-
-            if (
-                cache_hit_request_rate_pct >= cache_write_request_rate_pct
-                and reuse_to_write_ratio >= 1.0
-            ):
-                continue
-
-            items.append(
-                {
-                    key_name: str(bucket_key),
-                    "saved_cost_usd": round(_as_float(bucket.get("saved_cost_usd")), 8),
-                    "cached_prompt_tokens": _as_int(bucket.get("cached_prompt_tokens")),
-                    "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
-                    "cache_write_request_rate_pct": cache_write_request_rate_pct,
-                    "reuse_to_write_ratio": reuse_to_write_ratio,
-                    "reason": build_reason(bucket),
-                }
-            )
-
-        items.sort(
-            key=lambda item: (
-                -int(_as_float(item.get("cache_hit_request_rate_pct")) <= 0.0),
-                -round(
-                    _as_float(item.get("cache_write_request_rate_pct"))
-                    - _as_float(item.get("cache_hit_request_rate_pct")),
-                    2,
-                ),
-                _as_float(item.get("reuse_to_write_ratio")),
-                -_as_float(item.get("cache_write_request_rate_pct")),
-                -_as_int(item.get("cached_prompt_tokens")),
-                str(item.get(key_name)),
-            )
+        items.append(
+            {
+                key_name: str(bucket_key),
+                "saved_cost_usd": round(_as_float(bucket.get("saved_cost_usd")), 8),
+                "cached_prompt_tokens": _as_int(bucket.get("cached_prompt_tokens")),
+                "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
+                "cache_write_request_rate_pct": cache_write_request_rate_pct,
+                "reuse_to_write_ratio": reuse_to_write_ratio,
+                "reason": _build_cache_deadspot_reason(bucket),
+            }
         )
-        return items[:3]
+
+    items.sort(
+        key=lambda item: (
+            -int(_as_float(item.get("cache_hit_request_rate_pct")) <= 0.0),
+            -round(
+                _as_float(item.get("cache_write_request_rate_pct"))
+                - _as_float(item.get("cache_hit_request_rate_pct")),
+                2,
+            ),
+            _as_float(item.get("reuse_to_write_ratio")),
+            -_as_float(item.get("cache_write_request_rate_pct")),
+            -_as_int(item.get("cached_prompt_tokens")),
+            str(item.get(key_name)),
+        )
+    )
+    return items[:3]
+
+
+def _build_cache_deadspots(
+    providers: Dict[str, Any],
+    models: Dict[str, Any],
+) -> Dict[str, Any]:
 
     return {
-        "providers": summarize(providers, key_name="provider"),
-        "models": summarize(models, key_name="model"),
+        "providers": _summarize_cache_deadspots(providers, key_name="provider"),
+        "models": _summarize_cache_deadspots(models, key_name="model"),
     }
 
 
