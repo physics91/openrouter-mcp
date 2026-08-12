@@ -224,34 +224,39 @@ class QuotaTracker:
             if current_calls >= self.config.max_api_calls_per_request:
                 return (
                     False,
-                    f"Request quota exceeded: {current_calls}/{self.config.max_api_calls_per_request} calls",
+                    f"Request quota exceeded: {current_calls}/"
+                    f"{self.config.max_api_calls_per_request} calls",
                 )
 
             current_tokens = self.request_tokens.get(request_id, 0)
             if current_tokens + tokens > self.config.max_tokens_per_request:
                 return (
                     False,
-                    f"Token quota exceeded: {current_tokens + tokens}/{self.config.max_tokens_per_request} tokens",
+                    f"Token quota exceeded: {current_tokens + tokens}/"
+                    f"{self.config.max_tokens_per_request} tokens",
                 )
 
             current_cost = self.request_costs.get(request_id, 0.0)
             if current_cost + cost > self.config.max_cost_per_request:
                 return (
                     False,
-                    f"Cost quota exceeded: ${current_cost + cost:.4f}/${self.config.max_cost_per_request:.2f}",
+                    f"Cost quota exceeded: ${current_cost + cost:.4f}/"
+                    f"${self.config.max_cost_per_request:.2f}",
                 )
 
             # Check time-based limits
             if len(self.minute_calls) >= self.config.max_api_calls_per_minute:
                 return (
                     False,
-                    f"Minute quota exceeded: {len(self.minute_calls)}/{self.config.max_api_calls_per_minute} calls",
+                    f"Minute quota exceeded: {len(self.minute_calls)}/"
+                    f"{self.config.max_api_calls_per_minute} calls",
                 )
 
             if len(self.hour_calls) >= self.config.max_api_calls_per_hour:
                 return (
                     False,
-                    f"Hour quota exceeded: {len(self.hour_calls)}/{self.config.max_api_calls_per_hour} calls",
+                    f"Hour quota exceeded: {len(self.hour_calls)}/"
+                    f"{self.config.max_api_calls_per_hour} calls",
                 )
 
             # Increment counters
@@ -337,7 +342,8 @@ class FailureController:
 
             if failure_count >= self.config.max_failures_before_cancel:
                 logger.error(
-                    f"Max failures ({failure_count}) reached for {request_id}, cancelling"
+                    f"Max failures ({failure_count}) reached for {request_id}, "
+                    "cancelling"
                 )
                 return True
 
@@ -490,7 +496,8 @@ class StorageManager:
                 del self.item_timestamps[item_id]
 
             logger.info(
-                f"Cleaned up {len(expired_ids)} expired items and {len(orphaned_ids)} orphaned timestamps"
+                f"Cleaned up {len(expired_ids)} expired items and "
+                f"{len(orphaned_ids)} orphaned timestamps"
             )
             return len(expired_ids)
 
