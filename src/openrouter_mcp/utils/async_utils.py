@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any, AsyncIterable, List, TypeVar
+from collections.abc import AsyncIterable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -16,9 +17,9 @@ async def maybe_await(value: Any) -> Any:
     return value
 
 
-async def collect_async_iterable(iterable: AsyncIterable[T]) -> List[T]:
+async def collect_async_iterable(iterable: AsyncIterable[T]) -> list[T]:
     """Collect items from an async iterable into a list."""
-    items: List[T] = []
+    items: list[T] = []
     async for item in iterable:
         items.append(item)
     return items
@@ -33,7 +34,7 @@ def raise_first_fatal_result(results: list[Any]) -> None:
             raise result
 
 
-async def await_cleanup_future(future: "asyncio.Future[T]") -> T:
+async def await_cleanup_future(future: asyncio.Future[T]) -> T:
     """Finish and reap cleanup work before preserving its first interruption."""
     first_failure: BaseException | None = None
 
