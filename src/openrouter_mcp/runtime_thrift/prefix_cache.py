@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Optional
 
 from ..utils.token_counter import count_message_tokens
 from .policy import get_runtime_thrift_policy
@@ -16,7 +17,7 @@ DEFAULT_CACHE_CONTROL = {"type": "ephemeral"}
 class PrefixCachePlan:
     """Planned explicit cache breakpoint placement for a request."""
 
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
     applied: bool
     provider: Optional[str]
     breakpoint_message_index: Optional[int]
@@ -55,7 +56,7 @@ def _minimum_cacheable_tokens(model_id: str, provider: str) -> int:
     return 0
 
 
-def _has_existing_cache_control(messages: Sequence[Dict[str, Any]]) -> bool:
+def _has_existing_cache_control(messages: Sequence[dict[str, Any]]) -> bool:
     for message in messages:
         content = message.get("content")
         if not isinstance(content, list):
@@ -66,7 +67,7 @@ def _has_existing_cache_control(messages: Sequence[Dict[str, Any]]) -> bool:
     return False
 
 
-def _apply_breakpoint_to_message(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _apply_breakpoint_to_message(message: dict[str, Any]) -> Optional[dict[str, Any]]:
     content = message.get("content")
     updated = deepcopy(message)
 
@@ -102,10 +103,10 @@ def _apply_breakpoint_to_message(message: Dict[str, Any]) -> Optional[Dict[str, 
 
 
 def _select_prefix_cache_breakpoint(
-    message_list: List[Dict[str, Any]],
+    message_list: list[dict[str, Any]],
     model_id: str,
     minimum_tokens: int,
-) -> Tuple[Optional[int], int]:
+) -> tuple[Optional[int], int]:
     """Select the latest eligible cache breakpoint before the final message."""
     chosen_index: Optional[int] = None
     chosen_tokens = 0
@@ -123,7 +124,7 @@ def _select_prefix_cache_breakpoint(
 
 
 def apply_prefix_cache_planner(
-    messages: Sequence[Dict[str, Any]],
+    messages: Sequence[dict[str, Any]],
     model_id: str,
 ) -> PrefixCachePlan:
     """Insert an explicit per-block cache breakpoint for providers that require it."""
@@ -174,7 +175,8 @@ def apply_prefix_cache_planner(
 
     updated_messages = list(message_list)
     updated_messages[chosen_index] = (
-        _apply_breakpoint_to_message(message_list[chosen_index]) or message_list[chosen_index]
+        _apply_breakpoint_to_message(message_list[chosen_index])
+        or message_list[chosen_index]
     )
 
     return PrefixCachePlan(
