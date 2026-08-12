@@ -39,7 +39,7 @@ from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     SubTask,
     SubTaskResult,
 )
-from openrouter_mcp.handlers.collective_intelligence import (
+from openrouter_mcp.handlers._collective_serialization import (
     _serialize_consensus_result,
     _serialize_cross_validation_result,
     _serialize_ensemble_result,
