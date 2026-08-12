@@ -21,6 +21,7 @@ from .base import (
     ProcessingResult,
     QualityMetrics,
     TaskContext,
+    build_quality_metrics,
 )
 from .consensus_engine import ConsensusEngine, ConsensusResult
 from .cross_validator import CrossValidator
@@ -483,7 +484,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         """Create the final solving result."""
 
         # Calculate quality metrics
-        quality_metrics = QualityMetrics(
+        quality_metrics = build_quality_metrics(
             accuracy=0.8,  # Default values - would be calculated from components
             consistency=0.8,
             completeness=0.8,
