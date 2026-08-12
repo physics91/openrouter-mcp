@@ -87,6 +87,26 @@ def _build_requirements(
     return requirements
 
 
+def _build_collective_request_requirements(
+    request: BaseCollectiveRequest,
+    *,
+    base: Optional[Dict[str, Any]] = None,
+    extras: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build requirements shared by collective request types."""
+    request_extras = dict(extras or {})
+    if request.system_prompt:
+        request_extras["system_prompt"] = request.system_prompt
+
+    return _build_requirements(
+        base=base,
+        temperature=request.temperature,
+        max_tokens=_resolve_collective_max_tokens(request.max_tokens),
+        models=request.models,
+        extras=request_extras or None,
+    )
+
+
 # Pydantic models for MCP tool inputs
 
 
@@ -235,15 +255,7 @@ async def _collective_chat_completion_impl(
         consensus_engine = await lifecycle_manager.get_consensus_engine(config)
 
         # Create task context
-        extras = {}
-        if request.system_prompt:
-            extras["system_prompt"] = request.system_prompt
-        requirements = _build_requirements(
-            temperature=request.temperature,
-            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
-            models=request.models,
-            extras=extras or None,
-        )
+        requirements = _build_collective_request_requirements(request)
 
         task = create_task_context(content=request.prompt, requirements=requirements)
 
@@ -304,15 +316,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
         ensemble_reasoner = await lifecycle_manager.get_ensemble_reasoner()
 
         # Create task context with temperature, max_tokens, system_prompt and models
-        extras = {}
-        if request.system_prompt:
-            extras["system_prompt"] = request.system_prompt
-        requirements = _build_requirements(
-            temperature=request.temperature,
-            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
-            models=request.models,
-            extras=extras or None,
-        )
+        requirements = _build_collective_request_requirements(request)
 
         task = create_task_context(
             content=request.problem,
@@ -461,12 +465,8 @@ async def _cross_model_validation_impl(
         extras: Dict[str, Any] = {"validation_threshold": request.threshold}
         if request.validation_criteria:
             extras["validation_criteria"] = request.validation_criteria
-        if request.system_prompt:
-            extras["system_prompt"] = request.system_prompt
-        requirements = _build_requirements(
-            temperature=request.temperature,
-            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
-            models=request.models,
+        requirements = _build_collective_request_requirements(
+            request,
             extras=extras,
         )
 
@@ -541,13 +541,9 @@ async def _collaborative_problem_solving_impl(
 
         # Create task context with max_iterations, system_prompt and models
         extras: Dict[str, Any] = {"max_iterations": request.max_iterations}
-        if request.system_prompt:
-            extras["system_prompt"] = request.system_prompt
-        requirements = _build_requirements(
+        requirements = _build_collective_request_requirements(
+            request,
             base=request.requirements,
-            temperature=request.temperature,
-            max_tokens=_resolve_collective_max_tokens(request.max_tokens),
-            models=request.models,
             extras=extras,
         )
 

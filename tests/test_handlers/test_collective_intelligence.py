@@ -1,4 +1,4 @@
-"""Focused tests for collective-intelligence handler response serialization."""
+"""Focused tests for collective-intelligence handler mapping helpers."""
 
 from typing import Any
 
@@ -39,6 +39,7 @@ from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     SubTask,
     SubTaskResult,
 )
+from openrouter_mcp.config.constants import CollectiveDefaults, ModelDefaults
 from openrouter_mcp.handlers._collective_serialization import (
     _serialize_consensus_result,
     _serialize_cross_validation_result,
@@ -46,6 +47,56 @@ from openrouter_mcp.handlers._collective_serialization import (
     _serialize_routing_decision,
     _serialize_solving_result,
 )
+from openrouter_mcp.handlers.collective_intelligence import (
+    EnsembleReasoningRequest,
+    _build_collective_request_requirements,
+)
+
+
+def test_collective_request_requirements_preserve_precedence_and_zeroes() -> None:
+    request = EnsembleReasoningRequest(
+        problem="test",
+        temperature=0.0,
+        max_tokens=0,
+        models=["request-model"],
+        system_prompt="request prompt",
+    )
+
+    assert _build_collective_request_requirements(
+        request,
+        base={
+            "base_only": True,
+            "temperature": 1.0,
+            "system_prompt": "base prompt",
+        },
+        extras={
+            "extra_only": True,
+            "max_tokens": 99,
+            "preferred_models": ["extra-model"],
+            "system_prompt": "extra prompt",
+        },
+    ) == {
+        "base_only": True,
+        "extra_only": True,
+        "temperature": 0.0,
+        "max_tokens": 0,
+        "preferred_models": ["request-model"],
+        "system_prompt": "request prompt",
+    }
+
+
+def test_collective_request_requirements_preserve_falsy_defaults() -> None:
+    request = EnsembleReasoningRequest(
+        problem="test",
+        max_tokens=None,
+        models=[],
+        system_prompt="",
+    )
+
+    assert _build_collective_request_requirements(request) == {
+        "temperature": ModelDefaults.TEMPERATURE,
+        "max_tokens": CollectiveDefaults.DEFAULT_MAX_TOKENS,
+    }
 
 
 def _build_validation_result(
