@@ -40,6 +40,23 @@ def _serialize_consensus_result(result: ConsensusResult) -> Dict[str, Any]:
     }
 
 
+def _summarize_issue_criteria(issues: list[ValidationIssue]) -> str:
+    """Summarize distinct issue criteria for one validator."""
+    criteria_values = {
+        (
+            issue.criteria.value
+            if hasattr(issue.criteria, "value")
+            else str(issue.criteria)
+        )
+        for issue in issues
+    }
+    if not criteria_values:
+        return "none"
+    if len(criteria_values) == 1:
+        return next(iter(criteria_values))
+    return "multiple"
+
+
 def _build_model_validations(
     report: ValidationReport,
     issues: list[ValidationIssue],
@@ -59,20 +76,7 @@ def _build_model_validations(
         model_issues = [
             issue for issue in issues if issue.validator_model_id == model_id
         ]
-        criteria_values = {
-            (
-                issue.criteria.value
-                if hasattr(issue.criteria, "value")
-                else str(issue.criteria)
-            )
-            for issue in model_issues
-        }
-        if not criteria_values:
-            criteria_label = "none"
-        elif len(criteria_values) == 1:
-            criteria_label = next(iter(criteria_values))
-        else:
-            criteria_label = "multiple"
+        criteria_label = _summarize_issue_criteria(model_issues)
 
         model_validations.append(
             {

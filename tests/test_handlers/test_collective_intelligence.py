@@ -1,6 +1,9 @@
 """Focused tests for collective-intelligence handler mapping helpers."""
 
 from typing import Any
+from unittest.mock import patch
+
+import pytest
 
 from openrouter_mcp.collective_intelligence.adaptive_router import (
     RoutingDecision,
@@ -40,6 +43,7 @@ from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     SubTaskResult,
 )
 from openrouter_mcp.config.constants import CollectiveDefaults, ModelDefaults
+from openrouter_mcp.handlers import _collective_serialization as serialization_module
 from openrouter_mcp.handlers._collective_serialization import (
     _build_model_validations,
     _serialize_consensus_result,
@@ -207,6 +211,103 @@ def test_model_validations_preserve_explicit_order_duplicates_and_inputs() -> No
     ]
     assert report.validator_models == original_validator_models
     assert report.issues == original_issues
+
+
+@pytest.mark.parametrize(
+    ("issues", "expected"),
+    [
+        ([], "none"),
+        (
+            [
+                _issue(
+                    issue_id="issue-1",
+                    validator_model_id="validator-a",
+                    criteria=ValidationCriteria.ACCURACY,
+                    severity=ValidationSeverity.HIGH,
+                )
+            ],
+            "accuracy",
+        ),
+    ],
+)
+def test_summarize_issue_criteria_preserves_empty_and_enum_labels(
+    issues,
+    expected,
+) -> None:
+    assert serialization_module._summarize_issue_criteria(issues) == expected
+
+
+def test_summarize_issue_criteria_deduplicates_custom_values() -> None:
+    first = _issue(
+        issue_id="issue-1",
+        validator_model_id="validator-a",
+        criteria=ValidationCriteria.ACCURACY,
+        severity=ValidationSeverity.HIGH,
+    )
+    second = _issue(
+        issue_id="issue-2",
+        validator_model_id="validator-a",
+        criteria=ValidationCriteria.CONSISTENCY,
+        severity=ValidationSeverity.MEDIUM,
+    )
+    first.criteria = "custom"
+    second.criteria = "custom"
+
+    assert serialization_module._summarize_issue_criteria([first, second]) == "custom"
+
+
+def test_summarize_issue_criteria_preserves_access_order_and_multiple_label() -> None:
+    events = []
+
+    class RecordingIssue:
+        def __init__(self, label, criteria):
+            self.label = label
+            self._criteria = criteria
+
+        @property
+        def criteria(self):
+            events.append(self.label)
+            return self._criteria
+
+    issues = [
+        RecordingIssue("enum", ValidationCriteria.ACCURACY),
+        RecordingIssue("custom", "custom"),
+    ]
+
+    assert serialization_module._summarize_issue_criteria(issues) == "multiple"
+    assert events == ["enum", "enum", "custom", "custom"]
+
+
+def test_model_validations_delegates_criteria_summary_for_each_explicit_model() -> None:
+    issues = [
+        _issue(
+            issue_id="issue-1",
+            validator_model_id="validator-a",
+            criteria=ValidationCriteria.ACCURACY,
+            severity=ValidationSeverity.HIGH,
+        )
+    ]
+    report = _build_validation_result(
+        validator_models=["validator-a", "validator-b", "validator-a"],
+        issues=issues,
+    ).validation_report
+
+    with patch.object(
+        serialization_module,
+        "_summarize_issue_criteria",
+        return_value="delegated",
+    ) as summarize:
+        result = _build_model_validations(report, issues)
+
+    assert result == [
+        {"model": "validator-a", "criteria": "delegated", "issues_found": 1},
+        {"model": "validator-b", "criteria": "delegated", "issues_found": 0},
+        {"model": "validator-a", "criteria": "delegated", "issues_found": 1},
+    ]
+    assert summarize.call_count == 3
+    assert summarize.call_args_list[0].args[0] == [issues[0]]
+    assert summarize.call_args_list[1].args[0] == []
+    assert summarize.call_args_list[2].args[0] == [issues[0]]
 
 
 def test_build_model_validations_derives_truthy_models_in_first_seen_order() -> None:
