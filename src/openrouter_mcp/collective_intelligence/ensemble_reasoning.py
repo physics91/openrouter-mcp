@@ -58,7 +58,9 @@ class SubTask:
     task_type: TaskType
     required_capabilities: List[ModelCapability]
     priority: TaskPriority = TaskPriority.MEDIUM
-    dependencies: List[str] = field(default_factory=list)  # IDs of prerequisite sub-tasks
+    dependencies: List[str] = field(
+        default_factory=list
+    )  # IDs of prerequisite sub-tasks
     timeout_seconds: float = 30.0
     max_retries: int = 2
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -252,12 +254,16 @@ class TaskDecomposer:
 
         return ensemble_task
 
-    def _select_decomposition_strategy(self, task: TaskContext) -> DecompositionStrategy:
+    def _select_decomposition_strategy(
+        self, task: TaskContext
+    ) -> DecompositionStrategy:
         """Select appropriate decomposition strategy based on task characteristics."""
 
         # Check task type rules
         if task.task_type in self.decomposition_rules:
-            strategy_value = self.decomposition_rules[task.task_type].get("default_strategy")
+            strategy_value = self.decomposition_rules[task.task_type].get(
+                "default_strategy"
+            )
             if isinstance(strategy_value, DecompositionStrategy):
                 default_strategy = strategy_value
             else:
@@ -310,7 +316,9 @@ class TaskDecomposer:
                 parent_task_id=task.task_id,
                 content=f"{phase.capitalize()}: {task.content}",
                 task_type=task.task_type,
-                required_capabilities=self._get_phase_capabilities(phase, task.task_type),
+                required_capabilities=self._get_phase_capabilities(
+                    phase, task.task_type
+                ),
                 priority=TaskPriority.HIGH if i < 2 else TaskPriority.MEDIUM,
                 dependencies=[f"{task.task_id}_seq_{i}"] if i > 0 else [],
             )
@@ -351,7 +359,9 @@ class TaskDecomposer:
                 parent_task_id=task.task_id,
                 content=f"{aspect.capitalize()}: {task.content}",
                 task_type=task.task_type,
-                required_capabilities=self._get_aspect_capabilities(aspect, task.task_type),
+                required_capabilities=self._get_aspect_capabilities(
+                    aspect, task.task_type
+                ),
                 priority=TaskPriority.HIGH if i < 2 else TaskPriority.MEDIUM,
             )
             sub_tasks.append(sub_task)
@@ -375,7 +385,9 @@ class TaskDecomposer:
                 parent_task_id=task.task_id,
                 content=f"{category.capitalize()}: {task.content}",
                 task_type=task.task_type,
-                required_capabilities=self._get_category_capabilities(category, task.task_type),
+                required_capabilities=self._get_category_capabilities(
+                    category, task.task_type
+                ),
                 priority=TaskPriority.HIGH,
             )
             sub_tasks.append(main_task)
@@ -410,7 +422,9 @@ class TaskDecomposer:
         # For now, fall back to sequential decomposition
         return self._decompose_sequential(task)
 
-    def _get_phase_capabilities(self, phase: str, task_type: TaskType) -> List[ModelCapability]:
+    def _get_phase_capabilities(
+        self, phase: str, task_type: TaskType
+    ) -> List[ModelCapability]:
         """Get required capabilities for a specific phase."""
         phase_lower = phase.lower()
 
@@ -426,7 +440,9 @@ class TaskDecomposer:
         else:
             return [ModelCapability.REASONING]
 
-    def _get_aspect_capabilities(self, aspect: str, task_type: TaskType) -> List[ModelCapability]:
+    def _get_aspect_capabilities(
+        self, aspect: str, task_type: TaskType
+    ) -> List[ModelCapability]:
         """Get required capabilities for a specific aspect."""
         aspect_lower = aspect.lower()
 
@@ -515,11 +531,15 @@ class ModelAssigner:
         scored_models.sort(key=lambda x: x[1], reverse=True)
 
         if not scored_models:
-            raise ValueError(f"No suitable model found for sub-task {sub_task.sub_task_id}")
+            raise ValueError(
+                f"No suitable model found for sub-task {sub_task.sub_task_id}"
+            )
 
         best_model, score, cost, time = scored_models[0]
 
-        justification = self._generate_assignment_justification(best_model, sub_task, score)
+        justification = self._generate_assignment_justification(
+            best_model, sub_task, score
+        )
 
         return ModelAssignment(
             sub_task_id=sub_task.sub_task_id,
@@ -592,10 +612,14 @@ class ModelAssigner:
             if cap in model.capabilities and model.capabilities[cap] > 0.7:
                 matching_capabilities.append(cap.value)
 
-        justification = f"Selected {model.name} (score: {score:.2f}) for {sub_task.sub_task_id}"
+        justification = (
+            f"Selected {model.name} (score: {score:.2f}) for {sub_task.sub_task_id}"
+        )
 
         if matching_capabilities:
-            justification += f" due to strong {', '.join(matching_capabilities)} capabilities"
+            justification += (
+                f" due to strong {', '.join(matching_capabilities)} capabilities"
+            )
 
         if model.availability > 0.9:
             justification += " and high availability"
@@ -651,7 +675,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             sub_task_results = await self._execute_sub_tasks(ensemble_task)
 
             # Step 4: Aggregate results
-            final_result = await self._aggregate_results(ensemble_task, sub_task_results)
+            final_result = await self._aggregate_results(
+                ensemble_task, sub_task_results
+            )
 
             # Step 5: Calculate metrics
             end_time = datetime.now()
@@ -675,7 +701,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             logger.error(f"Ensemble reasoning failed for task {task.task_id}: {e!s}")
             raise
 
-    async def _execute_sub_tasks(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
+    async def _execute_sub_tasks(
+        self, ensemble_task: EnsembleTask
+    ) -> List[SubTaskResult]:
         """Execute all sub-tasks according to their dependencies and strategy."""
 
         execute_dispatch = {
@@ -718,7 +746,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         assignment = self._find_assignment(sub_task.sub_task_id, assignments)
         return self._build_failed_subtask_result(sub_task, assignment, result)
 
-    async def _execute_sequential(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
+    async def _execute_sequential(
+        self, ensemble_task: EnsembleTask
+    ) -> List[SubTaskResult]:
         """Execute sub-tasks sequentially."""
         results = []
 
@@ -735,7 +765,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         return results
 
-    async def _execute_parallel(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
+    async def _execute_parallel(
+        self, ensemble_task: EnsembleTask
+    ) -> List[SubTaskResult]:
         """Execute sub-tasks in parallel."""
 
         # Execute all sub-tasks concurrently
@@ -758,7 +790,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         return final_results
 
-    async def _execute_hierarchical(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
+    async def _execute_hierarchical(
+        self, ensemble_task: EnsembleTask
+    ) -> List[SubTaskResult]:
         """Execute sub-tasks respecting hierarchical dependencies."""
         results: List[SubTaskResult] = []
         completed_tasks: set[str] = set()
@@ -797,7 +831,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         return results
 
-    async def _execute_dynamic(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
+    async def _execute_dynamic(
+        self, ensemble_task: EnsembleTask
+    ) -> List[SubTaskResult]:
         """Execute sub-tasks with dynamic adaptation."""
         # For now, fall back to parallel execution
         # In practice, this would adapt based on intermediate results
@@ -852,7 +888,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                     await asyncio.sleep(1.0 * retry_count)  # Exponential backoff
 
         # All retries failed
-        logger.error(f"Sub-task {sub_task.sub_task_id} failed after {retry_count} attempts")
+        logger.error(
+            f"Sub-task {sub_task.sub_task_id} failed after {retry_count} attempts"
+        )
 
         return self._build_failed_subtask_result(
             sub_task, assignment, last_error, retry_count=retry_count
@@ -900,11 +938,15 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         failed_results = [r for r in sub_task_results if not r.success]
 
         # Generate final content
-        final_content = self._synthesize_final_content(successful_results, ensemble_task)
+        final_content = self._synthesize_final_content(
+            successful_results, ensemble_task
+        )
 
         # Calculate metrics
         total_cost = sum(r.assignment.estimated_cost for r in sub_task_results)
-        success_rate = len(successful_results) / len(sub_task_results) if sub_task_results else 0.0
+        success_rate = (
+            len(successful_results) / len(sub_task_results) if sub_task_results else 0.0
+        )
 
         overall_quality = self._calculate_overall_quality(successful_results)
 
@@ -936,13 +978,19 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         # Group results by priority
         critical_results = [
-            r for r in successful_results if r.sub_task.priority == TaskPriority.CRITICAL
+            r
+            for r in successful_results
+            if r.sub_task.priority == TaskPriority.CRITICAL
         ]
-        high_results = [r for r in successful_results if r.sub_task.priority == TaskPriority.HIGH]
+        high_results = [
+            r for r in successful_results if r.sub_task.priority == TaskPriority.HIGH
+        ]
         medium_results = [
             r for r in successful_results if r.sub_task.priority == TaskPriority.MEDIUM
         ]
-        low_results = [r for r in successful_results if r.sub_task.priority == TaskPriority.LOW]
+        low_results = [
+            r for r in successful_results if r.sub_task.priority == TaskPriority.LOW
+        ]
 
         # Build final content
         content_parts = []
@@ -969,7 +1017,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         return "\n\n".join(content_parts)
 
-    def _calculate_overall_quality(self, successful_results: List[SubTaskResult]) -> QualityMetrics:
+    def _calculate_overall_quality(
+        self, successful_results: List[SubTaskResult]
+    ) -> QualityMetrics:
         """Calculate overall quality metrics from sub-task results."""
 
         if not successful_results:
@@ -978,7 +1028,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         confidences = [r.result.confidence for r in successful_results]
 
         accuracy = sum(confidences) / len(confidences)
-        consistency = 1.0 - (max(confidences) - min(confidences)) if len(confidences) > 1 else 1.0
+        consistency = (
+            1.0 - (max(confidences) - min(confidences)) if len(confidences) > 1 else 1.0
+        )
         completeness = len(successful_results) / len(
             successful_results
         )  # Always 1.0 for successful
@@ -1006,7 +1058,8 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         successful_results = [r for r in sub_task_results if r.success]
 
         avg_response_time = (
-            sum(r.result.processing_time for r in successful_results) / len(successful_results)
+            sum(r.result.processing_time for r in successful_results)
+            / len(successful_results)
             if successful_results
             else 0.0
         )
@@ -1031,7 +1084,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             resource_utilization=resource_utilization,
         )
 
-    def get_processing_history(self, limit: Optional[int] = None) -> List[EnsembleResult]:
+    def get_processing_history(
+        self, limit: Optional[int] = None
+    ) -> List[EnsembleResult]:
         """Get historical ensemble processing results."""
         if limit:
             return list(self._processing_history)[-limit:]
