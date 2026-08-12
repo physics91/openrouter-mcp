@@ -234,7 +234,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         except Exception as e:
             logger.error(
-                f"Collaborative solving failed for session {session_id}: {str(e)}",
+                f"Collaborative solving failed for session {session_id}: {e!s}",
                 exc_info=True,
             )
 
@@ -245,7 +245,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
             if should_cancel:
                 cancelled = await self.cancellation_manager.cancel_all_tasks(
-                    request_id, f"Cancelling due to failure: {str(e)}"
+                    request_id, f"Cancelling due to failure: {e!s}"
                 )
                 logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
 
