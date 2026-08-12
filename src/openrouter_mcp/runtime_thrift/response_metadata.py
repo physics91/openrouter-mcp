@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterable, Dict
+from collections.abc import AsyncIterable
+from typing import Any
 
 from ..utils import estimate_cost_from_usage
 from ..utils.async_utils import collect_async_iterable
@@ -14,7 +15,7 @@ from .summary import build_thrift_summary
 async def estimate_response_cost_usd(
     client: Any,
     model: str,
-    usage: Dict[str, Any] | None,
+    usage: dict[str, Any] | None,
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
@@ -40,12 +41,12 @@ async def estimate_response_cost_usd(
 
 
 def attach_thrift_metadata(
-    payload: Dict[str, Any],
-    thrift_metrics: Dict[str, Any],
+    payload: dict[str, Any],
+    thrift_metrics: dict[str, Any],
     total_cost_usd: float,
     *,
     request_count: int = 1,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     enriched = dict(payload)
     enriched["thrift_metrics"] = thrift_metrics
     enriched["thrift_summary"] = build_thrift_summary(
@@ -59,11 +60,11 @@ def attach_thrift_metadata(
 
 
 def attach_thrift_metadata_from_payload(
-    payload: Dict[str, Any],
-    thrift_metrics: Dict[str, Any],
+    payload: dict[str, Any],
+    thrift_metrics: dict[str, Any],
     *,
     total_cost_key: str = "total_cost",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         total_cost_usd = round(float(payload.get(total_cost_key, 0.0)), 8)
     except (TypeError, ValueError):
@@ -85,13 +86,13 @@ def attach_thrift_metadata_from_payload(
 async def enrich_response_with_thrift_metadata(
     client: Any,
     model: str,
-    payload: Dict[str, Any],
-    thrift_metrics: Dict[str, Any],
+    payload: dict[str, Any],
+    thrift_metrics: dict[str, Any],
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
     total_cost_override_usd: float | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if total_cost_override_usd is None:
         total_cost_usd = await estimate_response_cost_usd(
             client,
@@ -113,12 +114,12 @@ async def enrich_response_with_thrift_metadata(
 async def enrich_final_stream_chunk_with_thrift_metadata(
     client: Any,
     model: str,
-    chunks: list[Dict[str, Any]],
-    thrift_metrics: Dict[str, Any],
+    chunks: list[dict[str, Any]],
+    thrift_metrics: dict[str, Any],
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Attach thrift metadata to the final stream chunk, if present."""
     if not chunks:
         return chunks
@@ -137,12 +138,12 @@ async def enrich_final_stream_chunk_with_thrift_metadata(
 async def enrich_response_with_request_thrift_metadata(
     client: Any,
     model: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
     total_cost_override_usd: float | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Snapshot request metrics and enrich one response payload."""
     thrift_metrics = get_request_thrift_metrics_snapshot()
     return await enrich_response_with_thrift_metadata(
@@ -159,11 +160,11 @@ async def enrich_response_with_request_thrift_metadata(
 async def enrich_final_stream_chunk_with_request_thrift_metadata(
     client: Any,
     model: str,
-    chunks: list[Dict[str, Any]],
+    chunks: list[dict[str, Any]],
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Snapshot request metrics and enrich the final stream chunk."""
     thrift_metrics = get_request_thrift_metrics_snapshot()
     return await enrich_final_stream_chunk_with_thrift_metadata(
@@ -179,11 +180,11 @@ async def enrich_final_stream_chunk_with_request_thrift_metadata(
 async def collect_stream_with_request_thrift_metadata(
     client: Any,
     model: str,
-    stream: AsyncIterable[Dict[str, Any]],
+    stream: AsyncIterable[dict[str, Any]],
     *,
     logger: logging.Logger | None = None,
     log_context: str = "response",
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Collect a response stream before enriching its final chunk."""
     chunks = await collect_async_iterable(stream)
     return await enrich_final_stream_chunk_with_request_thrift_metadata(
