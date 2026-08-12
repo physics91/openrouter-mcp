@@ -268,6 +268,40 @@ def _serialize_weighted_performance_ranking(
     ]
 
 
+def _serialize_detailed_performance_metrics(
+    successful_results: Dict[str, EnhancedBenchmarkResult],
+) -> Dict[str, Dict[str, Any]]:
+    detailed_metrics: Dict[str, Dict[str, Any]] = {}
+
+    for model_id, result in successful_results.items():
+        if result.metrics is None:
+            continue
+
+        metrics = result.metrics
+        detailed_metrics[model_id] = {
+            "response_time": {
+                "avg": metrics.avg_response_time,
+                "min": metrics.min_response_time,
+                "max": metrics.max_response_time,
+            },
+            "tokens": {
+                "avg_prompt": metrics.avg_prompt_tokens,
+                "avg_completion": metrics.avg_completion_tokens,
+                "avg_total": metrics.avg_total_tokens,
+            },
+            "cost": {
+                "avg": metrics.avg_cost,
+                "min": metrics.min_cost,
+                "max": metrics.max_cost,
+            },
+            "quality": metrics.quality_score,
+            "throughput": metrics.throughput,
+            "success_rate": metrics.success_rate,
+        }
+
+    return detailed_metrics
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -757,7 +791,9 @@ async def compare_model_performance(
         analyzer = ModelPerformanceAnalyzer()
 
         # 가중치 적용한 랭킹
-        ranking = analyzer.rank_models_with_weights(list(successful_results.values()), weights)
+        ranking = analyzer.rank_models_with_weights(
+            list(successful_results.values()), weights
+        )
 
         # 결과 구성
         comparison_data: Dict[str, Any] = {
@@ -768,35 +804,11 @@ async def compare_model_performance(
                 "include_cost_analysis": include_cost_analysis,
             },
             "ranking": _serialize_weighted_performance_ranking(ranking),
-            "detailed_metrics": {},
+            "detailed_metrics": _serialize_detailed_performance_metrics(
+                successful_results
+            ),
             "analysis": {},
         }
-
-        # 상세 메트릭 추가
-        for model_id, result in successful_results.items():
-            if result.metrics:
-                metrics_data = {
-                    "response_time": {
-                        "avg": result.metrics.avg_response_time,
-                        "min": result.metrics.min_response_time,
-                        "max": result.metrics.max_response_time,
-                    },
-                    "tokens": {
-                        "avg_prompt": result.metrics.avg_prompt_tokens,
-                        "avg_completion": result.metrics.avg_completion_tokens,
-                        "avg_total": result.metrics.avg_total_tokens,
-                    },
-                    "cost": {
-                        "avg": result.metrics.avg_cost,
-                        "min": result.metrics.min_cost,
-                        "max": result.metrics.max_cost,
-                    },
-                    "quality": result.metrics.quality_score,
-                    "throughput": result.metrics.throughput,
-                    "success_rate": result.metrics.success_rate,
-                }
-
-                comparison_data["detailed_metrics"][model_id] = metrics_data
 
         # 비용 분석 추가
         if include_cost_analysis:

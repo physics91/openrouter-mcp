@@ -174,13 +174,68 @@ class TestMCPBenchmarkTools:
             },
         ]
 
+    def test_serialize_detailed_performance_metrics_preserves_contract(self):
+        result_with_metrics = EnhancedBenchmarkResult(
+            model_id="payload-model-id",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=EnhancedBenchmarkMetrics(
+                avg_response_time=1.1,
+                min_response_time=0.9,
+                max_response_time=1.3,
+                avg_cost=0.004,
+                min_cost=0.002,
+                max_cost=0.006,
+                avg_prompt_tokens=11.0,
+                avg_completion_tokens=22.0,
+                avg_total_tokens=33.0,
+                quality_score=0.88,
+                throughput=44.0,
+                success_rate=0.75,
+            ),
+            timestamp=datetime.now(),
+        )
+        result_without_metrics = EnhancedBenchmarkResult(
+            model_id="no-metrics-model",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=None,
+            timestamp=datetime.now(),
+        )
+
+        serialized = mcp_benchmark._serialize_detailed_performance_metrics(
+            {
+                "input-model-key": result_with_metrics,
+                "omitted-model-key": result_without_metrics,
+            }
+        )
+
+        assert serialized == {
+            "input-model-key": {
+                "response_time": {"avg": 1.1, "min": 0.9, "max": 1.3},
+                "tokens": {
+                    "avg_prompt": 11.0,
+                    "avg_completion": 22.0,
+                    "avg_total": 33.0,
+                },
+                "cost": {"avg": 0.004, "min": 0.002, "max": 0.006},
+                "quality": 0.88,
+                "throughput": 44.0,
+                "success_rate": 0.75,
+            }
+        }
+
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self, mock_env):
         """벤치마크 핸들러 싱글톤 테스트"""
         with patch(
             "src.openrouter_mcp.handlers.mcp_benchmark.EnhancedBenchmarkHandler"
         ) as mock_handler_class:
-            with patch("src.openrouter_mcp.handlers.mcp_benchmark.ModelCache") as mock_cache_class:
+            with patch(
+                "src.openrouter_mcp.handlers.mcp_benchmark.ModelCache"
+            ) as mock_cache_class:
                 mock_handler = Mock()
                 mock_handler_class.return_value = mock_handler
                 mock_cache_class.return_value = Mock()
@@ -588,6 +643,21 @@ class TestMCPBenchmarkTools:
                         },
                     }
                 ]
+                assert result["detailed_metrics"] == {
+                    model_id: {
+                        "response_time": {"avg": 1.5, "min": 0.0, "max": 0.0},
+                        "tokens": {
+                            "avg_prompt": 100.0,
+                            "avg_completion": 50.0,
+                            "avg_total": 150.0,
+                        },
+                        "cost": {"avg": 0.001, "min": 0.0, "max": 0.0},
+                        "quality": 8.5,
+                        "throughput": 100.0,
+                        "success_rate": 1.0,
+                    }
+                    for model_id in models
+                }
 
                 # 가중치 정규화 검증
                 total_weight = sum(result["config"]["weights"].values())
