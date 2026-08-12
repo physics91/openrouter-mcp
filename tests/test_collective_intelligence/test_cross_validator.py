@@ -7,7 +7,7 @@ including peer review, adversarial validation, and specialized validators.
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 
@@ -496,6 +496,70 @@ class TestCrossValidator:
                 "criteria": ValidationCriteria.ACCURACY.value,
                 "error": "peer reviewer unavailable",
             }
+        ]
+
+    @pytest.mark.unit
+    def test_collect_peer_review_results_preserves_positional_pairing_and_order(
+        self, mock_model_provider
+    ):
+        class FatalPeerReview(BaseException):
+            pass
+
+        validator = CrossValidator(mock_model_provider)
+        first_result = ProcessingResult(
+            task_id="peer_review_1",
+            model_id="duplicate",
+            content="first response",
+            confidence=0.8,
+        )
+        second_result = ProcessingResult(
+            task_id="peer_review_2",
+            model_id="duplicate",
+            content="second response",
+            confidence=0.9,
+        )
+        first_issue = Mock(spec=ValidationIssue)
+        second_issue = Mock(spec=ValidationIssue)
+        third_issue = Mock(spec=ValidationIssue)
+        regular_error = RuntimeError("regular failure")
+        fatal_error = FatalPeerReview("fatal failure")
+        validation_results = [
+            first_result,
+            regular_error,
+            second_result,
+            fatal_error,
+        ]
+        validator_models = ["duplicate", "failed", "duplicate", "fatal"]
+
+        with patch.object(
+            validator,
+            "_parse_peer_review_result",
+            side_effect=[[first_issue], [second_issue, third_issue]],
+        ) as parse_result, patch(
+            "src.openrouter_mcp.collective_intelligence.cross_validator.logger.warning"
+        ) as warning:
+            issues, failures = validator._collect_peer_review_results(
+                validation_results, validator_models
+            )
+
+        assert issues == [first_issue, second_issue, third_issue]
+        assert issues[0] is first_issue
+        assert issues[1] is second_issue
+        assert issues[2] is third_issue
+        assert parse_result.call_args_list == [
+            call(first_result, "duplicate"),
+            call(second_result, "duplicate"),
+        ]
+        assert len(failures) == 2
+        assert failures[0].validator_model_id == "failed"
+        assert failures[0].criteria is ValidationCriteria.ACCURACY
+        assert failures[0].error == "regular failure"
+        assert failures[1].validator_model_id == "fatal"
+        assert failures[1].criteria is ValidationCriteria.ACCURACY
+        assert failures[1].error == "fatal failure"
+        assert warning.call_args_list == [
+            call("Validation failed for validator failed: regular failure"),
+            call("Validation failed for validator fatal: fatal failure"),
         ]
 
     @pytest.mark.asyncio

@@ -14,7 +14,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from .base import (
     CollectiveIntelligenceComponent,
@@ -606,9 +606,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
     ) -> ValidationReport:
         """Perform peer review validation."""
 
-        all_issues: List[ValidationIssue] = []
         criteria_scores: Dict[ValidationCriteria, float] = {}
-        validator_failures: List[ValidatorFailureRecord] = []
 
         # Create validation tasks for each validator
         validation_tasks = []
@@ -622,24 +620,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
             return_exceptions=True,
         )
 
-        # Process validation results
-        for i, validation_result in enumerate(validation_results):
-            if isinstance(validation_result, BaseException):
-                logger.warning(
-                    f"Validation failed for validator {validator_models[i]}: {str(validation_result)}"
-                )
-                validator_failures.append(
-                    ValidatorFailureRecord(
-                        validator_model_id=validator_models[i],
-                        criteria=ValidationCriteria.ACCURACY,
-                        error=str(validation_result),
-                    )
-                )
-                continue
-
-            validator_model_id = validator_models[i]
-            issues = self._parse_peer_review_result(validation_result, validator_model_id)
-            all_issues.extend(issues)
+        all_issues, validator_failures = self._collect_peer_review_results(
+            validation_results, validator_models
+        )
 
         # Calculate criteria scores
         for criteria in self.config.criteria:
@@ -662,6 +645,37 @@ class CrossValidator(CollectiveIntelligenceComponent):
             recommendations=self._generate_recommendations(all_issues),
             metadata=self._build_validator_failure_metadata(validator_failures),
         )
+
+    def _collect_peer_review_results(
+        self,
+        validation_results: List[Union[ProcessingResult, BaseException]],
+        validator_models: List[str],
+    ) -> Tuple[List[ValidationIssue], List[ValidatorFailureRecord]]:
+        """Collect peer review issues and transport failures in result order."""
+        all_issues: List[ValidationIssue] = []
+        validator_failures: List[ValidatorFailureRecord] = []
+
+        for i, validation_result in enumerate(validation_results):
+            if isinstance(validation_result, BaseException):
+                logger.warning(
+                    f"Validation failed for validator {validator_models[i]}: {str(validation_result)}"
+                )
+                validator_failures.append(
+                    ValidatorFailureRecord(
+                        validator_model_id=validator_models[i],
+                        criteria=ValidationCriteria.ACCURACY,
+                        error=str(validation_result),
+                    )
+                )
+                continue
+
+            validator_model_id = validator_models[i]
+            issues = self._parse_peer_review_result(
+                validation_result, validator_model_id
+            )
+            all_issues.extend(issues)
+
+        return all_issues, validator_failures
 
     def _create_peer_review_task(
         self,
