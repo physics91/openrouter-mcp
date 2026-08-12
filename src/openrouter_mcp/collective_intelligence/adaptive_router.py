@@ -578,7 +578,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             predicted_metrics,
             load_status,
             strategy,
-            thrift_feedback if routing_policy is None else thrift_feedback,
+            thrift_feedback,
             routing_policy=routing_policy,
         )
         preference_matches = self._get_preference_matches(model, routing_policy)
