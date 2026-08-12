@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..utils.token_counter import count_message_tokens
 from .policy import get_runtime_thrift_policy
@@ -101,6 +101,27 @@ def _apply_breakpoint_to_message(message: Dict[str, Any]) -> Optional[Dict[str, 
     return None
 
 
+def _select_prefix_cache_breakpoint(
+    message_list: List[Dict[str, Any]],
+    model_id: str,
+    minimum_tokens: int,
+) -> Tuple[Optional[int], int]:
+    """Select the latest eligible cache breakpoint before the final message."""
+    chosen_index: Optional[int] = None
+    chosen_tokens = 0
+
+    for idx in range(len(message_list) - 1):
+        candidate_tokens = count_message_tokens(message_list[: idx + 1], model_id)
+        if candidate_tokens < minimum_tokens:
+            continue
+        if _apply_breakpoint_to_message(message_list[idx]) is None:
+            continue
+        chosen_index = idx
+        chosen_tokens = candidate_tokens
+
+    return chosen_index, chosen_tokens
+
+
 def apply_prefix_cache_planner(
     messages: Sequence[Dict[str, Any]],
     model_id: str,
@@ -127,23 +148,19 @@ def apply_prefix_cache_planner(
             provider=provider,
             breakpoint_message_index=None,
             cacheable_prompt_tokens=0,
-            minimum_cacheable_tokens=None
-            if provider is None
-            else _minimum_cacheable_tokens(model_id, provider),
+            minimum_cacheable_tokens=(
+                None
+                if provider is None
+                else _minimum_cacheable_tokens(model_id, provider)
+            ),
         )
 
     minimum_tokens = _minimum_cacheable_tokens(model_id, provider)
-    chosen_index: Optional[int] = None
-    chosen_tokens = 0
-
-    for idx in range(len(message_list) - 1):
-        candidate_tokens = count_message_tokens(message_list[: idx + 1], model_id)
-        if candidate_tokens < minimum_tokens:
-            continue
-        if _apply_breakpoint_to_message(message_list[idx]) is None:
-            continue
-        chosen_index = idx
-        chosen_tokens = candidate_tokens
+    chosen_index, chosen_tokens = _select_prefix_cache_breakpoint(
+        message_list,
+        model_id,
+        minimum_tokens,
+    )
 
     if chosen_index is None:
         return PrefixCachePlan(
