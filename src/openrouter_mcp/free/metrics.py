@@ -7,7 +7,7 @@ import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ..config.constants import FreeChatConfig
 from ..utils._atomic_file import replace_file_atomically
@@ -28,7 +28,7 @@ class ModelMetrics:
     failure_count: int = 0
     total_latency_ms: float = 0.0
     total_tokens: int = 0
-    error_counts: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    error_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     @property
     def success_rate(self) -> float:
@@ -51,7 +51,7 @@ class ModelMetrics:
             return 0.0
         return self.total_tokens / (self.total_latency_ms / 1000.0)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "total_requests": self.total_requests,
             "success_count": self.success_count,
@@ -62,7 +62,7 @@ class ModelMetrics:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ModelMetrics:
+    def from_dict(cls, data: dict[str, Any]) -> ModelMetrics:
         m = cls(
             total_requests=data.get("total_requests", 0),
             success_count=data.get("success_count", 0),
@@ -83,7 +83,7 @@ class MetricsCollector:
     """
 
     def __init__(self, persistence_path: Optional[str] = None) -> None:
-        self._metrics: Dict[str, ModelMetrics] = {}
+        self._metrics: dict[str, ModelMetrics] = {}
         self._persistence_path = persistence_path
         self._record_count_since_save = 0
         if persistence_path:
@@ -114,7 +114,7 @@ class MetricsCollector:
 
     def _write_metrics_atomically(
         self,
-        data: Dict[str, Dict[str, Any]],
+        data: dict[str, dict[str, Any]],
         dir_path: str,
     ) -> None:
         """Write a metrics snapshot with temp-file replacement and cleanup."""
@@ -171,7 +171,7 @@ class MetricsCollector:
         """Return metrics for *model_id*, or ``None`` if unknown."""
         return self._metrics.get(model_id)
 
-    def get_all_metrics(self) -> Dict[str, ModelMetrics]:
+    def get_all_metrics(self) -> dict[str, ModelMetrics]:
         """Return a shallow copy of all collected metrics."""
         return dict(self._metrics)
 
