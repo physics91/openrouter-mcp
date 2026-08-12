@@ -75,92 +75,93 @@ def _build_cache_efficiency_breakdown(metrics: Dict[str, Any], key: str) -> Dict
     )
 
 
+def _build_cache_hotspot_reason(bucket: Dict[str, Any]) -> str:
+    cache_hit_request_rate_pct = round(
+        _as_float(bucket.get("cache_hit_request_rate_pct")),
+        2,
+    )
+    cache_write_request_rate_pct = round(
+        _as_float(bucket.get("cache_write_request_rate_pct")),
+        2,
+    )
+    reuse_to_write_ratio = bucket.get("reuse_to_write_ratio")
+    if reuse_to_write_ratio is None:
+        return "Cache savings exist, but reuse depth is still too shallow to explain the hotspot"
+
+    reuse_to_write_ratio = round(_as_float(reuse_to_write_ratio), 4)
+
+    if cache_hit_request_rate_pct >= 50.0 and reuse_to_write_ratio >= 4.0:
+        return "High hit rate and strong reuse-to-write ratio make this a primary savings source"
+
+    if (
+        reuse_to_write_ratio >= 4.0
+        and cache_hit_request_rate_pct >= cache_write_request_rate_pct
+    ):
+        return "Moderate hit rate, but each cache write gets reused multiple times"
+
+    if (
+        cache_hit_request_rate_pct >= cache_write_request_rate_pct
+        and reuse_to_write_ratio >= 2.0
+    ):
+        return (
+            "Hit volume keeps pace with writes, so warming converts into real savings"
+        )
+
+    if cache_write_request_rate_pct > cache_hit_request_rate_pct:
+        return "Cache writes are visible, but hits are not keeping up yet"
+
+    return "Some savings exist, but cache efficiency is still middling"
+
+
+def _summarize_cache_hotspots(
+    breakdown: Dict[str, Any],
+    *,
+    key_name: str,
+) -> list[Dict[str, Any]]:
+    items: list[Dict[str, Any]] = []
+    for bucket_key, bucket in breakdown.items():
+        if not isinstance(bucket, dict):
+            continue
+        items.append(
+            {
+                key_name: str(bucket_key),
+                "saved_cost_usd": round(_as_float(bucket.get("saved_cost_usd")), 8),
+                "cached_prompt_tokens": _as_int(bucket.get("cached_prompt_tokens")),
+                "cache_hit_request_rate_pct": round(
+                    _as_float(bucket.get("cache_hit_request_rate_pct")),
+                    2,
+                ),
+                "cache_write_request_rate_pct": round(
+                    _as_float(bucket.get("cache_write_request_rate_pct")),
+                    2,
+                ),
+                "reuse_to_write_ratio": (
+                    None
+                    if bucket.get("reuse_to_write_ratio") is None
+                    else round(_as_float(bucket.get("reuse_to_write_ratio")), 4)
+                ),
+                "reason": _build_cache_hotspot_reason(bucket),
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            -_as_float(item.get("saved_cost_usd")),
+            -_as_int(item.get("cached_prompt_tokens")),
+            str(item.get(key_name)),
+        )
+    )
+    return items[:3]
+
+
 def _build_cache_hotspots(
     providers: Dict[str, Any],
     models: Dict[str, Any],
 ) -> Dict[str, Any]:
-    def build_reason(bucket: Dict[str, Any]) -> str:
-        cache_hit_request_rate_pct = round(
-            _as_float(bucket.get("cache_hit_request_rate_pct")),
-            2,
-        )
-        cache_write_request_rate_pct = round(
-            _as_float(bucket.get("cache_write_request_rate_pct")),
-            2,
-        )
-        reuse_to_write_ratio = bucket.get("reuse_to_write_ratio")
-        if reuse_to_write_ratio is None:
-            return (
-                "Cache savings exist, but reuse depth is still too shallow to explain the hotspot"
-            )
-
-        reuse_to_write_ratio = round(_as_float(reuse_to_write_ratio), 4)
-
-        if cache_hit_request_rate_pct >= 50.0 and reuse_to_write_ratio >= 4.0:
-            return (
-                "High hit rate and strong reuse-to-write ratio make this a primary savings source"
-            )
-
-        if (
-            reuse_to_write_ratio >= 4.0
-            and cache_hit_request_rate_pct >= cache_write_request_rate_pct
-        ):
-            return "Moderate hit rate, but each cache write gets reused multiple times"
-
-        if (
-            cache_hit_request_rate_pct >= cache_write_request_rate_pct
-            and reuse_to_write_ratio >= 2.0
-        ):
-            return "Hit volume keeps pace with writes, so warming converts into real savings"
-
-        if cache_write_request_rate_pct > cache_hit_request_rate_pct:
-            return "Cache writes are visible, but hits are not keeping up yet"
-
-        return "Some savings exist, but cache efficiency is still middling"
-
-    def summarize(
-        breakdown: Dict[str, Any],
-        *,
-        key_name: str,
-    ) -> list[Dict[str, Any]]:
-        items: list[Dict[str, Any]] = []
-        for bucket_key, bucket in breakdown.items():
-            if not isinstance(bucket, dict):
-                continue
-            items.append(
-                {
-                    key_name: str(bucket_key),
-                    "saved_cost_usd": round(_as_float(bucket.get("saved_cost_usd")), 8),
-                    "cached_prompt_tokens": _as_int(bucket.get("cached_prompt_tokens")),
-                    "cache_hit_request_rate_pct": round(
-                        _as_float(bucket.get("cache_hit_request_rate_pct")),
-                        2,
-                    ),
-                    "cache_write_request_rate_pct": round(
-                        _as_float(bucket.get("cache_write_request_rate_pct")),
-                        2,
-                    ),
-                    "reuse_to_write_ratio": (
-                        None
-                        if bucket.get("reuse_to_write_ratio") is None
-                        else round(_as_float(bucket.get("reuse_to_write_ratio")), 4)
-                    ),
-                    "reason": build_reason(bucket),
-                }
-            )
-
-        items.sort(
-            key=lambda item: (
-                -_as_float(item.get("saved_cost_usd")),
-                -_as_int(item.get("cached_prompt_tokens")),
-                str(item.get(key_name)),
-            )
-        )
-        return items[:3]
 
     return {
-        "providers": summarize(providers, key_name="provider"),
-        "models": summarize(models, key_name="model"),
+        "providers": _summarize_cache_hotspots(providers, key_name="provider"),
+        "models": _summarize_cache_hotspots(models, key_name="model"),
     }
 
 

@@ -6,6 +6,41 @@ from src.openrouter_mcp.runtime_thrift.response_metadata import (
     attach_thrift_metadata_from_payload,
     enrich_response_with_thrift_metadata,
 )
+from src.openrouter_mcp.runtime_thrift.summary import _build_cache_hotspot_reason
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("bucket", "expected"),
+    [
+        (
+            {
+                "cache_hit_request_rate_pct": 25.0,
+                "cache_write_request_rate_pct": 10.0,
+                "reuse_to_write_ratio": None,
+            },
+            "Cache savings exist, but reuse depth is still too shallow to explain the hotspot",
+        ),
+        (
+            {
+                "cache_hit_request_rate_pct": 10.0,
+                "cache_write_request_rate_pct": 25.0,
+                "reuse_to_write_ratio": 1.5,
+            },
+            "Cache writes are visible, but hits are not keeping up yet",
+        ),
+        (
+            {
+                "cache_hit_request_rate_pct": 25.0,
+                "cache_write_request_rate_pct": 10.0,
+                "reuse_to_write_ratio": 1.5,
+            },
+            "Some savings exist, but cache efficiency is still middling",
+        ),
+    ],
+)
+def test_build_cache_hotspot_reason_for_low_efficiency_boundaries(bucket, expected):
+    assert _build_cache_hotspot_reason(bucket) == expected
 
 
 class TestResponseMetadata:
