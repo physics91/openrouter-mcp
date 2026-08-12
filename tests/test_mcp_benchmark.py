@@ -203,6 +203,52 @@ class TestMCPBenchmarkTools:
                 == exposed_response
             )
 
+    def test_serialize_benchmark_ranking_preserves_contract(self):
+        result_with_metrics = EnhancedBenchmarkResult(
+            model_id="ranked-model",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=EnhancedBenchmarkMetrics(
+                speed_score=0.81,
+                cost_score=0.72,
+                quality_score=0.93,
+                throughput_score=0.64,
+            ),
+            timestamp=datetime.now(),
+        )
+        result_without_metrics = EnhancedBenchmarkResult(
+            model_id="no-metrics-model",
+            success=True,
+            response="response",
+            error_message=None,
+            metrics=None,
+            timestamp=datetime.now(),
+        )
+
+        serialized = mcp_benchmark._serialize_benchmark_ranking(
+            [(result_with_metrics, 0.87654), (result_without_metrics, 0.12345)]
+        )
+
+        assert serialized == [
+            {
+                "model_id": "ranked-model",
+                "overall_score": 0.87654,
+                "speed_score": 0.81,
+                "cost_score": 0.72,
+                "quality_score": 0.93,
+                "throughput_score": 0.64,
+            },
+            {
+                "model_id": "no-metrics-model",
+                "overall_score": 0.12345,
+                "speed_score": 0,
+                "cost_score": 0,
+                "quality_score": 0,
+                "throughput_score": 0,
+            },
+        ]
+
     def test_serialize_weighted_performance_ranking_preserves_contract(self):
         ranked_result = EnhancedBenchmarkResult(
             model_id="ranked-model",
@@ -406,6 +452,16 @@ class TestMCPBenchmarkTools:
                     "gpt-3.5-turbo": "<REDACTED: 10 chars>",
                     "claude-3-haiku": "<REDACTED: 10 chars>",
                 }
+                assert result["ranking"] == [
+                    {
+                        "model_id": "test-model",
+                        "overall_score": 0.85,
+                        "speed_score": 0.8,
+                        "cost_score": 0.9,
+                        "quality_score": 8.5,
+                        "throughput_score": 0.85,
+                    }
+                ]
 
                 # 핸들러 호출 검증
                 mock_handler.benchmark_models.assert_called_once_with(

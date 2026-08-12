@@ -197,6 +197,24 @@ def _serialize_benchmark_result(
     }
 
 
+def _serialize_benchmark_ranking(
+    ranking: List[Tuple[EnhancedBenchmarkResult, float]],
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "model_id": result.model_id,
+            "overall_score": score,
+            "speed_score": result.metrics.speed_score if result.metrics else 0,
+            "cost_score": result.metrics.cost_score if result.metrics else 0,
+            "quality_score": result.metrics.quality_score if result.metrics else 0,
+            "throughput_score": (
+                result.metrics.throughput_score if result.metrics else 0
+            ),
+        }
+        for result, score in ranking
+    ]
+
+
 def _serialize_category_benchmark_result(
     model_id: str,
     result: EnhancedBenchmarkResult,
@@ -455,17 +473,7 @@ async def benchmark_models(
             analyzer = ModelPerformanceAnalyzer()
             ranking = analyzer.rank_models(list(successful_results.values()))
 
-            benchmark_data["ranking"] = [
-                {
-                    "model_id": result.model_id,
-                    "overall_score": score,
-                    "speed_score": result.metrics.speed_score if result.metrics else 0,
-                    "cost_score": result.metrics.cost_score if result.metrics else 0,
-                    "quality_score": (result.metrics.quality_score if result.metrics else 0),
-                    "throughput_score": (result.metrics.throughput_score if result.metrics else 0),
-                }
-                for result, score in ranking
-            ]
+            benchmark_data["ranking"] = _serialize_benchmark_ranking(ranking)
 
         # 결과 저장
         if save_results:
@@ -482,7 +490,9 @@ async def benchmark_models(
 
 
 async def get_benchmark_history(
-    limit: Annotated[int, Field(description="Maximum number of results to return")] = 10,
+    limit: Annotated[
+        int, Field(description="Maximum number of results to return")
+    ] = 10,
     days_back: Annotated[int, Field(description="Number of days to look back")] = 30,
     model_filter: Annotated[
         Optional[str], Field(description="Filter results by model ID substring match")
