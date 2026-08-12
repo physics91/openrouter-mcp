@@ -576,7 +576,7 @@ async def benchmark_models(
 
     except Exception as e:
         logger.error(f"벤치마킹 중 오류 발생: {e}")
-        raise BenchmarkError(f"벤치마킹 실패: {str(e)}") from e
+        raise BenchmarkError(f"벤치마킹 실패: {e!s}") from e
 
 
 async def get_benchmark_history(
@@ -629,7 +629,7 @@ async def get_benchmark_history(
 
     except Exception as e:
         logger.error(f"벤치마크 기록 조회 중 오류: {e}")
-        raise BenchmarkError(f"기록 조회 실패: {str(e)}") from e
+        raise BenchmarkError(f"기록 조회 실패: {e!s}") from e
 
 
 async def compare_model_categories(
@@ -727,7 +727,7 @@ async def compare_model_categories(
 
     except Exception as e:
         logger.error(f"카테고리별 모델 비교 중 오류: {e}")
-        raise BenchmarkError(f"카테고리 비교 실패: {str(e)}") from e
+        raise BenchmarkError(f"카테고리 비교 실패: {e!s}") from e
 
 
 async def export_benchmark_report(
@@ -799,7 +799,7 @@ async def export_benchmark_report(
 
     except Exception as e:
         logger.error(f"벤치마크 보고서 내보내기 중 오류: {e}")
-        raise BenchmarkError(f"보고서 내보내기 실패: {str(e)}") from e
+        raise BenchmarkError(f"보고서 내보내기 실패: {e!s}") from e
 
 
 async def export_benchmark_batch(
@@ -850,7 +850,7 @@ async def export_benchmark_batch(
         }
     except Exception as e:
         logger.error(f"벤치마크 배치 내보내기 중 오류: {e}")
-        raise BenchmarkError(f"배치 내보내기 실패: {str(e)}") from e
+        raise BenchmarkError(f"배치 내보내기 실패: {e!s}") from e
 
 
 async def compare_model_performance(
@@ -905,7 +905,7 @@ async def compare_model_performance(
 
     except Exception as e:
         logger.error(f"고급 성능 비교 중 오류: {e}")
-        raise BenchmarkError(f"성능 비교 실패: {str(e)}") from e
+        raise BenchmarkError(f"성능 비교 실패: {e!s}") from e
 
 
 # 유틸리티 함수들
