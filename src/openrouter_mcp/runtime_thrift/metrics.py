@@ -574,20 +574,30 @@ def reset_thrift_metrics() -> None:
     _collector.reset()
 
 
+def _record_global_and_request(
+    collector_recorder: Callable[..., None],
+    request_recorder: Callable[..., None],
+    *args: Any,
+) -> None:
+    """Record global metrics before mirroring into the active request scope."""
+    collector_recorder(*args)
+    request_metrics = _request_metrics_var.get()
+    if request_metrics is not None:
+        request_recorder(request_metrics, *args)
+
+
 def record_coalesced_savings(
     prompt_tokens: int,
     completion_tokens: int,
     estimated_cost_usd: float | None = None,
 ) -> None:
-    _collector.record_coalesced_savings(prompt_tokens, completion_tokens, estimated_cost_usd)
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_coalesced_savings_on_metrics(
-            request_metrics,
-            prompt_tokens,
-            completion_tokens,
-            estimated_cost_usd,
-        )
+    _record_global_and_request(
+        _collector.record_coalesced_savings,
+        _record_coalesced_savings_on_metrics,
+        prompt_tokens,
+        completion_tokens,
+        estimated_cost_usd,
+    )
 
 
 def record_recent_reuse_savings(
@@ -595,36 +605,37 @@ def record_recent_reuse_savings(
     completion_tokens: int,
     estimated_cost_usd: float | None = None,
 ) -> None:
-    _collector.record_recent_reuse_savings(prompt_tokens, completion_tokens, estimated_cost_usd)
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_recent_reuse_savings_on_metrics(
-            request_metrics,
-            prompt_tokens,
-            completion_tokens,
-            estimated_cost_usd,
-        )
+    _record_global_and_request(
+        _collector.record_recent_reuse_savings,
+        _record_recent_reuse_savings_on_metrics,
+        prompt_tokens,
+        completion_tokens,
+        estimated_cost_usd,
+    )
 
 
 def record_compaction_savings(tokens_saved: int) -> None:
-    _collector.record_compaction_savings(tokens_saved)
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_compaction_savings_on_metrics(request_metrics, tokens_saved)
+    _record_global_and_request(
+        _collector.record_compaction_savings,
+        _record_compaction_savings_on_metrics,
+        tokens_saved,
+    )
 
 
 def record_deferred_requests(request_count: int) -> None:
-    _collector.record_deferred_requests(request_count)
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_deferred_requests_on_metrics(request_metrics, request_count)
+    _record_global_and_request(
+        _collector.record_deferred_requests,
+        _record_deferred_requests_on_metrics,
+        request_count,
+    )
 
 
 def record_model_request(model: str) -> None:
-    _collector.record_model_request(model)
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_model_request_on_metrics(request_metrics, model)
+    _record_global_and_request(
+        _collector.record_model_request,
+        _record_model_request_on_metrics,
+        model,
+    )
 
 
 def record_prompt_cache_activity(
@@ -633,21 +644,14 @@ def record_prompt_cache_activity(
     estimated_saved_cost_usd: float | None = None,
     model: str | None = None,
 ) -> None:
-    _collector.record_prompt_cache_activity(
+    _record_global_and_request(
+        _collector.record_prompt_cache_activity,
+        _record_prompt_cache_activity_on_metrics,
         cached_prompt_tokens,
         cache_write_prompt_tokens,
         estimated_saved_cost_usd,
         model,
     )
-    request_metrics = _request_metrics_var.get()
-    if request_metrics is not None:
-        _record_prompt_cache_activity_on_metrics(
-            request_metrics,
-            cached_prompt_tokens,
-            cache_write_prompt_tokens,
-            estimated_saved_cost_usd,
-            model,
-        )
 
 
 __all__ = [
