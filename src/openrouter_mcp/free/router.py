@@ -80,6 +80,17 @@ class FreeModelRouter:
 
         return float(min(1.0, base_score))
 
+    def _build_model_status(self, model: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the public status representation for one free model."""
+        return {
+            "id": model.get("id", ""),
+            "name": model.get("name", ""),
+            "context_length": model.get("context_length", 0),
+            "provider": model.get("provider", "unknown"),
+            "quality_score": round(self._score_model(model), 3),
+            "available": self._is_available(model.get("id", "")),
+        }
+
     async def list_models_with_status(self) -> List[Dict[str, Any]]:
         """Return all free models with quality scores and availability.
 
@@ -91,16 +102,7 @@ class FreeModelRouter:
         free_models = self._cache.filter_models(free_only=True)
         result = []
         for model in free_models:
-            result.append(
-                {
-                    "id": model.get("id", ""),
-                    "name": model.get("name", ""),
-                    "context_length": model.get("context_length", 0),
-                    "provider": model.get("provider", "unknown"),
-                    "quality_score": round(self._score_model(model), 3),
-                    "available": self._is_available(model.get("id", "")),
-                }
-            )
+            result.append(self._build_model_status(model))
         result.sort(key=lambda m: -m["quality_score"])
         return result
 
