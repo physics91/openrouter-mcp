@@ -471,7 +471,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             return decision
 
         except Exception as e:
-            logger.error(f"Routing failed for task {task.task_id}: {str(e)}")
+            logger.error(f"Routing failed for task {task.task_id}: {e!s}")
             raise
 
     async def _evaluate_models(
@@ -504,7 +504,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         for model, result in zip(available_models, results):
             if isinstance(result, BaseException):
-                logger.warning(f"Failed to evaluate model {model.model_id}: {str(result)}")
+                logger.warning(f"Failed to evaluate model {model.model_id}: {result!s}")
                 continue
 
             if result.get("filtered"):

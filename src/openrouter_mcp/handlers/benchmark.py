@@ -1231,7 +1231,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             error = str(e)
             logger.error(f"Benchmark error for {model_id}: {error}")
         except Exception as e:
-            error = f"Unexpected error: {str(e)}"
+            error = f"Unexpected error: {e!s}"
             logger.exception(f"Unexpected error benchmarking {model_id}: {error}")
 
         response_time_ms = (time.time() - start_time) * 1000

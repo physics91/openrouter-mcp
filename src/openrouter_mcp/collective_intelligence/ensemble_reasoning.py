@@ -672,7 +672,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             return final_result
 
         except Exception as e:
-            logger.error(f"Ensemble reasoning failed for task {task.task_id}: {str(e)}")
+            logger.error(f"Ensemble reasoning failed for task {task.task_id}: {e!s}")
             raise
 
     async def _execute_sub_tasks(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
@@ -847,7 +847,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
                 if retry_count <= sub_task.max_retries:
                     logger.warning(
-                        f"Sub-task {sub_task.sub_task_id} failed (attempt {retry_count}), retrying: {str(e)}"
+                        f"Sub-task {sub_task.sub_task_id} failed (attempt {retry_count}), retrying: {e!s}"
                     )
                     await asyncio.sleep(1.0 * retry_count)  # Exponential backoff
 

@@ -213,7 +213,7 @@ class SpecializedValidator:
                 error=str(exc),
             )
             self._last_failure = failure
-            logger.warning(f"{failure_label} failed with model {validator_model_id}: {str(exc)}")
+            logger.warning(f"{failure_label} failed with model {validator_model_id}: {exc!s}")
             return [], failure
 
         self._last_failure = None
@@ -374,7 +374,7 @@ class BiasDetectionValidator(SpecializedValidator):
             return issues
 
         except Exception as e:
-            logger.warning(f"Bias detection failed with model {validator_model_id}: {str(e)}")
+            logger.warning(f"Bias detection failed with model {validator_model_id}: {e!s}")
             return []
 
     def _parse_bias_result(
@@ -526,7 +526,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
             return validation_result
 
         except Exception as e:
-            logger.error(f"Validation failed for task {task_context.task_id}: {str(e)}")
+            logger.error(f"Validation failed for task {task_context.task_id}: {e!s}")
             raise
 
     async def _select_validator_models(
@@ -694,7 +694,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
         for i, validation_result in enumerate(validation_results):
             if isinstance(validation_result, BaseException):
                 logger.warning(
-                    f"Validation failed for validator {validator_models[i]}: {str(validation_result)}"
+                    f"Validation failed for validator {validator_models[i]}: {validation_result!s}"
                 )
                 validator_failures.append(
                     ValidatorFailureRecord(
@@ -846,7 +846,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 all_issues.extend(issues)
 
             except Exception as e:
-                logger.warning(f"Adversarial validation failed for {validator_model_id}: {str(e)}")
+                logger.warning(f"Adversarial validation failed for {validator_model_id}: {e!s}")
                 validator_failures.append(
                     ValidatorFailureRecord(
                         validator_model_id=validator_model_id,
@@ -918,7 +918,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
             except Exception as e:
                 logger.warning(
-                    f"Failed to generate alternative response from {validator_model_id}: {str(e)}"
+                    f"Failed to generate alternative response from {validator_model_id}: {e!s}"
                 )
 
         # Compare original result with alternatives
@@ -1074,7 +1074,7 @@ class CrossValidator(CollectiveIntelligenceComponent):
                     issues = await bias_detector.validate(result, task_context, validator_model_id)
                     all_issues.extend(issues)
                 except Exception as e:
-                    logger.warning(f"Bias detection failed with {validator_model_id}: {str(e)}")
+                    logger.warning(f"Bias detection failed with {validator_model_id}: {e!s}")
 
             criteria_scores = {
                 ValidationCriteria.BIAS_NEUTRALITY: self._calculate_criteria_score(all_issues)
