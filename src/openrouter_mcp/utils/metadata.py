@@ -478,6 +478,39 @@ def _pricing_per_1k(model_data: Dict[str, Any]) -> Dict[str, float]:
     }
 
 
+def _context_quality_bonus(context_length: int) -> float:
+    """Return the quality bonus for a context-window size."""
+    if context_length >= 200000:
+        return 2.0
+    if context_length >= 100000:
+        return 1.5
+    if context_length >= 32000:
+        return 1.0
+    if context_length >= 8000:
+        return 0.5
+    return 0.0
+
+
+def _output_quality_bonus(max_output: int) -> float:
+    """Return the quality bonus for a maximum output size."""
+    if max_output >= 8192:
+        return 1.0
+    if max_output >= 4096:
+        return 0.5
+    return 0.0
+
+
+def _pricing_quality_adjustment(prompt_price: float) -> float:
+    """Return the quality adjustment for per-1k prompt pricing."""
+    if prompt_price > 0.01:
+        return 1.5
+    if prompt_price > 0.001:
+        return 0.5
+    if prompt_price == 0:
+        return -1.0
+    return 0.0
+
+
 def calculate_quality_score(model_data: Dict[str, Any]) -> float:
     """
     Calculate a quality score for the model based on various factors.
@@ -492,32 +525,16 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
 
     # Context length factor
     context_length = _coerce_non_negative_int(model_data.get("context_length"), default=0)
-    if context_length >= 200000:
-        score += 2.0
-    elif context_length >= 100000:
-        score += 1.5
-    elif context_length >= 32000:
-        score += 1.0
-    elif context_length >= 8000:
-        score += 0.5
+    score += _context_quality_bonus(context_length)
 
     # Output length factor
     top_provider = model_data.get("top_provider") or {}
     max_output = _coerce_non_negative_int(top_provider.get("max_completion_tokens"), default=0)
-    if max_output >= 8192:
-        score += 1.0
-    elif max_output >= 4096:
-        score += 0.5
+    score += _output_quality_bonus(max_output)
 
     # Pricing factor (premium models usually better)
     prompt_price = _pricing_per_1k(model_data)["prompt"]
-
-    if prompt_price > 0.01:
-        score += 1.5  # Premium model
-    elif prompt_price > 0.001:
-        score += 0.5  # Standard model
-    elif prompt_price == 0:
-        score -= 1.0  # Free model (usually limited)
+    score += _pricing_quality_adjustment(prompt_price)
 
     # Provider reputation
     provider = extract_provider_from_id(model_data.get("id", ""))
