@@ -888,7 +888,7 @@ class ModelCache:
             if "o1" in model_id or "reasoning" in model.get("description", "").lower():
                 reasoning_count += 1
 
-        return sorted(list(providers)), vision_count, reasoning_count
+        return sorted(providers), vision_count, reasoning_count
 
     @staticmethod
     def _calculate_cache_size_mb(models: List[Dict[str, Any]]) -> float:
