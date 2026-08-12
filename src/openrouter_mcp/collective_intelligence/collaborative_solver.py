@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Optional, cast
 
 from ..utils.async_utils import raise_first_fatal_result
 from .adaptive_router import AdaptiveRouter
@@ -62,12 +62,12 @@ class SolvingSession:
     session_id: str
     original_task: TaskContext
     strategy: SolvingStrategy
-    components_used: List[str]
-    intermediate_results: List[Any]
+    components_used: list[str]
+    intermediate_results: list[Any]
     final_result: Optional[Any] = None
     quality_metrics: Optional[QualityMetrics] = None
     performance_metrics: Optional[PerformanceMetrics] = None
-    session_metadata: Dict[str, Any] = field(default_factory=dict)
+    session_metadata: dict[str, Any] = field(default_factory=dict)
     start_time: datetime = field(default_factory=datetime.now)
     end_time: Optional[datetime] = None
 
@@ -80,12 +80,12 @@ class SolvingResult:
     final_content: str
     confidence_score: float
     quality_assessment: QualityMetrics
-    solution_path: List[str]  # Steps taken to reach solution
-    alternative_solutions: List[str]
-    improvement_suggestions: List[str]
+    solution_path: list[str]  # Steps taken to reach solution
+    alternative_solutions: list[str]
+    improvement_suggestions: list[str]
     total_processing_time: float
-    component_contributions: Dict[str, float]  # How much each component contributed
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    component_contributions: dict[str, float]  # How much each component contributed
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class CollaborativeSolver(CollectiveIntelligenceComponent):
@@ -117,15 +117,15 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         self.cross_validator = CrossValidator(model_provider)
 
         # Session tracking
-        self.active_sessions: Dict[str, SolvingSession] = {}
+        self.active_sessions: dict[str, SolvingSession] = {}
 
     @property
-    def completed_sessions(self) -> List[SolvingSession]:
+    def completed_sessions(self) -> list[SolvingSession]:
         """Get completed sessions as a list for backward compatibility."""
-        return cast(List[SolvingSession], self.storage_manager.get_items())
+        return cast(list[SolvingSession], self.storage_manager.get_items())
 
     @completed_sessions.setter
-    def completed_sessions(self, value: List[SolvingSession]) -> None:
+    def completed_sessions(self, value: list[SolvingSession]) -> None:
         """Set completed sessions for backward compatibility."""
         self.storage_manager.replace_items(value, id_prefix="session")
 
@@ -529,13 +529,13 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             },
         )
 
-    def get_active_sessions(self) -> Dict[str, SolvingSession]:
+    def get_active_sessions(self) -> dict[str, SolvingSession]:
         """Get currently active solving sessions."""
         return self.active_sessions.copy()
 
-    def get_completed_sessions(self, limit: Optional[int] = None) -> List[SolvingSession]:
+    def get_completed_sessions(self, limit: Optional[int] = None) -> list[SolvingSession]:
         """Get completed solving sessions with TTL enforcement."""
-        return cast(List[SolvingSession], self.storage_manager.get_items(limit))
+        return cast(list[SolvingSession], self.storage_manager.get_items(limit))
 
     def get_session_by_id(self, session_id: str) -> Optional[SolvingSession]:
         """Get a specific session by ID."""
@@ -549,7 +549,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         return None
 
-    def get_operational_metrics(self) -> Dict[str, Any]:
+    def get_operational_metrics(self) -> dict[str, Any]:
         """Get operational metrics and limits status."""
         return {
             "active_sessions": len(self.active_sessions),
