@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import FrozenSet
-
-CORE_ENGLISH_STOPWORDS: FrozenSet[str] = frozenset(
+CORE_ENGLISH_STOPWORDS: frozenset[str] = frozenset(
     {
         "the",
         "a",
@@ -23,7 +21,7 @@ CORE_ENGLISH_STOPWORDS: FrozenSet[str] = frozenset(
     }
 )
 
-EXTENDED_ENGLISH_STOPWORDS: FrozenSet[str] = CORE_ENGLISH_STOPWORDS | frozenset(
+EXTENDED_ENGLISH_STOPWORDS: frozenset[str] = CORE_ENGLISH_STOPWORDS | frozenset(
     {
         "is",
         "are",
