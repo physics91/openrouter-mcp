@@ -389,7 +389,9 @@ def _extract_version_parts(model_id: str) -> List[str]:
     """Extract ordered version fragments from a model identifier."""
     version_parts = []
 
-    stage_match = re.search(r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE)
+    stage_match = re.search(
+        r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE
+    )
     if stage_match:
         version_parts.append(stage_match.group(1).lower())
 
@@ -442,13 +444,17 @@ def _extract_release_date(model_id: str, created_timestamp: Any) -> Optional[str
     release_date = None
     if created_timestamp:
         try:
-            release_date = datetime.fromtimestamp(created_timestamp).strftime("%Y-%m-%d")
+            release_date = datetime.fromtimestamp(created_timestamp).strftime(
+                "%Y-%m-%d"
+            )
         except (ValueError, OSError, OverflowError):
             pass
 
     date_match = re.search(r"(\d{4})-?(\d{2})-?(\d{2})", model_id)
     if date_match:
-        release_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+        release_date = (
+            f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+        )
 
     return release_date
 
@@ -563,12 +569,16 @@ def calculate_quality_score(model_data: Dict[str, Any]) -> float:
     score = 5.0  # Base score
 
     # Context length factor
-    context_length = _coerce_non_negative_int(model_data.get("context_length"), default=0)
+    context_length = _coerce_non_negative_int(
+        model_data.get("context_length"), default=0
+    )
     score += _context_quality_bonus(context_length)
 
     # Output length factor
     top_provider = model_data.get("top_provider") or {}
-    max_output = _coerce_non_negative_int(top_provider.get("max_completion_tokens"), default=0)
+    max_output = _coerce_non_negative_int(
+        top_provider.get("max_completion_tokens"), default=0
+    )
     score += _output_quality_bonus(max_output)
 
     # Pricing factor (premium models usually better)
@@ -705,11 +715,15 @@ def enhance_model_metadata(model_data: Dict[str, Any]) -> Dict[str, Any]:
 
     # Add provider information (store as string value, not enum)
     provider = extract_provider_from_id(model_data.get("id", ""))
-    enhanced["provider"] = provider.value if hasattr(provider, "value") else str(provider)
+    enhanced["provider"] = (
+        provider.value if hasattr(provider, "value") else str(provider)
+    )
 
     # Add category (store as string value, not enum)
     category = determine_model_category(model_data)
-    enhanced["category"] = category.value if hasattr(category, "value") else str(category)
+    enhanced["category"] = (
+        category.value if hasattr(category, "value") else str(category)
+    )
 
     # Add capabilities
     capabilities = extract_model_capabilities(model_data)
