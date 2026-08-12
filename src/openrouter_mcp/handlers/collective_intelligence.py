@@ -96,7 +96,9 @@ async def _collective_chat_completion_impl(
         )
         result = await collective_chat_completion(request)
     """
-    logger.info(f"Processing collective chat completion with strategy: {request.strategy}")
+    logger.info(
+        f"Processing collective chat completion with strategy: {request.strategy}"
+    )
 
     try:
         # Setup - use shared singleton client from registry
