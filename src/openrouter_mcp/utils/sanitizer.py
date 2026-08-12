@@ -104,6 +104,52 @@ class SensitiveDataSanitizer:
         return f"{content[:max_length]}... [TRUNCATED: {len(content)} chars total]"
 
     @staticmethod
+    def _sanitize_hashed_message_content(content: Any) -> Dict[str, Any]:
+        """Sanitize one message content value in hash mode."""
+        sanitized = {}
+        if isinstance(content, str):
+            sanitized["content_hash"] = SensitiveDataSanitizer.hash_content(content)
+            sanitized["content_length"] = len(content)
+        elif isinstance(content, list):
+            sanitized["content_type"] = "multimodal"
+            sanitized["content_parts"] = len(content)
+        return sanitized
+
+    @staticmethod
+    def _sanitize_truncated_message_content(content: Any) -> Dict[str, Any]:
+        """Sanitize one message content value in truncate mode."""
+        sanitized = {}
+        if isinstance(content, str):
+            sanitized["content"] = SensitiveDataSanitizer.truncate_content(content, 50)
+        elif isinstance(content, list):
+            sanitized["content_type"] = "multimodal"
+            sanitized["content_parts"] = len(content)
+        return sanitized
+
+    @staticmethod
+    def _sanitize_message_content_metadata(content: Any) -> Dict[str, Any]:
+        """Sanitize one message content value in metadata mode."""
+        sanitized = {}
+        if isinstance(content, str):
+            sanitized["content_length"] = len(content)
+            sanitized["content_type"] = "text"
+        elif isinstance(content, list):
+            sanitized["content_type"] = "multimodal"
+            sanitized["content_parts"] = len(content)
+        return sanitized
+
+    @staticmethod
+    def _sanitize_message_content(content: Any, mode: str) -> Dict[str, Any]:
+        """Dispatch message content sanitization without changing mode semantics."""
+        if mode == "hash":
+            return SensitiveDataSanitizer._sanitize_hashed_message_content(content)
+        if mode == "truncate":
+            return SensitiveDataSanitizer._sanitize_truncated_message_content(content)
+        if mode == "metadata":
+            return SensitiveDataSanitizer._sanitize_message_content_metadata(content)
+        return {}
+
+    @staticmethod
     def sanitize_messages(
         messages: List[Dict[str, Any]], mode: str = "hash"
     ) -> List[Dict[str, Any]]:
@@ -121,29 +167,9 @@ class SensitiveDataSanitizer:
         for msg in messages:
             sanitized_msg = {"role": msg.get("role", "unknown")}
             content = msg.get("content", "")
-
-            if mode == "hash":
-                if isinstance(content, str):
-                    sanitized_msg["content_hash"] = SensitiveDataSanitizer.hash_content(content)
-                    sanitized_msg["content_length"] = len(content)
-                elif isinstance(content, list):
-                    # Multimodal content
-                    sanitized_msg["content_type"] = "multimodal"
-                    sanitized_msg["content_parts"] = len(content)
-            elif mode == "truncate":
-                if isinstance(content, str):
-                    sanitized_msg["content"] = SensitiveDataSanitizer.truncate_content(content, 50)
-                elif isinstance(content, list):
-                    sanitized_msg["content_type"] = "multimodal"
-                    sanitized_msg["content_parts"] = len(content)
-            elif mode == "metadata":
-                if isinstance(content, str):
-                    sanitized_msg["content_length"] = len(content)
-                    sanitized_msg["content_type"] = "text"
-                elif isinstance(content, list):
-                    sanitized_msg["content_type"] = "multimodal"
-                    sanitized_msg["content_parts"] = len(content)
-
+            sanitized_msg.update(
+                SensitiveDataSanitizer._sanitize_message_content(content, mode)
+            )
             sanitized.append(sanitized_msg)
 
         return sanitized
