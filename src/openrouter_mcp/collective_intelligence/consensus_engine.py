@@ -299,6 +299,28 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
         return min(1.0, base_score)
 
+    async def _reconcile_quota_usage(
+        self,
+        request_id: str,
+        model_id: str,
+        result: ProcessingResult,
+        estimated_tokens: int,
+        estimated_cost: float,
+    ) -> None:
+        """Reconcile estimated quota usage with a model's actual usage."""
+        if result.tokens_used > 0 or result.cost > 0:
+            actual_token_diff = result.tokens_used - estimated_tokens
+            actual_cost_diff = result.cost - estimated_cost
+
+            if actual_token_diff != 0 or actual_cost_diff != 0:
+                await self.quota_tracker.check_and_increment(
+                    request_id, tokens=actual_token_diff, cost=actual_cost_diff
+                )
+                logger.debug(
+                    f"Updated quota for {model_id}: "
+                    f"token_diff={actual_token_diff}, cost_diff=${actual_cost_diff:.6f}"
+                )
+
     async def _get_model_responses(
         self, task: TaskContext, model_ids: List[str], request_id: str
     ) -> List[ModelResponse]:
@@ -338,20 +360,13 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
                 # Update quota tracker with actual costs from response
                 # The result now contains real token counts and costs
-                if result.tokens_used > 0 or result.cost > 0:
-                    # Deduct the estimate and add the actual
-                    actual_token_diff = result.tokens_used - estimated_tokens
-                    actual_cost_diff = result.cost - estimated_cost
-
-                    # Update quota with actual values
-                    if actual_token_diff != 0 or actual_cost_diff != 0:
-                        await self.quota_tracker.check_and_increment(
-                            request_id, tokens=actual_token_diff, cost=actual_cost_diff
-                        )
-                        logger.debug(
-                            f"Updated quota for {model_id}: "
-                            f"token_diff={actual_token_diff}, cost_diff=${actual_cost_diff:.6f}"
-                        )
+                await self._reconcile_quota_usage(
+                    request_id,
+                    model_id,
+                    result,
+                    estimated_tokens,
+                    estimated_cost,
+                )
 
                 weight = self.config.model_weights.get(model_id, 1.0)
                 reliability = self.model_reliability.get(model_id, 1.0)
