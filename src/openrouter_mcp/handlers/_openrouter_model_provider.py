@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 import httpx
 
@@ -38,6 +38,38 @@ class OpenRouterModelProvider:
         self.client = client
         self._model_pricing_cache: Dict[str, Dict[str, float]] = {}
 
+    @staticmethod
+    def _build_chat_completion_parameters(
+        task: TaskContext,
+        kwargs: Dict[str, Any],
+    ) -> Tuple[List[Dict[str, Any]], Any, Any]:
+        """Build chat messages and resolve generation parameter precedence."""
+        messages = [{"role": "user", "content": task.content}]
+
+        if task.requirements.get("system_prompt"):
+            messages.insert(
+                0, {"role": "system", "content": task.requirements["system_prompt"]}
+            )
+
+        temp_from_req = task.requirements.get("temperature")
+        temp_from_kwargs = kwargs.get("temperature")
+        temperature = (
+            temp_from_req
+            if temp_from_req is not None
+            else (
+                temp_from_kwargs
+                if temp_from_kwargs is not None
+                else ModelDefaults.TEMPERATURE
+            )
+        )
+
+        kw_max = kwargs.get("max_tokens")
+        max_tokens_val = (
+            kw_max if kw_max is not None else task.requirements.get("max_tokens")
+        )
+
+        return messages, temperature, max_tokens_val
+
     async def process_task(
         self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
@@ -45,34 +77,8 @@ class OpenRouterModelProvider:
         start_time = datetime.now()
 
         try:
-            # Prepare messages for the model
-            messages = [{"role": "user", "content": task.content}]
-
-            # Add system message if requirements specify behavior
-            if task.requirements.get("system_prompt"):
-                messages.insert(
-                    0, {"role": "system", "content": task.requirements["system_prompt"]}
-                )
-
-            # Extract temperature from task requirements or kwargs, with fallback to default
-            # Use explicit None check to preserve valid 0.0 temperature values
-            temp_from_req = task.requirements.get("temperature")
-            temp_from_kwargs = kwargs.get("temperature")
-            temperature = (
-                temp_from_req
-                if temp_from_req is not None
-                else (
-                    temp_from_kwargs
-                    if temp_from_kwargs is not None
-                    else ModelDefaults.TEMPERATURE
-                )
-            )
-
-            # Extract max_tokens from kwargs or task requirements
-            # Use explicit None check to preserve valid 0 values
-            kw_max = kwargs.get("max_tokens")
-            max_tokens_val = (
-                kw_max if kw_max is not None else task.requirements.get("max_tokens")
+            messages, temperature, max_tokens_val = (
+                self._build_chat_completion_parameters(task, kwargs)
             )
 
             # Call OpenRouter API
