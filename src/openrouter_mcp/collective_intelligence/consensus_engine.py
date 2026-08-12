@@ -78,6 +78,15 @@ class ModelResponse:
     reliability_score: float = 1.0
 
 
+def _raise_first_fatal_model_signal(responses: list[Any]) -> None:
+    """Propagate the first fatal model signal while preserving isolated failures."""
+    for response in responses:
+        if isinstance(response, BaseException) and not isinstance(
+            response, (Exception, asyncio.CancelledError)
+        ):
+            raise response
+
+
 @dataclass
 class ConsensusResult:
     """Result of consensus building process."""
@@ -391,6 +400,8 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         # Execute all model calls with controlled concurrency
         tasks = [get_single_response(model_id) for model_id in model_ids]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        _raise_first_fatal_model_signal(responses)
 
         # Filter out failed responses
         valid_responses = [
