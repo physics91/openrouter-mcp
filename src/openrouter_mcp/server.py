@@ -55,11 +55,7 @@ def configure_logging() -> None:
 def validate_environment() -> None:
     """Validate that required environment variables are set."""
     required_vars = [EnvVars.API_KEY]
-    missing_vars = []
-
-    for var in required_vars:
-        if not get_env_value(var):
-            missing_vars.append(var)
+    missing_vars = [var for var in required_vars if not get_env_value(var)]
 
     if missing_vars:
         logger.error(
