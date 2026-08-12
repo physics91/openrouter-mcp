@@ -1083,11 +1083,10 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 recommendations=self._generate_recommendations(all_issues),
                 metadata=self._build_validator_failure_metadata(validator_failures),
             )
-        else:
-            # Fallback to peer review
-            return await self._peer_review_validation(
-                result, task_context, validator_models
-            )
+        # Fallback to peer review
+        return await self._peer_review_validation(
+            result, task_context, validator_models
+        )
 
     async def _quality_assurance_validation(
         self,
@@ -1149,15 +1148,14 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 consensus_level=1.0,
                 recommendations=self._generate_recommendations(all_issues),
             )
-        else:
-            # Fallback to peer review with overridden strategy
-            report = await self._peer_review_validation(
-                result, task_context, validator_models
-            )
-            return _copy_validation_report_with_strategy(
-                report,
-                ValidationStrategy.BIAS_DETECTION,
-            )
+        # Fallback to peer review with overridden strategy
+        report = await self._peer_review_validation(
+            result, task_context, validator_models
+        )
+        return _copy_validation_report_with_strategy(
+            report,
+            ValidationStrategy.BIAS_DETECTION,
+        )
 
     def _calculate_criteria_score(
         self, criteria_issues: List[ValidationIssue]
