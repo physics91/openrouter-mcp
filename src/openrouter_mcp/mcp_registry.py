@@ -283,4 +283,4 @@ async def cleanup_shared_client() -> None:
         )
 
 
-__all__ = ["mcp", "get_shared_client", "get_openrouter_client", "cleanup_shared_client"]
+__all__ = ["cleanup_shared_client", "get_openrouter_client", "get_shared_client", "mcp"]
