@@ -20,6 +20,7 @@ from src.openrouter_mcp.handlers.benchmark import (
     EnhancedBenchmarkResult,
 )
 from src.openrouter_mcp.handlers.mcp_benchmark import (
+    _serialize_category_benchmark_result,
     benchmark_models,
     compare_model_categories,
     compare_model_performance,
@@ -73,6 +74,55 @@ class TestMCPBenchmarkTools:
         )
 
         return result
+
+    def test_serialize_category_benchmark_result_omits_response_content(self):
+        response = "sensitive-benchmark-response"
+        result = EnhancedBenchmarkResult(
+            model_id="test-model",
+            success=True,
+            response=response,
+            error_message=None,
+            metrics=EnhancedBenchmarkMetrics(
+                avg_response_time=1.25,
+                avg_cost=0.002,
+                quality_score=0.9,
+                throughput=42.0,
+            ),
+            timestamp=datetime.now(),
+        )
+
+        serialized = _serialize_category_benchmark_result("test-model", result)
+
+        assert serialized == {
+            "model_id": "test-model",
+            "success": True,
+            "metrics": {
+                "avg_response_time": 1.25,
+                "avg_cost": 0.002,
+                "quality_score": 0.9,
+                "throughput": 42.0,
+            },
+            "response_length": len(response),
+        }
+        assert "response" not in serialized
+        assert response not in serialized.values()
+
+    def test_serialize_category_benchmark_result_handles_missing_payloads(self):
+        result = EnhancedBenchmarkResult(
+            model_id="failed-model",
+            success=False,
+            response=None,
+            error_message="failed",
+            metrics=None,
+            timestamp=datetime.now(),
+        )
+
+        assert _serialize_category_benchmark_result("failed-model", result) == {
+            "model_id": "failed-model",
+            "success": False,
+            "metrics": None,
+            "response_length": 0,
+        }
 
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self, mock_env):

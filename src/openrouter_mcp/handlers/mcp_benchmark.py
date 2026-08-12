@@ -27,6 +27,7 @@ from .benchmark import (
     BenchmarkError,
     BenchmarkReportExporter,
     EnhancedBenchmarkHandler,
+    EnhancedBenchmarkResult,
     ModelPerformanceAnalyzer,
 )
 
@@ -173,6 +174,28 @@ def _select_top_category_models(
         }
 
     return selected_models, category_info
+
+
+def _serialize_category_benchmark_result(
+    model_id: str,
+    result: EnhancedBenchmarkResult,
+) -> Dict[str, Any]:
+    return {
+        "model_id": model_id,
+        "success": result.success,
+        "metrics": (
+            {
+                "avg_response_time": result.metrics.avg_response_time,
+                "avg_cost": result.metrics.avg_cost,
+                "quality_score": result.metrics.quality_score,
+                "throughput": result.metrics.throughput,
+            }
+            if result.metrics
+            else None
+        ),
+        # SECURITY: Don't include response content by default - privacy risk
+        "response_length": len(result.response) if result.response else 0,
+    }
 
 
 # 글로벌 벤치마크 핸들러
@@ -471,22 +494,7 @@ async def compare_model_categories(
                 comparison_data["results"][model_category] = []
 
             comparison_data["results"][model_category].append(
-                {
-                    "model_id": model_id,
-                    "success": result.success,
-                    "metrics": (
-                        {
-                            "avg_response_time": result.metrics.avg_response_time,
-                            "avg_cost": result.metrics.avg_cost,
-                            "quality_score": result.metrics.quality_score,
-                            "throughput": result.metrics.throughput,
-                        }
-                        if result.metrics
-                        else None
-                    ),
-                    # SECURITY: Don't include response content by default - privacy risk
-                    "response_length": len(result.response) if result.response else 0,
-                }
+                _serialize_category_benchmark_result(model_id, result)
             )
 
         # 전체 랭킹 계산
