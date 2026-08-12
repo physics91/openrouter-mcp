@@ -425,14 +425,11 @@ async def free_chat(request: FreeChatRequest) -> dict[str, Any]:
         last_error: Optional[Exception] = None
 
         for _attempt in range(FreeChatConfig.MAX_RETRY_COUNT + 1):
-            try:
-                model_id = await router.select_model(
-                    preferred_models=request.preferred_models or None,
-                    task_type=task_type,
-                    required_capabilities=required_caps,
-                )
-            except RuntimeError:
-                raise
+            model_id = await router.select_model(
+                preferred_models=request.preferred_models or None,
+                task_type=task_type,
+                required_capabilities=required_caps,
+            )
 
             start_time = time.monotonic()
             try:
