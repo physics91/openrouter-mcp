@@ -68,7 +68,9 @@ class ModelPerformanceHistory:
     recent_response_times: deque = field(default_factory=lambda: deque(maxlen=100))
     recent_quality_scores: deque = field(default_factory=lambda: deque(maxlen=100))
     recent_costs: deque = field(default_factory=lambda: deque(maxlen=100))
-    task_type_performance: Dict[TaskType, Dict[str, float]] = field(default_factory=dict)
+    task_type_performance: Dict[TaskType, Dict[str, float]] = field(
+        default_factory=dict
+    )
     capability_scores: Dict[ModelCapability, float] = field(default_factory=dict)
     last_updated: datetime = field(default_factory=datetime.now)
 
@@ -98,9 +100,9 @@ class ModelPerformanceHistory:
 
         perf = self.task_type_performance[task_type]
         count = perf["count"]
-        perf["response_time"] = (perf["response_time"] * count + result.processing_time) / (
-            count + 1
-        )
+        perf["response_time"] = (
+            perf["response_time"] * count + result.processing_time
+        ) / (count + 1)
         perf["quality"] = (perf["quality"] * count + result.confidence) / (count + 1)
         perf["cost"] = (perf["cost"] * count + result.cost) / (count + 1)
         perf["count"] += 1
@@ -146,7 +148,9 @@ class RoutingMetrics:
     cost_savings: float = 0.0
     time_savings: float = 0.0
     quality_improvement: float = 0.0
-    strategy_performance: Dict[RoutingStrategy, Dict[str, float]] = field(default_factory=dict)
+    strategy_performance: Dict[RoutingStrategy, Dict[str, float]] = field(
+        default_factory=dict
+    )
     model_utilization: Dict[str, float] = field(default_factory=dict)
 
     def success_rate(self) -> float:
@@ -175,7 +179,9 @@ class ModelLoadMonitor:
             load_status.last_request_time = datetime.now()
 
             # Update availability based on load
-            load_status.availability_score = max(0.1, 1.0 - (load_status.active_requests * 0.1))
+            load_status.availability_score = max(
+                0.1, 1.0 - (load_status.active_requests * 0.1)
+            )
 
     async def register_request_complete(
         self, model_id: str, task_id: str, processing_time: float, success: bool
@@ -196,12 +202,16 @@ class ModelLoadMonitor:
                 )
 
                 # Calculate average queue time from recent history
-                recent_times = [r["processing_time"] for r in self.request_history[model_id]]
+                recent_times = [
+                    r["processing_time"] for r in self.request_history[model_id]
+                ]
                 if recent_times:
                     load_status.avg_queue_time = statistics.mean(recent_times)
 
                 # Update availability
-                load_status.availability_score = min(1.0, load_status.availability_score + 0.1)
+                load_status.availability_score = min(
+                    1.0, load_status.availability_score + 0.1
+                )
 
     def get_load_status(self, model_id: str) -> ModelLoadStatus:
         """Get current load status for a model."""
@@ -228,7 +238,9 @@ class PerformancePredictor:
         """Predict expected performance metrics for a model on a task."""
 
         # Check cache first
-        cache_key = f"{model_info.model_id}_{task.task_type.value}_{hash(task.content[:100])}"
+        cache_key = (
+            f"{model_info.model_id}_{task.task_type.value}_{hash(task.content[:100])}"
+        )
         if cache_key in self.prediction_cache:
             cached_time, predictions = self.prediction_cache[cache_key]
             if datetime.now() - cached_time < self.cache_ttl:
@@ -308,7 +320,9 @@ class PerformancePredictor:
 
         return base_factor * content_factor * type_factor * req_factor
 
-    def _calculate_capability_match(self, model_info: ModelInfo, task: TaskContext) -> float:
+    def _calculate_capability_match(
+        self, model_info: ModelInfo, task: TaskContext
+    ) -> float:
         """Calculate how well model capabilities match task requirements."""
         # Simplified capability matching
         base_match = 0.7
@@ -334,7 +348,9 @@ class PerformancePredictor:
             else:
                 capability_scores.append(0.5)  # Default score
 
-        match_score = statistics.mean(capability_scores) if capability_scores else base_match
+        match_score = (
+            statistics.mean(capability_scores) if capability_scores else base_match
+        )
         return min(1.0, base_match + match_score * 0.3)
 
 
@@ -407,7 +423,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
                 routing_metadata,
             )
             if not eligible_models:
-                raise ValueError(self._build_constraints_error_message(routing_metadata))
+                raise ValueError(
+                    self._build_constraints_error_message(routing_metadata)
+                )
 
             thrift_feedback_context = self._get_thrift_feedback_context()
 
@@ -422,7 +440,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             )
 
             if not model_evaluations:
-                raise ValueError(self._build_constraints_error_message(routing_metadata))
+                raise ValueError(
+                    self._build_constraints_error_message(routing_metadata)
+                )
 
             # Select best model
             selected_model_id, confidence, alternatives = self._select_best_model(
@@ -550,7 +570,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             model, task, performance_history
         )
 
-        filter_reasons = self._get_dynamic_filter_reasons(model, predicted_metrics, routing_policy)
+        filter_reasons = self._get_dynamic_filter_reasons(
+            model, predicted_metrics, routing_policy
+        )
         if filter_reasons:
             return {
                 "model": model,
@@ -560,15 +582,25 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         thrift_feedback = self._build_thrift_feedback_for_model(
             model.model_id,
-            thrift_feedback_context.get("metrics", {}) if thrift_feedback_context else {},
+            (
+                thrift_feedback_context.get("metrics", {})
+                if thrift_feedback_context
+                else {}
+            ),
             window_start=(
-                thrift_feedback_context.get("window_start") if thrift_feedback_context else None
+                thrift_feedback_context.get("window_start")
+                if thrift_feedback_context
+                else None
             ),
             window_end=(
-                thrift_feedback_context.get("window_end") if thrift_feedback_context else None
+                thrift_feedback_context.get("window_end")
+                if thrift_feedback_context
+                else None
             ),
             lookback_days=(
-                thrift_feedback_context.get("lookback_days", 0) if thrift_feedback_context else 0
+                thrift_feedback_context.get("lookback_days", 0)
+                if thrift_feedback_context
+                else 0
             ),
         )
 
@@ -632,7 +664,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             model,
             routing_policy,
         )
-        return self._apply_thrift_feedback_penalty(preferred_score, strategy, thrift_feedback)
+        return self._apply_thrift_feedback_penalty(
+            preferred_score, strategy, thrift_feedback
+        )
 
     def _build_routing_policy(self, task: TaskContext) -> Dict[str, Any]:
         """Normalize raw task requirements/constraints into one routing policy."""
@@ -646,7 +680,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         if max_cost is not None:
             hard_constraints["max_cost"] = max_cost
 
-        excluded_providers = self._normalize_provider_values(constraints.get("excluded_provider"))
+        excluded_providers = self._normalize_provider_values(
+            constraints.get("excluded_provider")
+        )
         if excluded_providers:
             hard_constraints["excluded_provider"] = sorted(excluded_providers)
 
@@ -656,11 +692,15 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         if required_capabilities:
             hard_constraints["required_capabilities"] = required_capabilities
 
-        min_context_length = self._coerce_int_constraint(constraints, "min_context_length")
+        min_context_length = self._coerce_int_constraint(
+            constraints, "min_context_length"
+        )
         if min_context_length is not None:
             hard_constraints["min_context_length"] = min_context_length
 
-        preferred_provider = self._normalize_optional_string(constraints.get("preferred_provider"))
+        preferred_provider = self._normalize_optional_string(
+            constraints.get("preferred_provider")
+        )
         if preferred_provider:
             preferences["preferred_provider"] = preferred_provider
 
@@ -680,7 +720,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         """Create compact routing metadata scaffold for one decision."""
         hard_constraints = routing_policy.get("hard_constraints", {})
         preferences = routing_policy.get("preferences", {})
-        constraints_applied = sorted(list(hard_constraints.keys()) + list(preferences.keys()))
+        constraints_applied = sorted(
+            list(hard_constraints.keys()) + list(preferences.keys())
+        )
         return {
             "constraints_applied": constraints_applied,
             "constraints_unmet": [],
@@ -719,7 +761,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         reasons: List[str] = []
 
         excluded_providers = hard_constraints.get("excluded_provider", [])
-        if excluded_providers and self._model_provider_matches(model, excluded_providers):
+        if excluded_providers and self._model_provider_matches(
+            model, excluded_providers
+        ):
             reasons.append("excluded_provider")
 
         required_capabilities = hard_constraints.get("required_capabilities", [])
@@ -774,7 +818,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         suffix = ", ".join(unmet) if unmet else "unknown"
         return f"No models satisfy routing constraints: {suffix}"
 
-    def _coerce_float_constraint(self, constraints: Dict[str, Any], key: str) -> Optional[float]:
+    def _coerce_float_constraint(
+        self, constraints: Dict[str, Any], key: str
+    ) -> Optional[float]:
         """Safely parse positive float constraint values."""
         raw_value = constraints.get(key)
         if raw_value is None:
@@ -786,7 +832,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             return None
         return value if value > 0 else None
 
-    def _coerce_int_constraint(self, constraints: Dict[str, Any], key: str) -> Optional[int]:
+    def _coerce_int_constraint(
+        self, constraints: Dict[str, Any], key: str
+    ) -> Optional[int]:
         """Safely parse positive integer constraint values."""
         raw_value = constraints.get(key)
         if raw_value is None:
@@ -807,7 +855,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         elif isinstance(raw_value, (list, tuple, set)):
             candidates = list(raw_value)
         else:
-            logger.warning("Ignoring invalid routing constraint excluded_provider=%r", raw_value)
+            logger.warning(
+                "Ignoring invalid routing constraint excluded_provider=%r", raw_value
+            )
             return []
 
         return sorted(
@@ -869,7 +919,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         normalized = raw_value.strip().lower()
         return normalized or None
 
-    def _normalize_performance_weights(self, requirements: Dict[str, Any]) -> Dict[str, float]:
+    def _normalize_performance_weights(
+        self, requirements: Dict[str, Any]
+    ) -> Dict[str, float]:
         """Keep only known positive performance weights and normalize them."""
         aliases = {
             "accuracy": "accuracy",
@@ -889,13 +941,17 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
                 continue
             if numeric_value <= 0:
                 continue
-            collected[normalized_key] = collected.get(normalized_key, 0.0) + numeric_value
+            collected[normalized_key] = (
+                collected.get(normalized_key, 0.0) + numeric_value
+            )
 
         total = sum(collected.values())
         if total <= 0:
             return {}
 
-        return {key: round(value / total, 4) for key, value in sorted(collected.items())}
+        return {
+            key: round(value / total, 4) for key, value in sorted(collected.items())
+        }
 
     def _model_provider_matches(self, model: ModelInfo, providers: List[str]) -> bool:
         """Check whether a model matches any normalized provider token."""
@@ -903,7 +959,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             token
             for token in {
                 self._normalize_optional_string(model.provider),
-                self._normalize_optional_string(extract_provider_from_id(model.model_id).value),
+                self._normalize_optional_string(
+                    extract_provider_from_id(model.model_id).value
+                ),
             }
             if token is not None
         }
@@ -921,7 +979,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         preferences = routing_policy.get("preferences", {})
         matches: List[str] = []
         preferred_provider = preferences.get("preferred_provider")
-        if preferred_provider and self._model_provider_matches(model, [preferred_provider]):
+        if preferred_provider and self._model_provider_matches(
+            model, [preferred_provider]
+        ):
             matches.append("preferred_provider")
 
         preferred_model_family = preferences.get("preferred_model_family")
@@ -957,7 +1017,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         }:
             return base_score
 
-        weighted_score = self._calculate_weighted_requirement_score(predicted_metrics, weights)
+        weighted_score = self._calculate_weighted_requirement_score(
+            predicted_metrics, weights
+        )
         success = predicted_metrics["success_probability"]
 
         if strategy == RoutingStrategy.PERFORMANCE_BASED:
@@ -973,11 +1035,19 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
     ) -> float:
         """Score predicted metrics using normalized bounded requirement weights."""
         bounded_metrics = {
-            "accuracy": max(0.0, min(1.0, float(predicted_metrics.get("quality", 0.0) or 0.0))),
+            "accuracy": max(
+                0.0, min(1.0, float(predicted_metrics.get("quality", 0.0) or 0.0))
+            ),
             "speed": 1.0
-            / (1.0 + max(0.0, float(predicted_metrics.get("response_time", 0.0) or 0.0))),
+            / (
+                1.0
+                + max(0.0, float(predicted_metrics.get("response_time", 0.0) or 0.0))
+            ),
             "cost": 1.0
-            / (1.0 + (max(0.0, float(predicted_metrics.get("cost", 0.0) or 0.0)) * 1000.0)),
+            / (
+                1.0
+                + (max(0.0, float(predicted_metrics.get("cost", 0.0) or 0.0)) * 1000.0)
+            ),
         }
         return sum(bounded_metrics[key] * weight for key, weight in weights.items())
 
@@ -995,7 +1065,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         boost = min(0.35, 0.2 * len(matches))
         return score * (1.0 + boost)
 
-    def _get_int_config(self, key: str, default: int, *, minimum: Optional[int] = None) -> int:
+    def _get_int_config(
+        self, key: str, default: int, *, minimum: Optional[int] = None
+    ) -> int:
         """Read integer config safely with fallback and optional clamping."""
         raw_value = self.config.get(key, default)
         try:
@@ -1060,7 +1132,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             )
         except Exception:
             logger.debug(
-                "Failed to read runtime thrift feedback for adaptive router", exc_info=True
+                "Failed to read runtime thrift feedback for adaptive router",
+                exc_info=True,
             )
             metrics = {}
 
@@ -1097,7 +1170,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         source = "none"
 
         model_breakdown = thrift_metrics.get("cache_efficiency_by_model")
-        if isinstance(model_breakdown, dict) and isinstance(model_breakdown.get(model_id), dict):
+        if isinstance(model_breakdown, dict) and isinstance(
+            model_breakdown.get(model_id), dict
+        ):
             bucket = model_breakdown[model_id]
             source = "model"
         else:
@@ -1150,11 +1225,15 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
     def _calculate_thrift_penalty(self, bucket_summary: Dict[str, Any]) -> float:
         """Calculate bounded penalty for cache-deadspot behavior."""
-        cache_write_requests = max(0, int(bucket_summary.get("cache_write_requests", 0) or 0))
+        cache_write_requests = max(
+            0, int(bucket_summary.get("cache_write_requests", 0) or 0)
+        )
         if cache_write_requests <= 0:
             return 0.0
 
-        cache_hit_requests = max(0, int(bucket_summary.get("cache_hit_requests", 0) or 0))
+        cache_hit_requests = max(
+            0, int(bucket_summary.get("cache_hit_requests", 0) or 0)
+        )
         cache_hit_request_rate_pct = max(
             0.0,
             float(bucket_summary.get("cache_hit_request_rate_pct", 0.0) or 0.0),
@@ -1179,7 +1258,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         ):
             return 0.0
 
-        gap_ratio = max(0.0, cache_write_request_rate_pct - cache_hit_request_rate_pct) / 100.0
+        gap_ratio = (
+            max(0.0, cache_write_request_rate_pct - cache_hit_request_rate_pct) / 100.0
+        )
         reuse_penalty = max(0.0, 1.0 - min(reuse_to_write_ratio, 1.0))
         penalty = (gap_ratio * 0.7) + (reuse_penalty * 0.3)
 
@@ -1260,7 +1341,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
     ) -> float:
         """Distribute load evenly across models."""
         load_factor = 1.0 / max(load_status.active_requests + 1, 1)
-        base_score = predicted_metrics["quality"] * predicted_metrics["success_probability"]
+        base_score = (
+            predicted_metrics["quality"] * predicted_metrics["success_probability"]
+        )
         return base_score * load_factor
 
     def _score_adaptive(
@@ -1306,7 +1389,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         """Select the best model from evaluations."""
 
         # Sort by final score
-        sorted_models = sorted(evaluations.items(), key=lambda x: x[1]["final_score"], reverse=True)
+        sorted_models = sorted(
+            evaluations.items(), key=lambda x: x[1]["final_score"], reverse=True
+        )
 
         if not sorted_models:
             raise ValueError("No valid model evaluations")
@@ -1317,7 +1402,8 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         # Alternative models (top 3)
         alternatives = [
-            (model_id, eval_data["final_score"]) for model_id, eval_data in sorted_models[1:4]
+            (model_id, eval_data["final_score"])
+            for model_id, eval_data in sorted_models[1:4]
         ]
 
         return best_model_id, confidence, alternatives
@@ -1350,11 +1436,15 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         if strategy == RoutingStrategy.COST_OPTIMIZED:
             justification += f"Cost-effective choice (${metrics['cost']:.4f}) "
         elif strategy == RoutingStrategy.SPEED_OPTIMIZED:
-            justification += f"Fast response expected ({metrics['response_time']:.1f}s) "
+            justification += (
+                f"Fast response expected ({metrics['response_time']:.1f}s) "
+            )
         elif strategy == RoutingStrategy.QUALITY_OPTIMIZED:
             justification += f"High quality output expected ({metrics['quality']:.2f}) "
 
-        justification += f"with {metrics['success_probability']:.1%} success probability."
+        justification += (
+            f"with {metrics['success_probability']:.1%} success probability."
+        )
 
         return justification
 
@@ -1364,10 +1454,13 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         # Update average routing time
         total_time = (
-            self.routing_metrics.avg_routing_time * (self.routing_metrics.total_routings - 1)
+            self.routing_metrics.avg_routing_time
+            * (self.routing_metrics.total_routings - 1)
             + decision.routing_time
         )
-        self.routing_metrics.avg_routing_time = total_time / self.routing_metrics.total_routings
+        self.routing_metrics.avg_routing_time = (
+            total_time / self.routing_metrics.total_routings
+        )
 
         # Update strategy performance (will be updated when results come back)
         if decision.strategy_used not in self.routing_metrics.strategy_performance:
@@ -1377,7 +1470,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
                 "avg_quality": 0.0,
             }
 
-        self.routing_metrics.strategy_performance[decision.strategy_used]["usage_count"] += 1
+        self.routing_metrics.strategy_performance[decision.strategy_used][
+            "usage_count"
+        ] += 1
 
         # Update model utilization
         if decision.selected_model_id not in self.routing_metrics.model_utilization:
@@ -1397,7 +1492,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
 
         # Update model performance history
         if model_id not in self.model_performance_history:
-            self.model_performance_history[model_id] = ModelPerformanceHistory(model_id=model_id)
+            self.model_performance_history[model_id] = ModelPerformanceHistory(
+                model_id=model_id
+            )
 
         self.model_performance_history[model_id].update_performance(result, task_type)
 
@@ -1413,7 +1510,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         # Find corresponding routing decision and update strategy performance
         for decision in self.routing_decisions:
             if decision.task_id == task_id and decision.selected_model_id == model_id:
-                strategy_perf = self.routing_metrics.strategy_performance[decision.strategy_used]
+                strategy_perf = self.routing_metrics.strategy_performance[
+                    decision.strategy_used
+                ]
 
                 # Update success rate
                 count = strategy_perf["usage_count"]
