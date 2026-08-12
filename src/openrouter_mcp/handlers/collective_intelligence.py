@@ -9,7 +9,7 @@ cross-model validation, and collaborative problem-solving.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from ..collective_intelligence import (
     CollectiveIntelligenceLifecycleManager,
@@ -69,7 +69,7 @@ async def _get_configured_lifecycle_manager() -> CollectiveIntelligenceLifecycle
 
 async def _collective_chat_completion_impl(
     request: CollectiveChatRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate chat completion using collective intelligence with multiple models.
 
@@ -130,7 +130,7 @@ async def _collective_chat_completion_impl(
         raise
 
 
-async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str, Any]:
+async def collective_chat_completion(request: CollectiveChatRequest) -> dict[str, Any]:
     """Generate a chat completion using multiple AI models to reach consensus.
 
     Queries several models in parallel and combines their responses using the chosen
@@ -143,7 +143,7 @@ async def collective_chat_completion(request: CollectiveChatRequest) -> Dict[str
     return await _collective_chat_completion_impl(request)
 
 
-async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[str, Any]:
+async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> dict[str, Any]:
     """
     Perform ensemble reasoning using specialized models for different aspects.
 
@@ -195,7 +195,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
         raise
 
 
-async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any]:
+async def ensemble_reasoning(request: EnsembleReasoningRequest) -> dict[str, Any]:
     """Decompose a complex problem and route subtasks to specialized models.
 
     Breaks the problem into subtasks, assigns each to the best-suited model, and
@@ -209,7 +209,7 @@ async def ensemble_reasoning(request: EnsembleReasoningRequest) -> Dict[str, Any
 
 async def _adaptive_model_selection_impl(
     request: AdaptiveModelRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Intelligently select the best model for a given task using adaptive routing.
 
@@ -263,7 +263,7 @@ async def _adaptive_model_selection_impl(
         raise
 
 
-async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, Any]:
+async def adaptive_model_selection(request: AdaptiveModelRequest) -> dict[str, Any]:
     """Select the best model for a task using adaptive performance-based routing.
 
     Analyzes the query and task type, then picks the most suitable model based on
@@ -277,7 +277,7 @@ async def adaptive_model_selection(request: AdaptiveModelRequest) -> Dict[str, A
 
 async def _cross_model_validation_impl(
     request: CrossValidationRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Validate content quality and accuracy across multiple models.
 
@@ -324,7 +324,7 @@ async def _cross_model_validation_impl(
         )
 
         # Create task context for validation with criteria and models
-        extras: Dict[str, Any] = {"validation_threshold": request.threshold}
+        extras: dict[str, Any] = {"validation_threshold": request.threshold}
         if request.validation_criteria:
             extras["validation_criteria"] = request.validation_criteria
         requirements = _build_collective_request_requirements(
@@ -345,7 +345,7 @@ async def _cross_model_validation_impl(
         raise
 
 
-async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, Any]:
+async def cross_model_validation(request: CrossValidationRequest) -> dict[str, Any]:
     """Validate content accuracy and quality by cross-checking with multiple models.
 
     Multiple models independently review the content for errors, inconsistencies,
@@ -360,7 +360,7 @@ async def cross_model_validation(request: CrossValidationRequest) -> Dict[str, A
 
 async def _collaborative_problem_solving_impl(
     request: CollaborativeSolvingRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Solve complex problems through collaborative multi-model interaction.
 
@@ -402,7 +402,7 @@ async def _collaborative_problem_solving_impl(
         collaborative_solver = await lifecycle_manager.get_collaborative_solver()
 
         # Create task context with max_iterations, system_prompt and models
-        extras: Dict[str, Any] = {"max_iterations": request.max_iterations}
+        extras: dict[str, Any] = {"max_iterations": request.max_iterations}
         requirements = _build_collective_request_requirements(
             request,
             base=request.requirements,
@@ -426,7 +426,7 @@ async def _collaborative_problem_solving_impl(
 
 async def collaborative_problem_solving(
     request: CollaborativeSolvingRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Solve complex problems through iterative multi-model collaboration.
 
     Orchestrates multiple models to build on each other's contributions through
