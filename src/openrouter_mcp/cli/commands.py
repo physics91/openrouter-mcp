@@ -39,7 +39,9 @@ def configure_cli_logging() -> None:
 def _print_openrouter_next_steps() -> None:
     """Print post-install instructions for the OpenRouter preset."""
     click.echo("\n📝 Next steps:")
-    click.echo("1. Configure credentials with 'openrouter-mcp setup' or OPENROUTER_API_KEY")
+    click.echo(
+        "1. Configure credentials with 'openrouter-mcp setup' or OPENROUTER_API_KEY"
+    )
     click.echo("2. Start a new Claude Code session")
     click.echo("3. The OpenRouter MCP tools will be available")
     click.echo("\nExample commands:")
@@ -56,7 +58,9 @@ def _add_preset_server(
     options: dict[str, Any],
 ) -> bool:
     """Add a server from a preset definition."""
-    success = manager.add_server_from_preset(server_name, api_key=api_key, force=force, **options)
+    success = manager.add_server_from_preset(
+        server_name, api_key=api_key, force=force, **options
+    )
     if not success:
         return False
 
@@ -137,7 +141,9 @@ def add_mcp_server(
         return False
 
     except MCPServerAlreadyExistsError:
-        click.echo(f"⚠️ Server '{server_name}' already exists. Use --force to overwrite.")
+        click.echo(
+            f"⚠️ Server '{server_name}' already exists. Use --force to overwrite."
+        )
         return False
     except MCPConfigError as e:
         click.echo(f"❌ Configuration error: {e}")
@@ -399,7 +405,9 @@ def config(
 
     args_list = list(args) if args else None
 
-    configure_mcp_server(server_name, env=env_dict if env_dict else None, args=args_list, cwd=cwd)
+    configure_mcp_server(
+        server_name, env=env_dict if env_dict else None, args=args_list, cwd=cwd
+    )
 
 
 if __name__ == "__main__":
