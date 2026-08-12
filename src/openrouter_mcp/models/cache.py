@@ -839,6 +839,30 @@ class ModelCache:
 
         return [model for model in models if model.get("category", "").lower() == category.lower()]
 
+    @staticmethod
+    def _summarize_cached_models(
+        models: List[Dict[str, Any]],
+    ) -> Tuple[List[str], int, int]:
+        """Summarize provider and capability counts in one model traversal."""
+        providers = set()
+        vision_count = 0
+        reasoning_count = 0
+
+        for model in models:
+            provider = model.get("provider")
+            if isinstance(provider, str) and provider != "Unknown":
+                providers.add(provider)
+
+            caps = model.get("capabilities", {})
+            if caps.get("supports_vision", False):
+                vision_count += 1
+
+            model_id = model.get("id", "").lower()
+            if "o1" in model_id or "reasoning" in model.get("description", "").lower():
+                reasoning_count += 1
+
+        return sorted(list(providers)), vision_count, reasoning_count
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics and metadata.
@@ -848,22 +872,9 @@ class ModelCache:
         """
         with self._cache_lock:
             # Count providers (use model dict directly — already enriched)
-            providers = set()
-            vision_count = 0
-            reasoning_count = 0
-
-            for model in self._memory_cache:
-                provider = model.get("provider")
-                if isinstance(provider, str) and provider != "Unknown":
-                    providers.add(provider)
-
-                caps = model.get("capabilities", {})
-                if caps.get("supports_vision", False):
-                    vision_count += 1
-
-                model_id = model.get("id", "").lower()
-                if "o1" in model_id or "reasoning" in model.get("description", "").lower():
-                    reasoning_count += 1
+            providers, vision_count, reasoning_count = self._summarize_cached_models(
+                self._memory_cache
+            )
 
             # Calculate cache size
             try:
@@ -876,7 +887,7 @@ class ModelCache:
 
             return {
                 "total_models": len(self._memory_cache),
-                "providers": sorted(list(providers)),
+                "providers": providers,
                 "vision_capable_count": vision_count,
                 "reasoning_model_count": reasoning_count,
                 "cache_size_mb": round(cache_size_mb, 4),

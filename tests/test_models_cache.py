@@ -9,6 +9,7 @@ that keeps the latest AI models from OpenRouter API.
 import asyncio
 import json
 import tempfile
+from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -523,6 +524,89 @@ class TestModelCache:
         assert stats["vision_capable_count"] == 1
         assert "last_updated" in stats
         assert stats["cache_size_mb"] > 0
+
+    def test_summarize_cached_models_preserves_single_pass_classification_rules(
+        self, cache_config
+    ):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        models = [
+            {
+                "provider": "openai",
+                "capabilities": {"supports_vision": "yes"},
+                "id": "openai/o1-preview",
+                "description": "Reasoning model",
+            },
+            {
+                "provider": "openai",
+                "capabilities": {},
+                "id": "openai/gpt-5",
+                "description": "General model",
+            },
+            {
+                "provider": "OpenAI",
+                "capabilities": {"supports_vision": 1},
+                "id": "openai/gpt-4",
+                "description": "General model",
+            },
+            {
+                "provider": "Unknown",
+                "capabilities": {},
+                "id": "vendor/model",
+                "description": "Reasoning specialist",
+            },
+            {
+                "provider": 123,
+                "capabilities": {},
+                "id": "vendor/model",
+                "description": "General model",
+            },
+            {
+                "provider": "anthropic",
+                "capabilities": {},
+                "id": "anthropic/claude",
+                "description": "General model",
+            },
+            {
+                "provider": "",
+                "capabilities": {},
+                "id": "vendor/empty-provider",
+                "description": "General model",
+            },
+        ]
+        original_models = deepcopy(models)
+
+        providers, vision_count, reasoning_count = cache._summarize_cached_models(
+            models
+        )
+
+        assert providers == ["", "OpenAI", "anthropic", "openai"]
+        assert vision_count == 2
+        assert reasoning_count == 2
+        assert models == original_models
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            {"capabilities": [], "id": "vendor/model", "description": "General"},
+            {"capabilities": {}, "id": 123, "description": "General"},
+            {"capabilities": {}, "id": "vendor/model", "description": 123},
+        ],
+    )
+    def test_summarize_cached_models_propagates_malformed_model_errors(
+        self, cache_config, model
+    ):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        original_model = deepcopy(model)
+        summarize_models = cache._summarize_cached_models
+
+        with pytest.raises(AttributeError):
+            summarize_models([model])
+
+        assert model == original_model
 
 
 class TestFilterModelsPerformance:
