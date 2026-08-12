@@ -274,6 +274,30 @@ def determine_model_category(model_data: Dict[str, Any]) -> ModelCategory:
     return ModelCategory.UNKNOWN
 
 
+def _extract_function_and_tool_support(
+    provider: ModelProvider,
+    model_id: str,
+) -> tuple[bool, bool]:
+    supports_functions = False
+    supports_tools = False
+
+    if provider == ModelProvider.OPENAI:
+        # Most modern OpenAI models support functions
+        if "gpt-4" in model_id or "gpt-3.5-turbo" in model_id:
+            supports_functions = True
+            supports_tools = True
+    elif provider == ModelProvider.ANTHROPIC:
+        # Claude 3 models support tool use
+        if "claude-3" in model_id:
+            supports_tools = True
+    elif provider == ModelProvider.GOOGLE:
+        # Gemini models support functions
+        if "gemini" in model_id:
+            supports_functions = True
+
+    return supports_functions, supports_tools
+
+
 def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     """
     Extract detailed capabilities from model data.
@@ -299,22 +323,10 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
 
     # Function calling capability
     provider = extract_provider_from_id(model_data.get("id", ""))
-    supports_functions = False
-    supports_tools = False
-
-    if provider == ModelProvider.OPENAI:
-        # Most modern OpenAI models support functions
-        if "gpt-4" in model_id or "gpt-3.5-turbo" in model_id:
-            supports_functions = True
-            supports_tools = True
-    elif provider == ModelProvider.ANTHROPIC:
-        # Claude 3 models support tool use
-        if "claude-3" in model_id:
-            supports_tools = True
-    elif provider == ModelProvider.GOOGLE:
-        # Gemini models support functions
-        if "gemini" in model_id:
-            supports_functions = True
+    supports_functions, supports_tools = _extract_function_and_tool_support(
+        provider,
+        model_id,
+    )
 
     # JSON mode support
     supports_json = (

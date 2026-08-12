@@ -15,6 +15,7 @@ from src.openrouter_mcp.models.cache import ModelCache
 from src.openrouter_mcp.utils.metadata import (
     ModelCategory,
     ModelProvider,
+    _extract_function_and_tool_support,
     determine_model_category,
     enhance_model_metadata,
     extract_model_capabilities,
@@ -27,6 +28,19 @@ pytestmark = pytest.mark.unit
 
 class TestModelMetadataExtraction:
     """Test suite for metadata extraction utilities."""
+
+    @pytest.mark.parametrize(
+        ("provider", "model_id", "expected"),
+        [
+            (ModelProvider.OPENAI, "openai/gpt-4", (True, True)),
+            (ModelProvider.OPENAI, "openai/o1", (False, False)),
+            (ModelProvider.ANTHROPIC, "anthropic/claude-3-opus", (False, True)),
+            (ModelProvider.GOOGLE, "google/gemini-pro", (True, False)),
+            (ModelProvider.UNKNOWN, "unknown/model", (False, False)),
+        ],
+    )
+    def test_extract_function_and_tool_support(self, provider, model_id, expected):
+        assert _extract_function_and_tool_support(provider, model_id) == expected
 
     @pytest.mark.parametrize(
         "model_id,expected_provider",
