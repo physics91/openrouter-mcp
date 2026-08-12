@@ -1468,6 +1468,47 @@ class EnhancedBenchmarkResult:
             self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
 
 
+def _calculate_enhanced_optional_averages(
+    successful: List[BenchmarkResult],
+) -> Tuple[float, float, float, float, float]:
+    """Calculate enhanced token, quality, and throughput averages."""
+    prompt_tokens = [
+        result.prompt_tokens for result in successful if result.prompt_tokens
+    ]
+    completion_tokens = [
+        result.completion_tokens for result in successful if result.completion_tokens
+    ]
+    total_tokens = [result.tokens_used for result in successful if result.tokens_used]
+
+    avg_prompt_tokens = sum(prompt_tokens) / len(prompt_tokens) if prompt_tokens else 0
+    avg_completion_tokens = (
+        sum(completion_tokens) / len(completion_tokens) if completion_tokens else 0
+    )
+    avg_total_tokens = sum(total_tokens) / len(total_tokens) if total_tokens else 0
+
+    quality_scores = [
+        result.quality_score
+        for result in successful
+        if result.quality_score is not None
+    ]
+    quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
+
+    throughputs = [
+        result.throughput_tokens_per_second
+        for result in successful
+        if result.throughput_tokens_per_second
+    ]
+    throughput = sum(throughputs) / len(throughputs) if throughputs else 0
+
+    return (
+        avg_prompt_tokens,
+        avg_completion_tokens,
+        avg_total_tokens,
+        quality_score,
+        throughput,
+    )
+
+
 @dataclass
 class EnhancedBenchmarkMetrics:
     """Enhanced metrics with comprehensive performance data."""
@@ -1489,7 +1530,9 @@ class EnhancedBenchmarkMetrics:
     throughput_score: float = 0.0
 
     @classmethod
-    def from_benchmark_results(cls, results: List[BenchmarkResult]) -> "EnhancedBenchmarkMetrics":
+    def from_benchmark_results(
+        cls, results: List[BenchmarkResult]
+    ) -> "EnhancedBenchmarkMetrics":
         """Create enhanced metrics from benchmark results."""
         if not results:
             return cls()
@@ -1500,7 +1543,9 @@ class EnhancedBenchmarkMetrics:
             return cls(success_rate=0.0)
 
         # Basic metrics
-        response_times = [r.response_time_ms / 1000 for r in successful]  # Convert to seconds
+        response_times = [
+            r.response_time_ms / 1000 for r in successful
+        ]  # Convert to seconds
         costs = [r.cost for r in successful]
 
         avg_response_time = sum(response_times) / len(response_times)
@@ -1511,32 +1556,24 @@ class EnhancedBenchmarkMetrics:
         min_cost = min(costs)
         max_cost = max(costs)
 
-        # Token metrics
-        prompt_tokens = [r.prompt_tokens for r in successful if r.prompt_tokens]
-        completion_tokens = [r.completion_tokens for r in successful if r.completion_tokens]
-        total_tokens = [r.tokens_used for r in successful if r.tokens_used]
-
-        avg_prompt_tokens = sum(prompt_tokens) / len(prompt_tokens) if prompt_tokens else 0
-        avg_completion_tokens = (
-            sum(completion_tokens) / len(completion_tokens) if completion_tokens else 0
-        )
-        avg_total_tokens = sum(total_tokens) / len(total_tokens) if total_tokens else 0
-
-        # Quality and throughput
-        quality_scores = [r.quality_score for r in successful if r.quality_score is not None]
-        quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
-
-        throughputs = [
-            r.throughput_tokens_per_second for r in successful if r.throughput_tokens_per_second
-        ]
-        throughput = sum(throughputs) / len(throughputs) if throughputs else 0
+        (
+            avg_prompt_tokens,
+            avg_completion_tokens,
+            avg_total_tokens,
+            quality_score,
+            throughput,
+        ) = _calculate_enhanced_optional_averages(successful)
 
         success_rate = len(successful) / len(results)
 
         # Calculate normalized scores (0-1)
-        speed_score = max(0, 1.0 - (avg_response_time / 60.0))  # Normalize based on 60s max
+        speed_score = max(
+            0, 1.0 - (avg_response_time / 60.0)
+        )  # Normalize based on 60s max
         cost_score = max(0, 1.0 - (avg_cost * 1000))  # Normalize based on $0.001 max
-        throughput_score = min(1.0, throughput / 100.0)  # Normalize based on 100 tokens/s max
+        throughput_score = min(
+            1.0, throughput / 100.0
+        )  # Normalize based on 100 tokens/s max
 
         return cls(
             avg_response_time=avg_response_time,
