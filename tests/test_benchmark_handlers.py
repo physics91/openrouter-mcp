@@ -567,6 +567,122 @@ This computes the factorial recursively."""
             assert all("prompt" in h for h in history)
             assert all("models" in h for h in history)
 
+    @pytest.mark.parametrize("prompt_length", [100, 101])
+    def test_build_history_entry_preserves_prompt_boundary_and_metric_order(
+        self, handler, prompt_length
+    ):
+        prompt = "p" * prompt_length
+        models = ["model-z", "model-a"]
+        comparison = MagicMock()
+        comparison.prompt = prompt
+        comparison.models = models
+        comparison.timestamp.isoformat.return_value = "2026-08-12T12:00:00+00:00"
+        comparison.get_metrics.return_value = {
+            "model-z": SimpleNamespace(
+                avg_response_time_ms=10.0,
+                avg_cost=0.01,
+                success_rate=0.9,
+            ),
+            "model-a": SimpleNamespace(
+                avg_response_time_ms=20.0,
+                avg_cost=0.02,
+                success_rate=0.8,
+            ),
+        }
+        file = Path("benchmark_test.json")
+
+        entry = handler._build_history_entry(file, comparison)
+
+        expected_prompt = prompt if prompt_length == 100 else (prompt[:100] + "...")
+        assert entry == {
+            "file": str(file),
+            "prompt": expected_prompt,
+            "models": models,
+            "timestamp": "2026-08-12T12:00:00+00:00",
+            "metrics_summary": {
+                "model-z": {
+                    "avg_time_ms": 10.0,
+                    "avg_cost": 0.01,
+                    "success_rate": 0.9,
+                },
+                "model-a": {
+                    "avg_time_ms": 20.0,
+                    "avg_cost": 0.02,
+                    "success_rate": 0.8,
+                },
+            },
+        }
+        assert entry["models"] is models
+        assert list(entry["metrics_summary"]) == ["model-z", "model-a"]
+        comparison.timestamp.isoformat.assert_called_once_with()
+        comparison.get_metrics.assert_called_once_with()
+        assert comparison.prompt is prompt
+        assert comparison.models is models
+
+    def test_build_history_entry_propagates_timestamp_error_before_metrics(
+        self, handler
+    ):
+        comparison = MagicMock(prompt="prompt", models=[])
+        error = RuntimeError("timestamp failed")
+        comparison.timestamp.isoformat.side_effect = error
+
+        with pytest.raises(RuntimeError) as raised:
+            handler._build_history_entry(Path("benchmark.json"), comparison)
+
+        assert raised.value is error
+        comparison.get_metrics.assert_not_called()
+
+    def test_build_history_entry_preserves_malformed_metric_error(self, handler):
+        comparison = MagicMock(prompt="prompt", models=[])
+        comparison.timestamp.isoformat.return_value = "timestamp"
+        comparison.get_metrics.return_value = {"broken": SimpleNamespace()}
+
+        with pytest.raises(AttributeError):
+            handler._build_history_entry(Path("benchmark.json"), comparison)
+
+        comparison.timestamp.isoformat.assert_called_once_with()
+        comparison.get_metrics.assert_called_once_with()
+
+    def test_get_history_logs_entry_failure_and_continues_in_file_order(self, handler):
+        files = [
+            handler.cache_dir / "benchmark_1.json",
+            handler.cache_dir / "benchmark_2.json",
+            handler.cache_dir / "benchmark_3.json",
+        ]
+        for file in files:
+            file.write_text("{}", encoding="utf-8")
+        comparisons = [MagicMock(name=f"comparison-{index}") for index in range(3)]
+        kept_entries = [{"entry": 2}, {"entry": 1}]
+        error = RuntimeError("entry failed")
+
+        with patch.object(
+            handler,
+            "load_comparison",
+            side_effect=comparisons,
+        ) as load_comparison, patch.object(
+            handler,
+            "_build_history_entry",
+            side_effect=[error, *kept_entries],
+        ) as build_entry, patch(
+            "src.openrouter_mcp.handlers.benchmark.logger.error"
+        ) as log_error:
+            history = handler.get_history()
+
+        ordered_files = list(reversed(files))
+        assert history == kept_entries
+        assert history[0] is kept_entries[0]
+        assert history[1] is kept_entries[1]
+        assert load_comparison.call_args_list == [
+            call(str(file)) for file in ordered_files
+        ]
+        assert build_entry.call_args_list == [
+            call(file, comparison)
+            for file, comparison in zip(ordered_files, comparisons)
+        ]
+        log_error.assert_called_once_with(
+            f"Error loading benchmark file {ordered_files[0]}: entry failed"
+        )
+
     @pytest.mark.asyncio
     async def test_export_benchmark_batch(self, handler):
         """Test exporting benchmark requests to deferred batch artifacts."""

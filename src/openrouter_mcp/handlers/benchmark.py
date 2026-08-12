@@ -914,6 +914,31 @@ class BenchmarkHandler:
 
         return ModelComparison.from_dict(data)
 
+    @staticmethod
+    def _build_history_entry(
+        file: Path,
+        comparison: ModelComparison,
+    ) -> Dict[str, Any]:
+        """Build one display-ready benchmark history entry."""
+        return {
+            "file": str(file),
+            "prompt": (
+                comparison.prompt[:100] + "..."
+                if len(comparison.prompt) > 100
+                else comparison.prompt
+            ),
+            "models": comparison.models,
+            "timestamp": comparison.timestamp.isoformat(),
+            "metrics_summary": {
+                model: {
+                    "avg_time_ms": metrics.avg_response_time_ms,
+                    "avg_cost": metrics.avg_cost,
+                    "success_rate": metrics.success_rate,
+                }
+                for model, metrics in comparison.get_metrics().items()
+            },
+        }
+
     def get_history(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent benchmark history."""
         files = sorted(self.cache_dir.glob("benchmark_*.json"), reverse=True)[:limit]
@@ -922,26 +947,7 @@ class BenchmarkHandler:
         for file in files:
             try:
                 comparison = self.load_comparison(str(file))
-                history.append(
-                    {
-                        "file": str(file),
-                        "prompt": (
-                            comparison.prompt[:100] + "..."
-                            if len(comparison.prompt) > 100
-                            else comparison.prompt
-                        ),
-                        "models": comparison.models,
-                        "timestamp": comparison.timestamp.isoformat(),
-                        "metrics_summary": {
-                            model: {
-                                "avg_time_ms": metrics.avg_response_time_ms,
-                                "avg_cost": metrics.avg_cost,
-                                "success_rate": metrics.success_rate,
-                            }
-                            for model, metrics in comparison.get_metrics().items()
-                        },
-                    }
-                )
+                history.append(self._build_history_entry(file, comparison))
             except Exception as e:
                 logger.error(f"Error loading benchmark file {file}: {e}")
 
