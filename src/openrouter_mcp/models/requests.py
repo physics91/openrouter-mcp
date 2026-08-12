@@ -17,7 +17,7 @@ Usage:
         custom_field: str = Field(...)
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -70,7 +70,7 @@ class BaseChatRequest(StreamableRequest):
     """
 
     model: str = Field(..., description="The model to use for completion")
-    messages: List[ChatMessage] = Field(
+    messages: list[ChatMessage] = Field(
         ..., description="List of messages in the conversation"
     )
 
@@ -83,7 +83,7 @@ class BaseCollectiveRequest(BaseCompletionParams):
     selection and system prompts.
     """
 
-    models: Optional[List[str]] = Field(
+    models: Optional[list[str]] = Field(
         None, description="Specific models to use (optional)"
     )
     system_prompt: Optional[str] = Field(
