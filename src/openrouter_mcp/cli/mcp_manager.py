@@ -15,7 +15,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional
 
 from ..config.constants import EnvVars
 from ..utils.env import get_env_value
@@ -34,19 +34,13 @@ def _copy_config_container(value: Any) -> Any:
 class MCPConfigError(Exception):
     """Base exception for MCP configuration errors."""
 
-    pass
-
 
 class MCPServerNotFoundError(MCPConfigError):
     """Raised when an MCP server is not found."""
 
-    pass
-
 
 class MCPServerAlreadyExistsError(MCPConfigError):
     """Raised when trying to add a server that already exists."""
-
-    pass
 
 
 @dataclass
@@ -95,14 +89,14 @@ class MCPManager:
     """Manager for MCP server configurations in Claude Code CLI."""
 
     # Default config paths for different platforms
-    DEFAULT_CONFIG_PATHS = {
+    DEFAULT_CONFIG_PATHS: ClassVar[dict[str, Path]] = {
         "Windows": Path.home() / ".claude.json",
         "Darwin": Path.home() / ".claude.json",  # macOS
         "Linux": Path.home() / ".claude.json",
     }
 
     # Preset configurations for common MCP servers
-    PRESETS: Dict[str, Dict[str, Any]] = {
+    PRESETS: ClassVar[dict[str, dict[str, Any]]] = {
         "openrouter": {
             "command": "cmd" if sys.platform == "win32" else "npx",
             "args": (
