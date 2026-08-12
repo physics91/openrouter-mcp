@@ -198,6 +198,29 @@ def _serialize_category_benchmark_result(
     }
 
 
+def _group_category_benchmark_results(
+    successful_results: Dict[str, EnhancedBenchmarkResult],
+    selected_models: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    grouped_results: Dict[str, List[Dict[str, Any]]] = {}
+
+    for model_id, result in successful_results.items():
+        model_category = "unknown"
+        for model in selected_models:
+            if model["id"] == model_id:
+                model_category = model.get("category", "unknown")
+                break
+
+        if model_category not in grouped_results:
+            grouped_results[model_category] = []
+
+        grouped_results[model_category].append(
+            _serialize_category_benchmark_result(model_id, result)
+        )
+
+    return grouped_results
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -478,24 +501,11 @@ async def compare_model_categories(
                 "prompt": prompt,
             },
             "category_info": category_info,
-            "results": {},
+            "results": _group_category_benchmark_results(
+                successful_results,
+                selected_models,
+            ),
         }
-
-        # 카테고리별로 결과 그룹화
-        for model_id, result in successful_results.items():
-            # 해당 모델의 카테고리 찾기
-            model_category = "unknown"
-            for model in selected_models:
-                if model["id"] == model_id:
-                    model_category = model.get("category", "unknown")
-                    break
-
-            if model_category not in comparison_data["results"]:
-                comparison_data["results"][model_category] = []
-
-            comparison_data["results"][model_category].append(
-                _serialize_category_benchmark_result(model_id, result)
-            )
 
         # 전체 랭킹 계산
         if successful_results:

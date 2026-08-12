@@ -1,9 +1,75 @@
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from src.openrouter_mcp.handlers import mcp_benchmark
+
+
+def test_group_category_benchmark_results_preserves_lookup_and_order():
+    first_result = mcp_benchmark.EnhancedBenchmarkResult(
+        model_id="shared-model",
+        success=True,
+        response="first response",
+        error_message=None,
+        metrics=None,
+        timestamp=datetime.now(),
+    )
+    second_result = mcp_benchmark.EnhancedBenchmarkResult(
+        model_id="second-model",
+        success=True,
+        response="second response",
+        error_message=None,
+        metrics=None,
+        timestamp=datetime.now(),
+    )
+    unknown_result = mcp_benchmark.EnhancedBenchmarkResult(
+        model_id="missing-model",
+        success=True,
+        response=None,
+        error_message=None,
+        metrics=None,
+        timestamp=datetime.now(),
+    )
+
+    grouped = mcp_benchmark._group_category_benchmark_results(
+        {
+            "shared-model": first_result,
+            "second-model": second_result,
+            "missing-model": unknown_result,
+        },
+        [
+            {"id": "shared-model", "category": "first-category"},
+            {"id": "shared-model", "category": "second-category"},
+            {"id": "second-model", "category": "first-category"},
+        ],
+    )
+
+    assert grouped == {
+        "first-category": [
+            {
+                "model_id": "shared-model",
+                "success": True,
+                "metrics": None,
+                "response_length": len("first response"),
+            },
+            {
+                "model_id": "second-model",
+                "success": True,
+                "metrics": None,
+                "response_length": len("second response"),
+            },
+        ],
+        "unknown": [
+            {
+                "model_id": "missing-model",
+                "success": True,
+                "metrics": None,
+                "response_length": 0,
+            }
+        ],
+    }
 
 
 def test_group_models_by_category_preserves_order_identity_and_filtering():
