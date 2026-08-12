@@ -51,7 +51,9 @@ class FreeModelRouter:
     ) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
         context_length = float(model.get("context_length", 0))
-        context_score = min(context_length / float(FreeChatConfig.MAX_CONTEXT_LENGTH), 1.0)
+        context_score = min(
+            context_length / float(FreeChatConfig.MAX_CONTEXT_LENGTH), 1.0
+        )
 
         provider = str(model.get("provider", ""))
         if not provider or provider == "unknown":
@@ -129,7 +131,9 @@ class FreeModelRouter:
     def _cleanup_expired_cooldowns(self) -> None:
         """Remove expired cooldown entries."""
         now = time.time()
-        self._cooldowns = {mid: until for mid, until in self._cooldowns.items() if until > now}
+        self._cooldowns = {
+            mid: until for mid, until in self._cooldowns.items() if until > now
+        }
 
     @staticmethod
     def _filter_by_capabilities(
@@ -231,7 +235,9 @@ class FreeModelRouter:
         if preferred_models:
             free_models = self._cache.filter_models(free_only=True)
             if required_capabilities:
-                free_models = self._filter_by_capabilities(free_models, required_capabilities)
+                free_models = self._filter_by_capabilities(
+                    free_models, required_capabilities
+                )
             free_model_ids = {m["id"] for m in free_models}
             for pref_id in preferred_models:
                 if pref_id in free_model_ids and self._is_available(pref_id):
