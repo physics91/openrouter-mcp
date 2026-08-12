@@ -676,6 +676,5 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         logger.info("Shutting down ConsensusEngine...")
         await self.storage_manager.shutdown()
         # Cancel any remaining tasks
-        for request_id in list(self.cancellation_manager.pending_tasks.keys()):
-            await self.cancellation_manager.cancel_all_tasks(request_id, "Shutdown requested")
+        await self.cancellation_manager.cancel_all_pending_tasks("Shutdown requested")
         logger.info("ConsensusEngine shutdown complete")

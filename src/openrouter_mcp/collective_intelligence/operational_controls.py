@@ -547,6 +547,13 @@ class TaskCancellationManager:
             self.pending_tasks.pop(request_id, None)
             return cancelled_count
 
+    async def cancel_all_pending_tasks(
+        self, reason: str = "Shutdown requested"
+    ) -> None:
+        """Cancel each request present when bulk cancellation starts."""
+        for request_id in list(self.pending_tasks.keys()):
+            await self.cancel_all_tasks(request_id, reason)
+
     async def unregister_task(self, request_id: str, task: asyncio.Task[Any]) -> None:
         """Unregister a completed task."""
         async with self._lock:
