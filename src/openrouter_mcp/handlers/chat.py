@@ -13,6 +13,7 @@ from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
     attach_thrift_metadata_from_payload,
     compact_messages_for_model,
+    enrich_final_stream_chunk_with_thrift_metadata,
     enrich_response_with_thrift_metadata,
     get_request_thrift_metrics_snapshot,
     get_thrift_metrics_snapshot_for_dates,
@@ -108,18 +109,14 @@ async def chat_with_model(
                     ),
                 )
                 thrift_metrics = get_request_thrift_metrics_snapshot()
-                if chunks:
-                    chunks = [
-                        *chunks[:-1],
-                        await enrich_response_with_thrift_metadata(
-                            client,
-                            request.model,
-                            chunks[-1],
-                            thrift_metrics,
-                            logger=logger,
-                            log_context="chat response",
-                        ),
-                    ]
+                chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+                    client,
+                    request.model,
+                    chunks,
+                    thrift_metrics,
+                    logger=logger,
+                    log_context="chat response",
+                )
 
                 logger.info(f"Streaming completed with {len(chunks)} chunks")
                 return chunks

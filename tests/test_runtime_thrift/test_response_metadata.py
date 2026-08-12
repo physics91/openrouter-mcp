@@ -1,9 +1,10 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.openrouter_mcp.runtime_thrift.response_metadata import (
     attach_thrift_metadata_from_payload,
+    enrich_final_stream_chunk_with_thrift_metadata,
     enrich_response_with_thrift_metadata,
 )
 from src.openrouter_mcp.runtime_thrift.summary import (
@@ -104,6 +105,68 @@ def test_build_cache_efficiency_summary_handles_zero_denominators():
 
 
 class TestResponseMetadata:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_empty_stream_enrichment_preserves_list_identity(self):
+        chunks = []
+
+        with patch(
+            "src.openrouter_mcp.runtime_thrift.response_metadata."
+            "enrich_response_with_thrift_metadata",
+            new_callable=AsyncMock,
+        ) as enrich:
+            result = await enrich_final_stream_chunk_with_thrift_metadata(
+                client=AsyncMock(),
+                model="openai/gpt-4o",
+                chunks=chunks,
+                thrift_metrics={"compacted_tokens": 5},
+            )
+
+        assert result is chunks
+        enrich.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stream_enrichment_replaces_only_final_chunk(self):
+        first_chunk = {"choices": [{"delta": {"content": "Hello"}}]}
+        final_chunk = {"usage": {"total_tokens": 3}}
+        chunks = [first_chunk, final_chunk]
+        enriched_final_chunk = {
+            **final_chunk,
+            "thrift_metrics": {"compacted_tokens": 5},
+        }
+        client = AsyncMock()
+        thrift_metrics = {"compacted_tokens": 5}
+        test_logger = AsyncMock()
+
+        with patch(
+            "src.openrouter_mcp.runtime_thrift.response_metadata."
+            "enrich_response_with_thrift_metadata",
+            new_callable=AsyncMock,
+            return_value=enriched_final_chunk,
+        ) as enrich:
+            result = await enrich_final_stream_chunk_with_thrift_metadata(
+                client=client,
+                model="openai/gpt-4o",
+                chunks=chunks,
+                thrift_metrics=thrift_metrics,
+                logger=test_logger,
+                log_context="vision response",
+            )
+
+        assert result is not chunks
+        assert result[0] is first_chunk
+        assert result[-1] is enriched_final_chunk
+        assert chunks == [first_chunk, final_chunk]
+        enrich.assert_awaited_once_with(
+            client,
+            "openai/gpt-4o",
+            final_chunk,
+            thrift_metrics,
+            logger=test_logger,
+            log_context="vision response",
+        )
+
     @pytest.mark.unit
     def test_attaches_thrift_metadata_from_payload_total_cost(self):
         payload = {

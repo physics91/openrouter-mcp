@@ -108,9 +108,34 @@ async def enrich_response_with_thrift_metadata(
     )
 
 
+async def enrich_final_stream_chunk_with_thrift_metadata(
+    client: Any,
+    model: str,
+    chunks: list[Dict[str, Any]],
+    thrift_metrics: Dict[str, Any],
+    *,
+    logger: logging.Logger | None = None,
+    log_context: str = "response",
+) -> list[Dict[str, Any]]:
+    """Attach thrift metadata to the final stream chunk, if present."""
+    if not chunks:
+        return chunks
+
+    enriched_final_chunk = await enrich_response_with_thrift_metadata(
+        client,
+        model,
+        chunks[-1],
+        thrift_metrics,
+        logger=logger,
+        log_context=log_context,
+    )
+    return [*chunks[:-1], enriched_final_chunk]
+
+
 __all__ = [
     "attach_thrift_metadata",
     "attach_thrift_metadata_from_payload",
+    "enrich_final_stream_chunk_with_thrift_metadata",
     "enrich_response_with_thrift_metadata",
     "estimate_response_cost_usd",
 ]

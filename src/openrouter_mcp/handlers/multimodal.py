@@ -16,6 +16,7 @@ from ..mcp_registry import get_openrouter_client, mcp
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
+    enrich_final_stream_chunk_with_thrift_metadata,
     enrich_response_with_thrift_metadata,
     get_request_thrift_metrics_snapshot,
     thrift_request_scope,
@@ -397,18 +398,14 @@ async def chat_with_vision(
                     ),
                 )
                 thrift_metrics = get_request_thrift_metrics_snapshot()
-                if chunks:
-                    chunks = [
-                        *chunks[:-1],
-                        await enrich_response_with_thrift_metadata(
-                            client,
-                            request.model,
-                            chunks[-1],
-                            thrift_metrics,
-                            logger=logger,
-                            log_context="vision response",
-                        ),
-                    ]
+                chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+                    client,
+                    request.model,
+                    chunks,
+                    thrift_metrics,
+                    logger=logger,
+                    log_context="vision response",
+                )
 
                 logger.info(f"Streaming completed with {len(chunks)} chunks")
                 return chunks
