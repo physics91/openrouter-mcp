@@ -108,6 +108,26 @@ def _serialize_json_result(model_id: str, result: Any) -> Dict[str, Any]:
     return result_data
 
 
+def _serialize_csv_result(model_id: str, result: Any) -> Dict[str, Any]:
+    """Serialize one benchmark result as a CSV row."""
+    return {
+        "model_id": model_id,
+        "success": result.success if hasattr(result, "success") else True,
+        "response_time": (
+            result.response_time_ms if hasattr(result, "response_time_ms") else 0
+        ),
+        "cost": result.cost if hasattr(result, "cost") else 0,
+        "quality_score": 0,
+        "throughput": 0,
+        "tokens_used": result.tokens_used if hasattr(result, "tokens_used") else 0,
+        "response_length": (
+            len(result.response)
+            if hasattr(result, "response") and result.response
+            else 0
+        ),
+    }
+
+
 class BenchmarkReportExporter:
     """Exports benchmark results to various formats."""
 
@@ -165,25 +185,7 @@ class BenchmarkReportExporter:
                     result_entries = [result_list]
 
                 for result in result_entries:
-                    row = {
-                        "model_id": model_id,
-                        "success": (result.success if hasattr(result, "success") else True),
-                        "response_time": (
-                            result.response_time_ms if hasattr(result, "response_time_ms") else 0
-                        ),
-                        "cost": result.cost if hasattr(result, "cost") else 0,
-                        "quality_score": 0,  # Not available in basic BenchmarkResult
-                        "throughput": 0,  # Not available in basic BenchmarkResult
-                        "tokens_used": (
-                            result.tokens_used if hasattr(result, "tokens_used") else 0
-                        ),
-                        "response_length": (
-                            len(result.response)
-                            if hasattr(result, "response") and result.response
-                            else 0
-                        ),
-                    }
-                    writer.writerow(row)
+                    writer.writerow(_serialize_csv_result(model_id, result))
 
         self.logger.info(f"CSV report exported to {output_path}")
         return output_path
