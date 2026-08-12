@@ -19,6 +19,40 @@ def _as_float(value: Any) -> float:
         return 0.0
 
 
+def _calculate_cache_efficiency_rates(
+    observed_requests: int,
+    cached_prompt_tokens: int,
+    cache_write_prompt_tokens: int,
+    cache_hit_requests: int,
+    cache_write_requests: int,
+) -> Dict[str, Any]:
+    """Calculate derived cache rates from caller-normalized counters."""
+    cache_hit_request_rate_pct = 0.0
+    cache_write_request_rate_pct = 0.0
+    if observed_requests > 0:
+        cache_hit_request_rate_pct = round(
+            (cache_hit_requests / observed_requests) * 100.0,
+            2,
+        )
+        cache_write_request_rate_pct = round(
+            (cache_write_requests / observed_requests) * 100.0,
+            2,
+        )
+
+    reuse_to_write_ratio = None
+    if cache_write_prompt_tokens > 0:
+        reuse_to_write_ratio = round(
+            cached_prompt_tokens / cache_write_prompt_tokens,
+            4,
+        )
+
+    return {
+        "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
+        "cache_write_request_rate_pct": cache_write_request_rate_pct,
+        "reuse_to_write_ratio": reuse_to_write_ratio,
+    }
+
+
 def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
     observed_requests = _as_int(bucket.get("observed_requests"))
     cached_prompt_tokens = _as_int(bucket.get("cached_prompt_tokens"))
@@ -27,18 +61,13 @@ def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
     cache_write_requests = _as_int(bucket.get("cache_write_requests"))
     saved_cost_usd = round(_as_float(bucket.get("saved_cost_usd")), 8)
 
-    cache_hit_request_rate_pct = 0.0
-    cache_write_request_rate_pct = 0.0
-    if observed_requests > 0:
-        cache_hit_request_rate_pct = round((cache_hit_requests / observed_requests) * 100.0, 2)
-        cache_write_request_rate_pct = round(
-            (cache_write_requests / observed_requests) * 100.0,
-            2,
-        )
-
-    reuse_to_write_ratio = None
-    if cache_write_prompt_tokens > 0:
-        reuse_to_write_ratio = round(cached_prompt_tokens / cache_write_prompt_tokens, 4)
+    rates = _calculate_cache_efficiency_rates(
+        observed_requests,
+        cached_prompt_tokens,
+        cache_write_prompt_tokens,
+        cache_hit_requests,
+        cache_write_requests,
+    )
 
     return {
         "observed_requests": observed_requests,
@@ -46,9 +75,7 @@ def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
         "cache_write_prompt_tokens": cache_write_prompt_tokens,
         "cache_hit_requests": cache_hit_requests,
         "cache_write_requests": cache_write_requests,
-        "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
-        "cache_write_request_rate_pct": cache_write_request_rate_pct,
-        "reuse_to_write_ratio": reuse_to_write_ratio,
+        **rates,
         "saved_cost_usd": saved_cost_usd,
     }
 

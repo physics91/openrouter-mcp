@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..runtime_thrift.metrics import get_thrift_metrics_snapshot_for_dates
+from ..runtime_thrift.summary import _calculate_cache_efficiency_rates
 from ..utils.metadata import extract_provider_from_id
 from .base import (
     CollectiveIntelligenceComponent,
@@ -1134,24 +1135,13 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         cache_write_requests = max(0, int(bucket.get("cache_write_requests", 0) or 0))
         saved_cost_usd = round(float(bucket.get("saved_cost_usd", 0.0) or 0.0), 8)
 
-        cache_hit_request_rate_pct = 0.0
-        cache_write_request_rate_pct = 0.0
-        if observed_requests > 0:
-            cache_hit_request_rate_pct = round(
-                (cache_hit_requests / observed_requests) * 100.0,
-                2,
-            )
-            cache_write_request_rate_pct = round(
-                (cache_write_requests / observed_requests) * 100.0,
-                2,
-            )
-
-        reuse_to_write_ratio = None
-        if cache_write_prompt_tokens > 0:
-            reuse_to_write_ratio = round(
-                cached_prompt_tokens / cache_write_prompt_tokens,
-                4,
-            )
+        rates = _calculate_cache_efficiency_rates(
+            observed_requests,
+            cached_prompt_tokens,
+            cache_write_prompt_tokens,
+            cache_hit_requests,
+            cache_write_requests,
+        )
 
         return {
             "observed_requests": observed_requests,
@@ -1159,9 +1149,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             "cache_write_prompt_tokens": cache_write_prompt_tokens,
             "cache_hit_requests": cache_hit_requests,
             "cache_write_requests": cache_write_requests,
-            "cache_hit_request_rate_pct": cache_hit_request_rate_pct,
-            "cache_write_request_rate_pct": cache_write_request_rate_pct,
-            "reuse_to_write_ratio": reuse_to_write_ratio,
+            **rates,
             "saved_cost_usd": saved_cost_usd,
         }
 
