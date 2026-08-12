@@ -796,13 +796,12 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         # Execute tasks in dependency order
         while len(completed_tasks) < len(ensemble_task.sub_tasks):
-            ready_tasks = []
-
-            for sub_task in ensemble_task.sub_tasks:
-                if sub_task.sub_task_id not in completed_tasks and all(
-                    dep in completed_tasks for dep in sub_task.dependencies
-                ):
-                    ready_tasks.append(sub_task)
+            ready_tasks = [
+                sub_task
+                for sub_task in ensemble_task.sub_tasks
+                if sub_task.sub_task_id not in completed_tasks
+                and all(dep in completed_tasks for dep in sub_task.dependencies)
+            ]
 
             if not ready_tasks:
                 # Circular dependency or other issue
