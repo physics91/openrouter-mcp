@@ -1,9 +1,11 @@
 """Focused tests for collective-intelligence handler response serialization."""
 
 from openrouter_mcp.collective_intelligence.base import (
+    PerformanceMetrics,
     ProcessingResult,
     QualityMetrics,
     TaskContext,
+    TaskType,
 )
 from openrouter_mcp.collective_intelligence.cross_validator import (
     ValidationCriteria,
@@ -13,8 +15,16 @@ from openrouter_mcp.collective_intelligence.cross_validator import (
     ValidationSeverity,
     ValidationStrategy,
 )
+from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
+    DecompositionStrategy,
+    EnsembleResult,
+    ModelAssignment,
+    SubTask,
+    SubTaskResult,
+)
 from openrouter_mcp.handlers.collective_intelligence import (
     _serialize_cross_validation_result,
+    _serialize_ensemble_result,
 )
 
 
@@ -184,4 +194,115 @@ def test_serializer_derives_validator_order_from_issues() -> None:
             "accuracy": 1.0,
             "consistency": 1.0,
         },
+    }
+
+
+def test_serialize_ensemble_result_preserves_response_contract() -> None:
+    original_task = TaskContext(
+        task_id="ensemble-task",
+        task_type=TaskType.ANALYSIS,
+        content="Analyze the migration",
+    )
+    first_subtask = SubTask(
+        sub_task_id="subtask-1",
+        parent_task_id="ensemble-task",
+        content="Assess the current system",
+        task_type=TaskType.ANALYSIS,
+        required_capabilities=[],
+    )
+    second_subtask = SubTask(
+        sub_task_id="subtask-2",
+        parent_task_id="ensemble-task",
+        content="Plan the target system",
+        task_type=TaskType.ANALYSIS,
+        required_capabilities=[],
+    )
+    first_assignment = ModelAssignment(
+        sub_task_id="subtask-1",
+        model_id="shared-model",
+        confidence_score=0.9,
+        estimated_cost=0.001,
+        estimated_time=0.4,
+        justification="Best fit",
+    )
+    second_assignment = ModelAssignment(
+        sub_task_id="subtask-2",
+        model_id="shared-model",
+        confidence_score=0.7,
+        estimated_cost=0.002,
+        estimated_time=0.8,
+        justification="Available fallback",
+    )
+    result = EnsembleResult(
+        task_id="ensemble-task",
+        original_task=original_task,
+        final_content="Combined migration plan",
+        sub_task_results=[
+            SubTaskResult(
+                sub_task=first_subtask,
+                assignment=first_assignment,
+                result=ProcessingResult(
+                    task_id="subtask-1",
+                    model_id="shared-model",
+                    content="Current-system assessment",
+                    confidence=0.9,
+                ),
+                success=True,
+            ),
+            SubTaskResult(
+                sub_task=second_subtask,
+                assignment=second_assignment,
+                result=ProcessingResult(
+                    task_id="subtask-2",
+                    model_id="shared-model",
+                    content="Partial target-system plan",
+                    confidence=0.4,
+                ),
+                success=False,
+                error_message="Incomplete result",
+            ),
+        ],
+        decomposition_strategy=DecompositionStrategy.PARALLEL,
+        overall_quality=QualityMetrics(
+            accuracy=0.5,
+            consistency=0.5,
+            completeness=0.5,
+            relevance=0.5,
+            confidence=0.5,
+            coherence=0.5,
+        ),
+        performance_metrics=PerformanceMetrics(),
+        total_cost=0.003,
+        total_time=1.25,
+        success_rate=0.5,
+    )
+
+    assert _serialize_ensemble_result(result) == {
+        "final_result": "Combined migration plan",
+        "subtask_results": [
+            {
+                "subtask": "Assess the current system",
+                "model": "shared-model",
+                "result": "Current-system assessment",
+                "confidence": 0.9,
+                "success": True,
+            },
+            {
+                "subtask": "Plan the target system",
+                "model": "shared-model",
+                "result": "Partial target-system plan",
+                "confidence": 0.4,
+                "success": False,
+            },
+        ],
+        "model_assignments": {"shared-model": "Plan the target system"},
+        "reasoning_quality": {
+            "overall_quality": 0.5,
+            "consistency": 0.5,
+            "completeness": 0.5,
+        },
+        "processing_time": 1.25,
+        "strategy_used": "parallel",
+        "success_rate": 0.5,
+        "total_cost": 0.003,
     }

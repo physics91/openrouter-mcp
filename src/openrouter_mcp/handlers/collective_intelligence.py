@@ -22,6 +22,7 @@ from ..collective_intelligence import (
     CollectiveIntelligenceLifecycleManager,
     ConsensusConfig,
     ConsensusStrategy,
+    EnsembleResult,
     ModelInfo,
     ProcessingResult,
     TaskContext,
@@ -510,6 +511,36 @@ def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, An
     }
 
 
+def _serialize_ensemble_result(result: EnsembleResult) -> Dict[str, Any]:
+    """Serialize an ensemble result to the MCP response contract."""
+    return {
+        "final_result": result.final_content,
+        "subtask_results": [
+            {
+                "subtask": subtask.sub_task.content,
+                "model": subtask.assignment.model_id,
+                "result": subtask.result.content,
+                "confidence": subtask.result.confidence,
+                "success": subtask.success,
+            }
+            for subtask in result.sub_task_results
+        ],
+        "model_assignments": {
+            subtask.assignment.model_id: subtask.sub_task.content
+            for subtask in result.sub_task_results
+        },
+        "reasoning_quality": {
+            "overall_quality": result.overall_quality.overall_score(),
+            "consistency": result.overall_quality.consistency,
+            "completeness": result.overall_quality.completeness,
+        },
+        "processing_time": result.total_time,
+        "strategy_used": result.decomposition_strategy.value,
+        "success_rate": result.success_rate,
+        "total_cost": result.total_cost,
+    }
+
+
 async def _collective_chat_completion_impl(
     request: CollectiveChatRequest,
 ) -> Dict[str, Any]:
@@ -669,33 +700,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> Dict[st
 
         # Process with ensemble reasoning - NO async with (singleton managed by lifecycle)
         result = await ensemble_reasoner.process(task, decompose=request.decompose)
-
-        return {
-            "final_result": result.final_content,
-            "subtask_results": [
-                {
-                    "subtask": subtask.sub_task.content,
-                    "model": subtask.assignment.model_id,
-                    "result": subtask.result.content,
-                    "confidence": subtask.result.confidence,
-                    "success": subtask.success,
-                }
-                for subtask in result.sub_task_results
-            ],
-            "model_assignments": {
-                subtask.assignment.model_id: subtask.sub_task.content
-                for subtask in result.sub_task_results
-            },
-            "reasoning_quality": {
-                "overall_quality": result.overall_quality.overall_score(),
-                "consistency": result.overall_quality.consistency,
-                "completeness": result.overall_quality.completeness,
-            },
-            "processing_time": result.total_time,
-            "strategy_used": result.decomposition_strategy.value,
-            "success_rate": result.success_rate,
-            "total_cost": result.total_cost,
-        }
+        return _serialize_ensemble_result(result)
 
     except Exception as e:
         logger.error(f"Ensemble reasoning failed: {str(e)}")
