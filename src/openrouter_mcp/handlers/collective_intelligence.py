@@ -126,7 +126,7 @@ async def _collective_chat_completion_impl(
         return _serialize_consensus_result(result)
 
     except Exception as e:
-        logger.error(f"Collective chat completion failed: {str(e)}")
+        logger.error(f"Collective chat completion failed: {e!s}")
         raise
 
 
@@ -191,7 +191,7 @@ async def _ensemble_reasoning_impl(request: EnsembleReasoningRequest) -> dict[st
         return _serialize_ensemble_result(result)
 
     except Exception as e:
-        logger.error(f"Ensemble reasoning failed: {str(e)}")
+        logger.error(f"Ensemble reasoning failed: {e!s}")
         raise
 
 
@@ -259,7 +259,7 @@ async def _adaptive_model_selection_impl(
         return _serialize_routing_decision(decision)
 
     except Exception as e:
-        logger.error(f"Adaptive model selection failed: {str(e)}")
+        logger.error(f"Adaptive model selection failed: {e!s}")
         raise
 
 
@@ -341,7 +341,7 @@ async def _cross_model_validation_impl(
         return _serialize_cross_validation_result(result)
 
     except Exception as e:
-        logger.error(f"Cross-model validation failed: {str(e)}")
+        logger.error(f"Cross-model validation failed: {e!s}")
         raise
 
 
@@ -420,7 +420,7 @@ async def _collaborative_problem_solving_impl(
         return _serialize_solving_result(result)
 
     except Exception as e:
-        logger.error(f"Collaborative problem solving failed: {str(e)}")
+        logger.error(f"Collaborative problem solving failed: {e!s}")
         raise
 
 
