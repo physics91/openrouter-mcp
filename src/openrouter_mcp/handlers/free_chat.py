@@ -170,6 +170,29 @@ def _infer_required_capabilities(
     return None
 
 
+def _aggregate_stream_chunks(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Fold buffered stream chunks into the free-chat response contract."""
+    parts: List[str] = []
+    usage: Dict[str, Any] = {}
+    for chunk in chunks:
+        choices = chunk.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            text = delta.get("content")
+            if text:
+                parts.append(text)
+        chunk_usage = chunk.get("usage")
+        if chunk_usage:
+            usage = chunk_usage
+
+    return {
+        "content": "".join(parts),
+        "usage": usage,
+        "streamed": True,
+        "actual_model": None,
+    }
+
+
 async def _execute_chat(
     client: Any,
     model_id: str,
@@ -226,25 +249,7 @@ async def _execute_chat(
             max_tokens=max_tokens,
         )
     )
-    parts: List[str] = []
-    usage: Dict[str, Any] = {}
-    for chunk in chunks:
-        choices = chunk.get("choices") or []
-        if choices:
-            delta = choices[0].get("delta") or {}
-            text = delta.get("content")
-            if text:
-                parts.append(text)
-        chunk_usage = chunk.get("usage")
-        if chunk_usage:
-            usage = chunk_usage
-
-    return {
-        "content": "".join(parts),
-        "usage": usage,
-        "streamed": True,
-        "actual_model": None,
-    }
+    return _aggregate_stream_chunks(chunks)
 
 
 async def _try_native_fallback(

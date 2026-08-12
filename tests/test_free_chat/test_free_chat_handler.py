@@ -9,7 +9,11 @@ from src.openrouter_mcp.client.openrouter import (
     RateLimitError,
 )
 from src.openrouter_mcp.free.quota import QuotaExceededError
-from src.openrouter_mcp.handlers.free_chat import FreeChatRequest, free_chat
+from src.openrouter_mcp.handlers.free_chat import (
+    FreeChatRequest,
+    _aggregate_stream_chunks,
+    free_chat,
+)
 from src.openrouter_mcp.runtime_thrift import (
     get_thrift_metrics_snapshot,
     record_coalesced_savings,
@@ -53,6 +57,65 @@ def _disable_native_fallback():
         return_value=None,
     ):
         yield
+
+
+@pytest.mark.unit
+def test_aggregate_stream_chunks_uses_first_choices_and_last_truthy_usage():
+    first_usage = {"total_tokens": 3}
+    last_usage = {"total_tokens": 5}
+    chunks = [
+        {
+            "choices": [
+                {"delta": {"content": "first"}},
+                {"delta": {"content": "ignored"}},
+            ],
+            "usage": first_usage,
+        },
+        {"choices": [], "usage": {}},
+        {"choices": [{"delta": {"content": "-last"}}], "usage": last_usage},
+    ]
+    original_chunks = list(chunks)
+
+    result = _aggregate_stream_chunks(chunks)
+
+    assert result == {
+        "content": "first-last",
+        "usage": last_usage,
+        "streamed": True,
+        "actual_model": None,
+    }
+    assert result["usage"] is last_usage
+    assert chunks == original_chunks
+    assert chunks[0] is original_chunks[0]
+
+
+@pytest.mark.unit
+def test_aggregate_stream_chunks_keeps_previous_usage_after_falsy_values():
+    usage = {"total_tokens": 3}
+
+    result = _aggregate_stream_chunks(
+        [
+            {"usage": usage},
+            {"usage": {}},
+            {"usage": None},
+        ]
+    )
+
+    assert result["usage"] is usage
+
+
+@pytest.mark.unit
+def test_aggregate_stream_chunks_preserves_non_string_content_error():
+    with pytest.raises(TypeError):
+        _aggregate_stream_chunks([{"choices": [{"delta": {"content": 7}}]}])
+
+
+@pytest.mark.unit
+def test_aggregate_stream_chunks_preserves_malformed_choices_error():
+    with pytest.raises(KeyError) as raised:
+        _aggregate_stream_chunks([{"choices": {"unexpected": "choice"}}])
+
+    assert raised.value.args == (0,)
 
 
 class TestFreeChatHandler:
