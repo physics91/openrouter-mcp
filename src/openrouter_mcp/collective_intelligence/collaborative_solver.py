@@ -40,6 +40,17 @@ class SolvingStrategy(Enum):
     ADAPTIVE = "adaptive"  # Dynamic strategy selection
 
 
+def _parse_solving_strategy(strategy_input: Any) -> Any:
+    if not isinstance(strategy_input, str):
+        return strategy_input
+
+    try:
+        return SolvingStrategy(strategy_input.lower())
+    except ValueError:
+        valid = ", ".join(sorted(strategy.value for strategy in SolvingStrategy))
+        raise ValueError(f"Invalid strategy '{strategy_input}'. Valid: {valid}")
+
+
 @dataclass
 class SolvingSession:
     """A collaborative problem-solving session."""
@@ -139,17 +150,9 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             RuntimeError: If quota exceeded or operational limits hit
             asyncio.CancelledError: If execution cancelled due to failures
         """
-        strategy_input = kwargs.get("strategy", SolvingStrategy.ADAPTIVE)
-
-        # Convert string strategy to enum if needed
-        if isinstance(strategy_input, str):
-            try:
-                strategy = SolvingStrategy(strategy_input.lower())
-            except ValueError:
-                valid = ", ".join(sorted(e.value for e in SolvingStrategy))
-                raise ValueError(f"Invalid strategy '{strategy_input}'. Valid: {valid}")
-        else:
-            strategy = strategy_input
+        strategy = _parse_solving_strategy(
+            kwargs.get("strategy", SolvingStrategy.ADAPTIVE)
+        )
 
         session_id = f"session_{task.task_id}_{datetime.now().timestamp()}"
         request_id = task.task_id

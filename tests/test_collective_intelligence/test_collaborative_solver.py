@@ -11,12 +11,17 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.openrouter_mcp.collective_intelligence.base import QualityMetrics, TaskContext, TaskType
+from src.openrouter_mcp.collective_intelligence.base import (
+    QualityMetrics,
+    TaskContext,
+    TaskType,
+)
 from src.openrouter_mcp.collective_intelligence.collaborative_solver import (
     CollaborativeSolver,
     SolvingResult,
     SolvingSession,
     SolvingStrategy,
+    _parse_solving_strategy,
 )
 
 
@@ -90,6 +95,26 @@ class TestSolvingResult:
 
 class TestCollaborativeSolver:
     """Test suite for the CollaborativeSolver class."""
+
+    @pytest.mark.unit
+    def test_parse_solving_strategy_preserves_contract(self):
+        for strategy in SolvingStrategy:
+            assert _parse_solving_strategy(strategy.value) is strategy
+            assert _parse_solving_strategy(strategy.value.upper()) is strategy
+
+        enum_strategy = SolvingStrategy.SEQUENTIAL
+        assert _parse_solving_strategy(enum_strategy) is enum_strategy
+
+        sentinel = object()
+        assert _parse_solving_strategy(sentinel) is sentinel
+
+        valid_values = ", ".join(sorted(strategy.value for strategy in SolvingStrategy))
+        for invalid_strategy in (" sequential ", "not-a-strategy"):
+            with pytest.raises(
+                ValueError,
+                match=f"^Invalid strategy '{invalid_strategy}'[.] Valid: {valid_values}$",
+            ):
+                _parse_solving_strategy(invalid_strategy)
 
     @pytest.mark.unit
     def test_collaborative_solver_initialization(self, mock_model_provider):
@@ -464,7 +489,7 @@ class TestCollaborativeSolver:
             assert len(solver.completed_sessions) == 0
 
             # Process a task
-            result = await solver.process(sample_task, strategy=SolvingStrategy.SEQUENTIAL)
+            result = await solver.process(sample_task, strategy="SEQUENTIAL")
 
             # Check final state
             assert len(solver.active_sessions) == 0  # Should be moved to completed
