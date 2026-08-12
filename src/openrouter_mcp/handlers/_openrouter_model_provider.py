@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -19,7 +19,7 @@ from ..utils.pricing import estimate_cost_from_usage, normalize_pricing
 logger = logging.getLogger(f"{__package__}.collective_intelligence")
 
 
-def _first_response_choice(response: Dict[str, Any]) -> tuple[bool, Any]:
+def _first_response_choice(response: dict[str, Any]) -> tuple[bool, Any]:
     """Return whether a response has choices and its first unmodified item."""
     choices = response.get("choices") or []
     return (True, choices[0]) if choices else (False, None)
@@ -36,13 +36,13 @@ class OpenRouterModelProvider:
             client: OpenRouterClient instance that already has cache configured
         """
         self.client = client
-        self._model_pricing_cache: Dict[str, Dict[str, float]] = {}
+        self._model_pricing_cache: dict[str, dict[str, float]] = {}
 
     @staticmethod
     def _build_chat_completion_parameters(
         task: TaskContext,
-        kwargs: Dict[str, Any],
-    ) -> Tuple[List[Dict[str, Any]], Any, Any]:
+        kwargs: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], Any, Any]:
         """Build chat messages and resolve generation parameter precedence."""
         messages = [{"role": "user", "content": task.content}]
 
@@ -74,7 +74,7 @@ class OpenRouterModelProvider:
         self,
         task: TaskContext,
         model_id: str,
-        response: Dict[str, Any],
+        response: dict[str, Any],
         processing_time: float,
     ) -> ProcessingResult:
         """Convert one chat response into a collective processing result."""
@@ -137,7 +137,7 @@ class OpenRouterModelProvider:
             logger.error(f"Task processing failed for model {model_id}: {str(e)}")
             raise
 
-    def _build_model_info(self, raw_model: Dict[str, Any]) -> ModelInfo:
+    def _build_model_info(self, raw_model: dict[str, Any]) -> ModelInfo:
         """Convert one raw model payload into collective model metadata."""
         model_info = ModelInfo(
             model_id=raw_model["id"],
@@ -150,7 +150,7 @@ class OpenRouterModelProvider:
         model_info.capabilities = self._estimate_capabilities(raw_model)
         return model_info
 
-    async def get_available_models(self) -> List[ModelInfo]:
+    async def get_available_models(self) -> list[ModelInfo]:
         """
         Get list of available models.
 
@@ -175,7 +175,7 @@ class OpenRouterModelProvider:
                 "Check network connectivity and API key configuration."
             ) from e
 
-    def _calculate_confidence(self, response: Dict[str, Any], content: str) -> float:
+    def _calculate_confidence(self, response: dict[str, Any], content: str) -> float:
         """Calculate confidence score based on response characteristics."""
         # This is a simplified confidence calculation
         # In practice, this could use more sophisticated methods
@@ -198,7 +198,7 @@ class OpenRouterModelProvider:
 
         return float(max(0.0, min(1.0, base_confidence)))
 
-    async def _get_model_pricing(self, model_id: str) -> Dict[str, float]:
+    async def _get_model_pricing(self, model_id: str) -> dict[str, float]:
         """
         Get pricing information for a specific model.
 
@@ -228,7 +228,7 @@ class OpenRouterModelProvider:
         self._model_pricing_cache[model_id] = normalized
         return normalized
 
-    async def _estimate_cost(self, model_id: str, usage: Dict[str, int]) -> float:
+    async def _estimate_cost(self, model_id: str, usage: dict[str, int]) -> float:
         """
         Estimate cost based on actual model pricing and token usage.
 
@@ -261,16 +261,16 @@ class OpenRouterModelProvider:
 
         return total_cost
 
-    def _extract_cost(self, pricing: Dict[str, Any]) -> float:
+    def _extract_cost(self, pricing: dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
         normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
         return float(normalized.get("completion", PricingDefaults.DEFAULT_TOKEN_PRICE))
 
     def _estimate_capabilities(
-        self, raw_model: Dict[str, Any]
-    ) -> Dict[ModelCapability, float]:
+        self, raw_model: dict[str, Any]
+    ) -> dict[ModelCapability, float]:
         """Estimate model capabilities based on model metadata."""
-        capabilities: Dict[ModelCapability, float] = {}
+        capabilities: dict[ModelCapability, float] = {}
         model_id = raw_model["id"].lower()
 
         # Reasoning capability
