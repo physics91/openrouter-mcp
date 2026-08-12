@@ -603,10 +603,11 @@ class ModelAssigner:
         """Generate a human-readable justification for the model assignment."""
 
         # Find the model's strongest capabilities that match task requirements
-        matching_capabilities = []
-        for cap in sub_task.required_capabilities:
-            if cap in model.capabilities and model.capabilities[cap] > 0.7:
-                matching_capabilities.append(cap.value)
+        matching_capabilities = [
+            cap.value
+            for cap in sub_task.required_capabilities
+            if cap in model.capabilities and model.capabilities[cap] > 0.7
+        ]
 
         justification = (
             f"Selected {model.name} (score: {score:.2f}) for {sub_task.sub_task_id}"
