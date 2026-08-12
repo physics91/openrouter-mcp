@@ -176,6 +176,27 @@ def _select_top_category_models(
     return selected_models, category_info
 
 
+def _serialize_benchmark_result(
+    result: EnhancedBenchmarkResult,
+    include_response_content: bool,
+) -> Dict[str, Any]:
+    return {
+        "success": result.success,
+        "error_message": result.error_message,
+        "metrics": result.metrics.__dict__ if result.metrics else None,
+        # SECURITY: Only include response content if explicitly allowed
+        "response": (
+            (
+                result.response[:200] + "..."
+                if result.response and len(result.response) > 200
+                else result.response
+            )
+            if include_response_content
+            else f"<REDACTED: {len(result.response) if result.response else 0} chars>"
+        ),
+    }
+
+
 def _serialize_category_benchmark_result(
     model_id: str,
     result: EnhancedBenchmarkResult,
@@ -422,25 +443,11 @@ async def benchmark_models(
                 "delay_seconds": delay_seconds,
                 "privacy_mode": not include_prompts_in_logs,
             },
-            "results": {},
+            "results": {
+                model_id: _serialize_benchmark_result(result, include_prompts_in_logs)
+                for model_id, result in results.items()
+            },
         }
-
-        for model_id, result in results.items():
-            benchmark_data["results"][model_id] = {
-                "success": result.success,
-                "error_message": result.error_message,
-                "metrics": result.metrics.__dict__ if result.metrics else None,
-                # SECURITY: Only include response content if explicitly allowed
-                "response": (
-                    (
-                        result.response[:200] + "..."
-                        if result.response and len(result.response) > 200
-                        else result.response
-                    )
-                    if include_prompts_in_logs
-                    else f"<REDACTED: {len(result.response) if result.response else 0} chars>"
-                ),
-            }
 
         # 성능 랭킹 계산
         successful_results = {k: v for k, v in results.items() if v.success}

@@ -124,6 +124,85 @@ class TestMCPBenchmarkTools:
             "response_length": 0,
         }
 
+    def test_serialize_benchmark_result_redacts_response_by_default(self):
+        response = "sensitive-benchmark-response"
+        metrics = EnhancedBenchmarkMetrics(
+            avg_response_time=1.25,
+            avg_cost=0.002,
+            quality_score=0.9,
+            throughput=42.0,
+        )
+        result = EnhancedBenchmarkResult(
+            model_id="test-model",
+            success=True,
+            response=response,
+            error_message=None,
+            metrics=metrics,
+            timestamp=datetime.now(),
+        )
+
+        serialized = mcp_benchmark._serialize_benchmark_result(
+            result, include_response_content=False
+        )
+
+        assert serialized == {
+            "success": True,
+            "error_message": None,
+            "metrics": metrics.__dict__,
+            "response": f"<REDACTED: {len(response)} chars>",
+        }
+        assert response not in repr(serialized)
+
+    def test_serialize_benchmark_result_preserves_response_boundaries(self):
+        def make_result(response):
+            return EnhancedBenchmarkResult(
+                model_id="test-model",
+                success=True,
+                response=response,
+                error_message=None,
+                metrics=None,
+                timestamp=datetime.now(),
+            )
+
+        short_response = "short response"
+        assert (
+            mcp_benchmark._serialize_benchmark_result(
+                make_result(short_response), include_response_content=True
+            )["response"]
+            == short_response
+        )
+
+        response_at_limit = "x" * 200
+        assert (
+            mcp_benchmark._serialize_benchmark_result(
+                make_result(response_at_limit), include_response_content=True
+            )["response"]
+            == response_at_limit
+        )
+
+        response_over_limit = "x" * 201
+        assert (
+            mcp_benchmark._serialize_benchmark_result(
+                make_result(response_over_limit), include_response_content=True
+            )["response"]
+            == f"{'x' * 200}..."
+        )
+
+        for response, exposed_response in ((None, None), ("", "")):
+            result = make_result(response)
+            assert (
+                mcp_benchmark._serialize_benchmark_result(
+                    result, include_response_content=False
+                )["response"]
+                == "<REDACTED: 0 chars>"
+            )
+            assert (
+                mcp_benchmark._serialize_benchmark_result(
+                    result, include_response_content=True
+                )["response"]
+                == exposed_response
+            )
+
     def test_serialize_weighted_performance_ranking_preserves_contract(self):
         ranked_result = EnhancedBenchmarkResult(
             model_id="ranked-model",
@@ -320,6 +399,13 @@ class TestMCPBenchmarkTools:
                 assert len(result["results"]) == 2
                 assert result["config"]["models"] == models
                 assert result["config"]["prompt"] == prompt
+                assert {
+                    model_id: payload["response"]
+                    for model_id, payload in result["results"].items()
+                } == {
+                    "gpt-3.5-turbo": "<REDACTED: 10 chars>",
+                    "claude-3-haiku": "<REDACTED: 10 chars>",
+                }
 
                 # 핸들러 호출 검증
                 mock_handler.benchmark_models.assert_called_once_with(
