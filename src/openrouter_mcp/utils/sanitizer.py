@@ -18,7 +18,7 @@ Usage:
 """
 
 import hashlib
-from typing import Any, Dict, List
+from typing import Any
 
 
 class SensitiveDataSanitizer:
@@ -44,7 +44,7 @@ class SensitiveDataSanitizer:
         return f"{api_key[:visible_chars]}...***MASKED***"
 
     @staticmethod
-    def sanitize_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
         """Sanitize headers by masking sensitive values.
 
         Args:
@@ -106,7 +106,7 @@ class SensitiveDataSanitizer:
         return f"{content[:max_length]}... [TRUNCATED: {len(content)} chars total]"
 
     @staticmethod
-    def _sanitize_multimodal_content(content: List[Any]) -> Dict[str, Any]:
+    def _sanitize_multimodal_content(content: list[Any]) -> dict[str, Any]:
         """Return safe metadata for one multimodal content value."""
         return {
             "content_type": "multimodal",
@@ -114,7 +114,7 @@ class SensitiveDataSanitizer:
         }
 
     @staticmethod
-    def _sanitize_hashed_message_content(content: Any) -> Dict[str, Any]:
+    def _sanitize_hashed_message_content(content: Any) -> dict[str, Any]:
         """Sanitize one message content value in hash mode."""
         sanitized = {}
         if isinstance(content, str):
@@ -125,7 +125,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def _sanitize_truncated_message_content(content: Any) -> Dict[str, Any]:
+    def _sanitize_truncated_message_content(content: Any) -> dict[str, Any]:
         """Sanitize one message content value in truncate mode."""
         sanitized = {}
         if isinstance(content, str):
@@ -135,7 +135,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def _sanitize_message_content_metadata(content: Any) -> Dict[str, Any]:
+    def _sanitize_message_content_metadata(content: Any) -> dict[str, Any]:
         """Sanitize one message content value in metadata mode."""
         sanitized = {}
         if isinstance(content, str):
@@ -146,7 +146,7 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def _sanitize_message_content(content: Any, mode: str) -> Dict[str, Any]:
+    def _sanitize_message_content(content: Any, mode: str) -> dict[str, Any]:
         """Dispatch message content sanitization without changing mode semantics."""
         if mode == "hash":
             return SensitiveDataSanitizer._sanitize_hashed_message_content(content)
@@ -158,8 +158,8 @@ class SensitiveDataSanitizer:
 
     @staticmethod
     def sanitize_messages(
-        messages: List[Dict[str, Any]], mode: str = "hash"
-    ) -> List[Dict[str, Any]]:
+        messages: list[dict[str, Any]], mode: str = "hash"
+    ) -> list[dict[str, Any]]:
         """Sanitize message content for logging.
 
         Args:
@@ -183,8 +183,8 @@ class SensitiveDataSanitizer:
 
     @staticmethod
     def sanitize_payload(
-        payload: Dict[str, Any], enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+        payload: dict[str, Any], enable_verbose: bool = False
+    ) -> dict[str, Any]:
         """Sanitize request payload for logging.
 
         Args:
@@ -222,8 +222,8 @@ class SensitiveDataSanitizer:
 
     @staticmethod
     def sanitize_response(
-        response: Dict[str, Any], enable_verbose: bool = False
-    ) -> Dict[str, Any]:
+        response: dict[str, Any], enable_verbose: bool = False
+    ) -> dict[str, Any]:
         """Sanitize API response for logging.
 
         Args:
