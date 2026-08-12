@@ -273,7 +273,9 @@ class ModelCache:
         await self.get_models()
 
         if not self._memory_cache:
-            raise RuntimeError("모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가.")
+            raise RuntimeError(
+                "모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가."
+            )
 
     async def _enhance_fetched_models(
         self,
@@ -315,7 +317,9 @@ class ModelCache:
             if not isinstance(raw_models_data, list):
                 raise ValueError("Invalid models payload: 'data' must be a list")
 
-            logger.info(f"Fetched {len(raw_models_data)} models from OpenRouter API (raw)")
+            logger.info(
+                f"Fetched {len(raw_models_data)} models from OpenRouter API (raw)"
+            )
 
             return await self._enhance_fetched_models(raw_models_data)
 
@@ -414,7 +418,9 @@ class ModelCache:
 
             models, updated_at = _parse_model_cache_data(cache_data)
 
-            logger.debug(f"Loaded {len(models)} models from cache file (with shared lock)")
+            logger.debug(
+                f"Loaded {len(models)} models from cache file (with shared lock)"
+            )
             return models, updated_at
 
         except portalocker.LockException as e:
@@ -449,7 +455,9 @@ class ModelCache:
             models = list(self._memory_cache)
         yield from models
 
-    def get_models_slice(self, start: int = 0, end: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_models_slice(
+        self, start: int = 0, end: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get a slice of cached models without copying the entire cache.
 
@@ -519,7 +527,9 @@ class ModelCache:
 
             return self._inflight_refresh
 
-    def _clear_inflight_refresh(self, task: "asyncio.Task[List[Dict[str, Any]]]") -> None:
+    def _clear_inflight_refresh(
+        self, task: "asyncio.Task[List[Dict[str, Any]]]"
+    ) -> None:
         """Reset refresh tracking once the shared refresh finishes."""
         if self._inflight_refresh is task:
             self._inflight_refresh = None
@@ -628,16 +638,16 @@ class ModelCache:
 
         if filters.provider is not None:
             model_provider = model.get("provider", "unknown")
-            if self._normalize_enum_or_str(model_provider) != self._normalize_enum_or_str(
-                filters.provider
-            ):
+            if self._normalize_enum_or_str(
+                model_provider
+            ) != self._normalize_enum_or_str(filters.provider):
                 return False
 
         if filters.category is not None:
             model_category = model.get("category", "unknown")
-            if self._normalize_enum_or_str(model_category) != self._normalize_enum_or_str(
-                filters.category
-            ):
+            if self._normalize_enum_or_str(
+                model_category
+            ) != self._normalize_enum_or_str(filters.category):
                 return False
 
         return True
@@ -659,11 +669,12 @@ class ModelCache:
         return True
 
     @staticmethod
-    def _matches_metadata_filters(
-        model: Dict[str, Any], filters: ModelFilter
-    ) -> bool:
+    def _matches_metadata_filters(model: Dict[str, Any], filters: ModelFilter) -> bool:
         """Check tier, quality, and tag filters."""
-        if filters.performance_tier and model.get("performance_tier") != filters.performance_tier:
+        if (
+            filters.performance_tier
+            and model.get("performance_tier") != filters.performance_tier
+        ):
             return False
 
         if filters.cost_tier and model.get("cost_tier") != filters.cost_tier:
@@ -693,7 +704,9 @@ class ModelCache:
                 return False
 
         if filters.reasoning_model is not None:
-            is_reasoning = "o1" in model_id or "reasoning" in model.get("description", "").lower()
+            is_reasoning = (
+                "o1" in model_id or "reasoning" in model.get("description", "").lower()
+            )
             if is_reasoning != filters.reasoning_model:
                 return False
 
@@ -707,7 +720,10 @@ class ModelCache:
             if is_free != filters.free_only:
                 return False
 
-        if filters.min_context is not None and model.get("context_length", 0) < filters.min_context:
+        if (
+            filters.min_context is not None
+            and model.get("context_length", 0) < filters.min_context
+        ):
             return False
 
         return True
@@ -715,7 +731,11 @@ class ModelCache:
     def _filter_models_internal(self, filters: ModelFilter) -> List[Dict[str, Any]]:
         """Apply unified filter logic against in-memory cache."""
         with self._cache_lock:
-            return [model for model in self._memory_cache if self._matches_filter(model, filters)]
+            return [
+                model
+                for model in self._memory_cache
+                if self._matches_filter(model, filters)
+            ]
 
     def filter_models_by_metadata(
         self,
@@ -864,7 +884,11 @@ class ModelCache:
         """
         models = await self.get_models()
 
-        return [model for model in models if model.get("category", "").lower() == category.lower()]
+        return [
+            model
+            for model in models
+            if model.get("category", "").lower() == category.lower()
+        ]
 
     @staticmethod
     def _summarize_cached_models(
@@ -921,7 +945,9 @@ class ModelCache:
                 "vision_capable_count": vision_count,
                 "reasoning_model_count": reasoning_count,
                 "cache_size_mb": round(cache_size_mb, 4),
-                "last_updated": (self._last_update.isoformat() if self._last_update else None),
+                "last_updated": (
+                    self._last_update.isoformat() if self._last_update else None
+                ),
                 "is_expired": self.is_expired(),
                 "ttl_seconds": self.ttl_seconds,
             }
