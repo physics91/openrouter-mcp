@@ -54,7 +54,9 @@ class VisionChatRequest(BaseChatRequest):
 class VisionModelRequest(BaseModel):
     """Request for listing vision-capable models."""
 
-    filter_by: Optional[str] = Field(None, description="Filter models by name substring")
+    filter_by: Optional[str] = Field(
+        None, description="Filter models by name substring"
+    )
 
 
 def encode_image_to_base64(image_bytes: bytes) -> str:
