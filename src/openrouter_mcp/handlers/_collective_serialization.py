@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ..collective_intelligence import (
     ConsensusResult,
@@ -14,7 +14,7 @@ from ..collective_intelligence import (
 from ..collective_intelligence.cross_validator import ValidationIssue, ValidationReport
 
 
-def _serialize_consensus_result(result: ConsensusResult) -> Dict[str, Any]:
+def _serialize_consensus_result(result: ConsensusResult) -> dict[str, Any]:
     """Serialize a consensus result to the MCP response contract."""
     return {
         "consensus_response": result.consensus_content,
@@ -60,7 +60,7 @@ def _summarize_issue_criteria(issues: list[ValidationIssue]) -> str:
 def _build_model_validations(
     report: ValidationReport,
     issues: list[ValidationIssue],
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Summarize validation issues for each explicit or inferred validator."""
     validator_models = getattr(report, "validator_models", []) or []
     if not validator_models:
@@ -89,7 +89,7 @@ def _build_model_validations(
     return model_validations
 
 
-def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, Any]:
+def _serialize_cross_validation_result(result: ValidationResult) -> dict[str, Any]:
     """Serialize a cross-validation result to the MCP response contract."""
     report = result.validation_report
     issues = report.issues
@@ -120,7 +120,7 @@ def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, An
     }
 
 
-def _serialize_ensemble_result(result: EnsembleResult) -> Dict[str, Any]:
+def _serialize_ensemble_result(result: EnsembleResult) -> dict[str, Any]:
     """Serialize an ensemble result to the MCP response contract."""
     return {
         "final_result": result.final_content,
@@ -150,7 +150,7 @@ def _serialize_ensemble_result(result: EnsembleResult) -> Dict[str, Any]:
     }
 
 
-def _serialize_routing_decision(decision: RoutingDecision) -> Dict[str, Any]:
+def _serialize_routing_decision(decision: RoutingDecision) -> dict[str, Any]:
     """Serialize a routing decision to the MCP response contract."""
     return {
         "selected_model": decision.selected_model_id,
@@ -175,7 +175,7 @@ def _serialize_routing_decision(decision: RoutingDecision) -> Dict[str, Any]:
     }
 
 
-def _serialize_solving_result(result: SolvingResult) -> Dict[str, Any]:
+def _serialize_solving_result(result: SolvingResult) -> dict[str, Any]:
     """Serialize a collaborative solving result to the MCP response contract."""
     return {
         "final_solution": result.final_content,
