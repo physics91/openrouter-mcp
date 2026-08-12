@@ -131,17 +131,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     @consensus_history.setter
     def consensus_history(self, value: List[ConsensusResult]) -> None:
         """Set consensus history for backward compatibility."""
-        from collections import deque
-        from datetime import datetime
-
-        # Clear existing items
-        self.storage_manager.items = deque(maxlen=self.storage_manager.config.max_history_size)
-        self.storage_manager.item_timestamps = {}
-        # Add new items with generated IDs
-        for i, item in enumerate(value):
-            item_id = f"consensus_{i}_{datetime.now().timestamp()}"
-            self.storage_manager.items.append((item_id, item))
-            self.storage_manager.item_timestamps[item_id] = datetime.now()
+        self.storage_manager.replace_items(value, id_prefix="consensus")
 
     async def process(self, task: TaskContext, **kwargs: Any) -> ConsensusResult:
         """

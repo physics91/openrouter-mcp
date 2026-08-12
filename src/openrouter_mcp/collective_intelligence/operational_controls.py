@@ -486,6 +486,15 @@ class StorageManager:
                 item_id, _ = self.items.popleft()
                 self.item_timestamps.pop(item_id, None)
 
+    def replace_items(self, values: List[Any], *, id_prefix: str) -> None:
+        """Replace stored history for synchronous compatibility setters."""
+        self.items = deque(maxlen=self.config.max_history_size)
+        self.item_timestamps = {}
+        for index, item in enumerate(values):
+            item_id = f"{id_prefix}_{index}_{datetime.now().timestamp()}"
+            self.items.append((item_id, item))
+            self.item_timestamps[item_id] = datetime.now()
+
     def get_items(self, limit: Optional[int] = None) -> List[Any]:
         """Get stored items."""
         items = [item for _, item in self.items]
