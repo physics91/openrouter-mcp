@@ -102,9 +102,7 @@ class FreeModelRouter:
         """
         await self._cache.ensure_cache_ready()
         free_models = self._cache.filter_models(free_only=True)
-        result = []
-        for model in free_models:
-            result.append(self._build_model_status(model))
+        result = [self._build_model_status(model) for model in free_models]
         result.sort(key=lambda m: -m["quality_score"])
         return result
 

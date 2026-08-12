@@ -162,9 +162,7 @@ class OpenRouterModelProvider:
             raw_models = await self.client.list_models(use_cache=True)
 
             # Convert to ModelInfo objects
-            models = []
-            for raw_model in raw_models:
-                models.append(self._build_model_info(raw_model))
+            models = [self._build_model_info(raw_model) for raw_model in raw_models]
 
             return models
 
