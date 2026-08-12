@@ -227,6 +227,38 @@ class TestMCPBenchmarkTools:
             }
         }
 
+    def test_normalize_performance_weights_preserves_contract(self):
+        assert mcp_benchmark._normalize_performance_weights(None) == {
+            "speed": 0.2,
+            "cost": 0.3,
+            "quality": 0.4,
+            "throughput": 0.1,
+        }
+
+        positive_weights = {"speed": 1.0, "quality": 3.0}
+        normalized = mcp_benchmark._normalize_performance_weights(positive_weights)
+        assert normalized == {"speed": 0.25, "quality": 0.75}
+        assert normalized is not positive_weights
+        assert positive_weights == {"speed": 1.0, "quality": 3.0}
+
+        zero_total_weights = {"speed": 1.0, "cost": -1.0}
+        assert (
+            mcp_benchmark._normalize_performance_weights(zero_total_weights)
+            is zero_total_weights
+        )
+
+        negative_total_weights = {"speed": -2.0, "cost": 1.0}
+        assert (
+            mcp_benchmark._normalize_performance_weights(negative_total_weights)
+            is negative_total_weights
+        )
+
+        nan_total_weights = {"speed": float("nan")}
+        assert (
+            mcp_benchmark._normalize_performance_weights(nan_total_weights)
+            is nan_total_weights
+        )
+
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self, mock_env):
         """벤치마크 핸들러 싱글톤 테스트"""

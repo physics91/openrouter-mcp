@@ -302,6 +302,19 @@ def _serialize_detailed_performance_metrics(
     return detailed_metrics
 
 
+def _normalize_performance_weights(
+    weights: Optional[Dict[str, float]],
+) -> Dict[str, float]:
+    if weights is None:
+        weights = {"speed": 0.2, "cost": 0.3, "quality": 0.4, "throughput": 0.1}
+
+    total_weight = sum(weights.values())
+    if total_weight > 0:
+        return {key: value / total_weight for key, value in weights.items()}
+
+    return weights
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -759,15 +772,7 @@ async def compare_model_performance(
     """
     try:
         handler = await get_benchmark_handler()
-
-        # 기본 가중치 설정
-        if weights is None:
-            weights = {"speed": 0.2, "cost": 0.3, "quality": 0.4, "throughput": 0.1}
-
-        # 가중치 정규화
-        total_weight = sum(weights.values())
-        if total_weight > 0:
-            weights = {k: v / total_weight for k, v in weights.items()}
+        weights = _normalize_performance_weights(weights)
 
         logger.info(f"고급 성능 비교 시작: {models}")
         logger.info(f"가중치: {weights}")
