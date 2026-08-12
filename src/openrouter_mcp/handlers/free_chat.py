@@ -121,14 +121,27 @@ class FreeChatRequest(BaseModel):
     conversation_history: List[Dict[str, Any]] = Field(
         default_factory=list, description="Previous conversation messages"
     )
-    max_tokens: int = Field(FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate")
-    temperature: float = Field(ModelDefaults.TEMPERATURE, description="Sampling temperature")
+    max_tokens: int = Field(
+        FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate"
+    )
+    temperature: float = Field(
+        ModelDefaults.TEMPERATURE, description="Sampling temperature"
+    )
     preferred_models: List[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )
     stream: bool = Field(
         False, description="Buffer streamed response (still returns complete result)"
     )
+
+
+def _build_free_chat_messages(request: FreeChatRequest) -> List[Dict[str, Any]]:
+    messages: List[Dict[str, Any]] = []
+    if request.system_prompt:
+        messages.append({"role": "system", "content": request.system_prompt})
+    messages.extend(request.conversation_history)
+    messages.append({"role": "user", "content": request.message})
+    return messages
 
 
 def _extract_text_for_classification(
@@ -366,12 +379,7 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
         text_for_classify = _extract_text_for_classification(request.message)
         task_type = classifier.classify(text_for_classify, request.system_prompt)
 
-        # Build messages
-        messages: List[Dict[str, Any]] = []
-        if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
-        messages.extend(request.conversation_history)
-        messages.append({"role": "user", "content": request.message})
+        messages = _build_free_chat_messages(request)
 
         # Infer required capabilities from messages
         required_caps = _infer_required_capabilities(messages)

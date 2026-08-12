@@ -3,11 +3,61 @@
 import pytest
 
 from src.openrouter_mcp.handlers.free_chat import (
+    FreeChatRequest,
+    _build_free_chat_messages,
     _extract_text_for_classification,
     _infer_required_capabilities,
 )
 
 pytestmark = pytest.mark.unit
+
+
+class TestBuildFreeChatMessages:
+    def test_builds_minimal_string_message(self):
+        request = FreeChatRequest(message="hello")
+
+        assert _build_free_chat_messages(request) == [
+            {"role": "user", "content": "hello"}
+        ]
+
+    def test_preserves_truthy_whitespace_system_prompt(self):
+        request = FreeChatRequest(message="hello", system_prompt=" ")
+
+        assert _build_free_chat_messages(request) == [
+            {"role": "system", "content": " "},
+            {"role": "user", "content": "hello"},
+        ]
+
+    def test_preserves_history_and_multimodal_aliasing_without_mutation(self):
+        request = FreeChatRequest(
+            message=[
+                {"type": "text", "text": "describe"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/img"}},
+            ],
+            system_prompt="system",
+            conversation_history=[
+                {"role": "user", "content": "old question"},
+                {"role": "assistant", "content": "old answer"},
+            ],
+        )
+        original_history = list(request.conversation_history)
+        request_message = request.message
+
+        messages = _build_free_chat_messages(request)
+
+        assert messages == [
+            {"role": "system", "content": "system"},
+            *original_history,
+            {"role": "user", "content": request_message},
+        ]
+        assert messages[1] is request.conversation_history[0]
+        assert messages[2] is request.conversation_history[1]
+        assert messages[-1]["content"] is request_message
+        assert request.conversation_history == original_history
+        assert all(
+            current is original
+            for current, original in zip(request.conversation_history, original_history)
+        )
 
 
 class TestExtractTextForClassification:

@@ -224,9 +224,13 @@ class TestFreeChatHandler:
 
             call_kwargs = mock_client.chat_completion.call_args[1]
             messages = call_kwargs["messages"]
-            assert messages[0]["role"] == "system"
-            assert messages[0]["content"] == "You are a helpful assistant."
-            assert messages[1]["role"] == "user"
+            assert messages == [
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant.",
+                },
+                {"role": "user", "content": "What is Python?"},
+            ]
 
     @pytest.mark.unit
     @pytest.mark.asyncio
