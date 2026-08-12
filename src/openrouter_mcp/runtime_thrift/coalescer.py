@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Dict, Generic, Optional, TypeVar
+from typing import Generic, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -22,8 +22,8 @@ class RequestCoalescer(Generic[T]):
 
     def __init__(self, time_fn: Optional[Callable[[], float]] = None) -> None:
         self._lock = asyncio.Lock()
-        self._inflight: Dict[str, asyncio.Task[T]] = {}
-        self._recent: Dict[str, _RecentResult[T]] = {}
+        self._inflight: dict[str, asyncio.Task[T]] = {}
+        self._recent: dict[str, _RecentResult[T]] = {}
         self._time_fn = time_fn or time.monotonic
 
     async def run(
