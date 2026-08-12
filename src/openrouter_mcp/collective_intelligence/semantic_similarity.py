@@ -17,7 +17,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Optional
 
 from ..utils.text import EXTENDED_ENGLISH_STOPWORDS
 
@@ -188,7 +188,7 @@ class SemanticSimilarityCalculator:
 
         return text
 
-    def _tokenize(self, text: str) -> List[str]:
+    def _tokenize(self, text: str) -> list[str]:
         """
         Tokenize text into words, filtering by minimum length.
 
@@ -328,7 +328,7 @@ class SemanticSimilarityCalculator:
 
         return dot_product / (magnitude1 * magnitude2)
 
-    def _generate_ngrams(self, text: str, n: int) -> Set[str]:
+    def _generate_ngrams(self, text: str, n: int) -> set[str]:
         """
         Generate character n-grams from text.
 
@@ -397,12 +397,12 @@ class ResponseGrouper:
         self.calculator = calculator or SemanticSimilarityCalculator()
 
     def _collect_duplicate_members(
-        self, texts: List[str]
-    ) -> Tuple[List[int], Dict[int, List[int]]]:
+        self, texts: list[str]
+    ) -> tuple[list[int], dict[int, list[int]]]:
         """Collect normalized duplicates under their first representative."""
-        normalized_to_representative: Dict[str, int] = {}
-        representative_indices: List[int] = []
-        duplicate_members: Dict[int, List[int]] = {}
+        normalized_to_representative: dict[str, int] = {}
+        representative_indices: list[int] = []
+        duplicate_members: dict[int, list[int]] = {}
 
         for idx, text in enumerate(texts):
             normalized = self.calculator._normalize_text(text)
@@ -420,11 +420,11 @@ class ResponseGrouper:
     def _build_similarity_group(
         self,
         seed_idx: int,
-        texts: List[str],
-        representative_indices: List[int],
-        duplicate_members: Dict[int, List[int]],
-        assigned_representatives: Set[int],
-    ) -> List[int]:
+        texts: list[str],
+        representative_indices: list[int],
+        duplicate_members: dict[int, list[int]],
+        assigned_representatives: set[int],
+    ) -> list[int]:
         """Build one transitive similarity group from a representative."""
         current_group = list(duplicate_members[seed_idx])
         current_representatives = [seed_idx]
@@ -447,7 +447,7 @@ class ResponseGrouper:
 
         return current_group
 
-    def group_responses(self, texts: List[str]) -> List[List[int]]:
+    def group_responses(self, texts: list[str]) -> list[list[int]]:
         """
         Group similar texts together.
 
@@ -465,8 +465,8 @@ class ResponseGrouper:
 
         representative_indices, duplicate_members = self._collect_duplicate_members(texts)
 
-        groups: List[List[int]] = []
-        assigned_representatives: Set[int] = set()
+        groups: list[list[int]] = []
+        assigned_representatives: set[int] = set()
 
         for i in representative_indices:
             if i in assigned_representatives:
@@ -484,7 +484,7 @@ class ResponseGrouper:
 
         return groups
 
-    def _select_group_representative(self, texts: List[str], group: List[int]) -> int:
+    def _select_group_representative(self, texts: list[str], group: list[int]) -> int:
         """Select the index with the highest average similarity in one group."""
         if len(group) == 1:
             return group[0]
@@ -510,8 +510,8 @@ class ResponseGrouper:
         return best_idx
 
     def get_group_representatives(
-        self, texts: List[str], groups: List[List[int]]
-    ) -> List[int]:
+        self, texts: list[str], groups: list[list[int]]
+    ) -> list[int]:
         """
         Get the most representative text from each group.
 
