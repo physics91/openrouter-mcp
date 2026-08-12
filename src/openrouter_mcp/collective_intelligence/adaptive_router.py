@@ -18,7 +18,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..runtime_thrift.metrics import get_thrift_metrics_snapshot_for_dates
-from ..runtime_thrift.summary import _calculate_cache_efficiency_rates
+from ..runtime_thrift.summary import _build_normalized_cache_bucket_summary
 from ..utils.metadata import extract_provider_from_id
 from .base import (
     CollectiveIntelligenceComponent,
@@ -1130,28 +1130,21 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         """Normalize raw thrift bucket counters into one compact summary."""
         observed_requests = max(0, int(bucket.get("observed_requests", 0) or 0))
         cached_prompt_tokens = max(0, int(bucket.get("cached_prompt_tokens", 0) or 0))
-        cache_write_prompt_tokens = max(0, int(bucket.get("cache_write_prompt_tokens", 0) or 0))
+        cache_write_prompt_tokens = max(
+            0, int(bucket.get("cache_write_prompt_tokens", 0) or 0)
+        )
         cache_hit_requests = max(0, int(bucket.get("cache_hit_requests", 0) or 0))
         cache_write_requests = max(0, int(bucket.get("cache_write_requests", 0) or 0))
         saved_cost_usd = round(float(bucket.get("saved_cost_usd", 0.0) or 0.0), 8)
 
-        rates = _calculate_cache_efficiency_rates(
+        return _build_normalized_cache_bucket_summary(
             observed_requests,
             cached_prompt_tokens,
             cache_write_prompt_tokens,
             cache_hit_requests,
             cache_write_requests,
+            saved_cost_usd,
         )
-
-        return {
-            "observed_requests": observed_requests,
-            "cached_prompt_tokens": cached_prompt_tokens,
-            "cache_write_prompt_tokens": cache_write_prompt_tokens,
-            "cache_hit_requests": cache_hit_requests,
-            "cache_write_requests": cache_write_requests,
-            **rates,
-            "saved_cost_usd": saved_cost_usd,
-        }
 
     def _calculate_thrift_penalty(self, bucket_summary: Dict[str, Any]) -> float:
         """Calculate bounded penalty for cache-deadspot behavior."""

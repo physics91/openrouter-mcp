@@ -41,14 +41,15 @@ def _calculate_cache_efficiency_rates(
     }
 
 
-def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
-    observed_requests = _as_int(bucket.get("observed_requests"))
-    cached_prompt_tokens = _as_int(bucket.get("cached_prompt_tokens"))
-    cache_write_prompt_tokens = _as_int(bucket.get("cache_write_prompt_tokens"))
-    cache_hit_requests = _as_int(bucket.get("cache_hit_requests"))
-    cache_write_requests = _as_int(bucket.get("cache_write_requests"))
-    saved_cost_usd = round(_as_float(bucket.get("saved_cost_usd")), 8)
-
+def _build_normalized_cache_bucket_summary(
+    observed_requests: int,
+    cached_prompt_tokens: int,
+    cache_write_prompt_tokens: int,
+    cache_hit_requests: int,
+    cache_write_requests: int,
+    saved_cost_usd: float,
+) -> Dict[str, Any]:
+    """Build the shared cache summary envelope from normalized values."""
     rates = _calculate_cache_efficiency_rates(
         observed_requests,
         cached_prompt_tokens,
@@ -66,6 +67,24 @@ def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
         **rates,
         "saved_cost_usd": saved_cost_usd,
     }
+
+
+def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
+    observed_requests = _as_int(bucket.get("observed_requests"))
+    cached_prompt_tokens = _as_int(bucket.get("cached_prompt_tokens"))
+    cache_write_prompt_tokens = _as_int(bucket.get("cache_write_prompt_tokens"))
+    cache_hit_requests = _as_int(bucket.get("cache_hit_requests"))
+    cache_write_requests = _as_int(bucket.get("cache_write_requests"))
+    saved_cost_usd = round(_as_float(bucket.get("saved_cost_usd")), 8)
+
+    return _build_normalized_cache_bucket_summary(
+        observed_requests,
+        cached_prompt_tokens,
+        cache_write_prompt_tokens,
+        cache_hit_requests,
+        cache_write_requests,
+        saved_cost_usd,
+    )
 
 
 def _build_cache_efficiency_breakdown(
