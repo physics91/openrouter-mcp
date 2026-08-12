@@ -249,7 +249,8 @@ class OpenRouterClient:
         api_key = get_required_env(EnvVars.API_KEY)
         return cls(
             api_key=api_key,
-            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL) or APIConfig.BASE_URL,
+            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL)
+            or APIConfig.BASE_URL,
             app_name=get_env_value(EnvVars.APP_NAME),
             http_referer=get_env_value(EnvVars.HTTP_REFERER),
         )
@@ -285,7 +286,9 @@ class OpenRouterClient:
                 raise ValueError("Message must have 'role' and 'content' fields")
 
             if message["role"] not in valid_roles:
-                raise ValueError(f"Invalid role: {message['role']}. Must be one of {valid_roles}")
+                raise ValueError(
+                    f"Invalid role: {message['role']}. Must be one of {valid_roles}"
+                )
 
     def _validate_messages_if_text(self, messages: list[dict[str, Any]]) -> None:
         """Validate messages when they are simple text-only payloads."""
@@ -345,14 +348,20 @@ class OpenRouterClient:
         """Handle non-HTTP request errors (connect, timeout, generic)."""
         if isinstance(e, httpx.ConnectError):
             self.logger.error(f"Connection error for {context} {url}: {str(e)}")
-            raise OpenRouterError("Network error: Failed to connect to OpenRouter API") from e
+            raise OpenRouterError(
+                "Network error: Failed to connect to OpenRouter API"
+            ) from e
         if isinstance(e, httpx.TimeoutException):
             self.logger.error(f"Timeout error for {context} {url}: {str(e)}")
-            raise OpenRouterError(f"Request timeout after {self.timeout} seconds") from e
+            raise OpenRouterError(
+                f"Request timeout after {self.timeout} seconds"
+            ) from e
         self.logger.error(f"Unexpected error for {context} {url}: {str(e)}")
         raise OpenRouterError(f"Unexpected error: {str(e)}") from e
 
-    def _build_coalescing_key(self, endpoint: str, payload: dict[str, Any]) -> Optional[str]:
+    def _build_coalescing_key(
+        self, endpoint: str, payload: dict[str, Any]
+    ) -> Optional[str]:
         """Build a stable fingerprint for exact-match request coalescing."""
         try:
             serialized = json_lib.dumps(
@@ -414,7 +423,9 @@ class OpenRouterClient:
 
             response_data = await maybe_await(response.json())
             if not isinstance(response_data, dict):
-                raise OpenRouterError(f"Unexpected response type: {type(response_data).__name__}")
+                raise OpenRouterError(
+                    f"Unexpected response type: {type(response_data).__name__}"
+                )
 
             self._log_response_data(response_data)
 
@@ -582,7 +593,9 @@ class OpenRouterClient:
                 return cached_models
 
         # Fallback: Fetch directly from API if cache is disabled or failed
-        self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")
+        self.logger.info(
+            f"Fetching models directly from API with filter: {filter_by or 'none'}"
+        )
 
         params: dict[str, Any] = {}
         if filter_by:
@@ -670,10 +683,14 @@ class OpenRouterClient:
             return 0.0
 
         pricing = await self.get_model_pricing(model)
-        prompt_price = float(pricing.get("prompt") or PricingDefaults.DEFAULT_TOKEN_PRICE)
+        prompt_price = float(
+            pricing.get("prompt") or PricingDefaults.DEFAULT_TOKEN_PRICE
+        )
         return max(0.0, cached_tokens * prompt_price * (1.0 - read_multiplier))
 
-    async def _record_prompt_cache_metrics(self, model: str, response: dict[str, Any]) -> None:
+    async def _record_prompt_cache_metrics(
+        self, model: str, response: dict[str, Any]
+    ) -> None:
         usage = response.get("usage")
         if not isinstance(usage, dict):
             return
@@ -713,7 +730,9 @@ class OpenRouterClient:
     ) -> dict[str, Any]:
         response = await self._make_request("POST", endpoint, json=payload)
         if isinstance(response, dict):
-            await self._record_prompt_cache_metrics(str(payload.get("model", "default")), response)
+            await self._record_prompt_cache_metrics(
+                str(payload.get("model", "default")), response
+            )
         return response
 
     async def chat_completion(
