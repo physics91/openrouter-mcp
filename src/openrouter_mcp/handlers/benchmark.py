@@ -167,7 +167,9 @@ class ResponseQualityAnalyzer:
         coherence_score = self._calculate_coherence(response)
 
         # Overall quality score (weighted combination)
-        quality_score = completeness_score * 0.4 + relevance_score * 0.4 + coherence_score * 0.2
+        quality_score = (
+            completeness_score * 0.4 + relevance_score * 0.4 + coherence_score * 0.2
+        )
 
         return {
             "quality_score": min(quality_score, 1.0),
@@ -561,7 +563,8 @@ class ModelComparison:
     def get_metrics(self) -> Dict[str, BenchmarkMetrics]:
         """Get metrics for each model."""
         return {
-            model: BenchmarkMetrics.from_results(results) for model, results in self.results.items()
+            model: BenchmarkMetrics.from_results(results)
+            for model, results in self.results.items()
         }
 
     def get_rankings(self) -> Dict[str, List[RankingEntry]]:
@@ -607,9 +610,13 @@ class ModelComparison:
             "prompt": self.prompt,
             "models": self.models,
             "results": {
-                model: [r.to_dict() for r in results] for model, results in self.results.items()
+                model: [r.to_dict() for r in results]
+                for model, results in self.results.items()
             },
-            "metrics": {model: metrics.to_dict() for model, metrics in self.get_metrics().items()},
+            "metrics": {
+                model: metrics.to_dict()
+                for model, metrics in self.get_metrics().items()
+            },
             "rankings": self.get_rankings(),
             "timestamp": self.timestamp.isoformat(),
         }
@@ -711,7 +718,9 @@ class BenchmarkHandler:
         return [{"role": "user", "content": prompt}]
 
     @staticmethod
-    def _resolve_max_concurrent_models(model_count: int, limit: Optional[int] = None) -> int:
+    def _resolve_max_concurrent_models(
+        model_count: int, limit: Optional[int] = None
+    ) -> int:
         """Resolve a conservative concurrency limit for benchmarking fan-out."""
         requested_limit = (
             BenchmarkDefaults.DEFAULT_MAX_CONCURRENT_MODELS if limit is None else limit
@@ -818,7 +827,9 @@ class BenchmarkHandler:
         runs_per_model: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
     ) -> Union[ModelComparison, Dict[str, "EnhancedBenchmarkResult"]]:
         """Benchmark multiple models with the same prompt."""
-        logger.info(f"Starting benchmark for {len(models)} models with {runs_per_model} runs each")
+        logger.info(
+            f"Starting benchmark for {len(models)} models with {runs_per_model} runs each"
+        )
 
         async def run_model_series(model_id: str) -> List[BenchmarkResult]:
             model_results = []
@@ -865,7 +876,9 @@ class BenchmarkHandler:
 
         return comparison
 
-    def save_comparison(self, comparison: ModelComparison, file_path: Optional[str] = None) -> str:
+    def save_comparison(
+        self, comparison: ModelComparison, file_path: Optional[str] = None
+    ) -> str:
         """Save comparison results to a file."""
         if file_path is None:
             timestamp = comparison.timestamp.strftime("%Y%m%d_%H%M%S")
@@ -1032,7 +1045,9 @@ class BenchmarkHandler:
             m = metrics.get(model)
             if m:
                 report.append(f"\n{model}:")
-                report.append(f"  Average Response Time: {m.avg_response_time_ms:.2f} ms")
+                report.append(
+                    f"  Average Response Time: {m.avg_response_time_ms:.2f} ms"
+                )
                 report.append(f"  Average Tokens Used: {m.avg_tokens_used:.1f}")
                 report.append(f"  Average Cost: ${m.avg_cost:.6f}")
                 report.append(f"  Total Cost: ${m.total_cost:.6f}")
@@ -1046,7 +1061,9 @@ class BenchmarkHandler:
         for criterion, ranking in rankings.items():
             report.append(f"\n{criterion.capitalize()}:")
             for i, item in enumerate(ranking, 1):
-                report.append(f"  {i}. {item['model']}: {item['metric']:.2f} {item['unit']}")
+                report.append(
+                    f"  {i}. {item['model']}: {item['metric']:.2f} {item['unit']}"
+                )
 
         report.append("\n" + "=" * 80)
 
@@ -1119,7 +1136,9 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         analysis = self.quality_analyzer.analyze_response(prompt, response)
         return float(analysis.get("quality_score", 0.0))
 
-    def analyze_response_comprehensive(self, prompt: str, response: str) -> Dict[str, Any]:
+    def analyze_response_comprehensive(
+        self, prompt: str, response: str
+    ) -> Dict[str, Any]:
         """Get comprehensive response analysis."""
         return self.quality_analyzer.analyze_response(prompt, response)
 
@@ -1327,7 +1346,8 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             else:
                 # Fallback to rough estimate
                 cost = (
-                    total_tokens / 2 * prompt_price + total_tokens / 2 * completion_price
+                    total_tokens / 2 * prompt_price
+                    + total_tokens / 2 * completion_price
                 ) / 1_000_000
                 logger.debug(f"Cost estimated from total tokens: {cost}")
 
@@ -1340,7 +1360,9 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         """Safely convert a value to float with logging."""
         result = parse_price(value)
         if result == 0.0 and value not in (0, 0.0, "0", "0.0", "", None):
-            logger.warning(f"Could not convert {field_name} '{value}' to float; using 0.0")
+            logger.warning(
+                f"Could not convert {field_name} '{value}' to float; using 0.0"
+            )
         return float(result)
 
     def _create_enhanced_result(
@@ -1359,7 +1381,9 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
 
         successful_results = [r for r in benchmark_results if r.error is None]
         if not successful_results:
-            first_error = benchmark_results[0].error if benchmark_results else "Unknown error"
+            first_error = (
+                benchmark_results[0].error if benchmark_results else "Unknown error"
+            )
             return EnhancedBenchmarkResult(
                 model_id=model_id,
                 success=False,
