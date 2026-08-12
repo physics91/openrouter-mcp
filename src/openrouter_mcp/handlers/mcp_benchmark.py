@@ -126,6 +126,55 @@ def _selection_score(model: Dict[str, Any], metric: str) -> float:
     return (quality_score * 0.5) + (speed_component * 0.3) + (cost_component * 0.2)
 
 
+def _group_models_by_category(
+    models: List[Dict[str, Any]], categories: Optional[List[str]]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Group models by category and apply the optional category filter."""
+    category_models: Dict[str, List[Dict[str, Any]]] = {}
+    for model in models:
+        category = model.get("category", "unknown")
+        if category not in category_models:
+            category_models[category] = []
+        category_models[category].append(model)
+
+    if categories:
+        category_models = {
+            category: grouped_models
+            for category, grouped_models in category_models.items()
+            if category in categories
+        }
+
+    return category_models
+
+
+def _select_top_category_models(
+    category_models: Dict[str, List[Dict[str, Any]]],
+    top_n: int,
+    normalized_metric: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    """Select the top models per category and describe each selection."""
+    selected_models: List[Dict[str, Any]] = []
+    category_info: Dict[str, Dict[str, Any]] = {}
+
+    for category, grouped_models in category_models.items():
+        if not grouped_models:
+            continue
+
+        sorted_models = sorted(
+            grouped_models,
+            key=lambda model: _selection_score(model, normalized_metric),
+            reverse=True,
+        )[:top_n]
+
+        selected_models.extend(sorted_models)
+        category_info[category] = {
+            "total_models": len(grouped_models),
+            "selected_models": [model["id"] for model in sorted_models],
+        }
+
+    return selected_models, category_info
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -363,40 +412,10 @@ async def compare_model_categories(
         # 모든 모델 가져오기
         models = await maybe_await(cache.get_models())
 
-        # 카테고리별로 모델 그룹화
-        category_models: Dict[str, List[Dict[str, Any]]] = {}
-        for model in models:
-            category = model.get("category", "unknown")
-            if category not in category_models:
-                category_models[category] = []
-            category_models[category].append(model)
-
-        # 카테고리 필터링
-        if categories:
-            category_models = {
-                cat: models for cat, models in category_models.items() if cat in categories
-            }
-
-        # 각 카테고리에서 상위 모델 선택
-        selected_models: List[Dict[str, Any]] = []
-        category_info: Dict[str, Dict[str, Any]] = {}
-
-        for category, cat_models in category_models.items():
-            if not cat_models:
-                continue
-
-            # 메트릭에 따라 정렬
-            sorted_models = sorted(
-                cat_models,
-                key=lambda x: _selection_score(x, normalized_metric),
-                reverse=True,
-            )[:top_n]
-
-            selected_models.extend(sorted_models)
-            category_info[category] = {
-                "total_models": len(cat_models),
-                "selected_models": [m["id"] for m in sorted_models],
-            }
+        category_models = _group_models_by_category(models, categories)
+        selected_models, category_info = _select_top_category_models(
+            category_models, top_n, normalized_metric
+        )
 
         if not selected_models:
             return {
