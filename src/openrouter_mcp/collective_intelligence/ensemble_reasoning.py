@@ -993,20 +993,25 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         content_parts = []
 
         # Add critical results first
-        for result in critical_results:
-            content_parts.append(f"Critical Component: {result.result.content}")
+        content_parts.extend(
+            f"Critical Component: {result.result.content}"
+            for result in critical_results
+        )
 
         # Add high priority results
-        for result in high_results:
-            content_parts.append(f"Key Finding: {result.result.content}")
+        content_parts.extend(
+            f"Key Finding: {result.result.content}" for result in high_results
+        )
 
         # Add medium priority results
-        for result in medium_results:
-            content_parts.append(f"Supporting Analysis: {result.result.content}")
+        content_parts.extend(
+            f"Supporting Analysis: {result.result.content}" for result in medium_results
+        )
 
         # Add low priority results if space allows
-        for result in low_results:
-            content_parts.append(f"Additional Insight: {result.result.content}")
+        content_parts.extend(
+            f"Additional Insight: {result.result.content}" for result in low_results
+        )
 
         if not content_parts:
             # Fallback: combine all content
