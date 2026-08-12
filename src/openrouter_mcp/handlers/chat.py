@@ -30,7 +30,9 @@ class ChatCompletionRequest(BaseChatRequest):
 class ModelListRequest(BaseModel):
     """Request for listing available models."""
 
-    filter_by: Optional[str] = Field(None, description="Filter models by name substring")
+    filter_by: Optional[str] = Field(
+        None, description="Filter models by name substring"
+    )
 
 
 class UsageStatsRequest(BaseModel):
@@ -39,7 +41,9 @@ class UsageStatsRequest(BaseModel):
     start_date: Optional[str] = Field(
         None, description="Start date for usage tracking (YYYY-MM-DD)"
     )
-    end_date: Optional[str] = Field(None, description="End date for usage tracking (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(
+        None, description="End date for usage tracking (YYYY-MM-DD)"
+    )
 
 
 async def _stream_chat_with_thrift_metadata(
@@ -148,7 +152,9 @@ async def chat_with_model(
 
         try:
             if request.stream:
-                return await _stream_chat_with_thrift_metadata(client, request, messages)
+                return await _stream_chat_with_thrift_metadata(
+                    client, request, messages
+                )
             else:
                 return await _complete_chat_with_thrift_metadata(
                     client, request, messages
@@ -240,7 +246,9 @@ async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
     client = await get_openrouter_client()
 
     try:
-        stats = await client.track_usage(start_date=request.start_date, end_date=request.end_date)
+        stats = await client.track_usage(
+            start_date=request.start_date, end_date=request.end_date
+        )
         if not isinstance(stats, dict):
             raise ValueError("Invalid usage stats response format")
         stats = dict(stats)
@@ -249,7 +257,9 @@ async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
             request.end_date,
         )
         stats = attach_thrift_metadata_from_payload(stats, thrift_metrics)
-        logger.info(f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost")
+        logger.info(
+            f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost"
+        )
         return stats
 
     except Exception as e:
