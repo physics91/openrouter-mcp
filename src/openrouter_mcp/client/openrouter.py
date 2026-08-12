@@ -453,6 +453,36 @@ class OpenRouterClient:
         else:
             raise OpenRouterError(f"API error: {error_message}")
 
+    async def _get_cached_models(
+        self,
+        filter_by: Optional[str],
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Return usable cached models, or None when the API should be queried."""
+        try:
+            cached_models_raw = await self._model_cache.get_models()
+            all_models: List[Dict[str, Any]] = [
+                model for model in cached_models_raw if isinstance(model, dict)
+            ]
+            if all_models:
+                self.logger.info(f"Retrieved {len(all_models)} models from cache")
+
+                if filter_by:
+                    filter_lower = filter_by.lower()
+                    filtered_models = [
+                        model
+                        for model in all_models
+                        if filter_lower in model.get("name", "").lower()
+                        or filter_lower in model.get("id", "").lower()
+                    ]
+                    self.logger.info(f"Filtered to {len(filtered_models)} models")
+                    return filtered_models
+
+                return all_models
+        except Exception as e:
+            self.logger.warning(f"Failed to get cached models: {e}")
+
+        return None
+
     async def list_models(
         self,
         filter_by: Optional[str] = None,
@@ -487,30 +517,9 @@ class OpenRouterClient:
         """
         # Use cache system if enabled and not explicitly bypassed
         if use_cache and self._model_cache and not _bypass_cache:
-            try:
-                cached_models_raw = await self._model_cache.get_models()
-                all_models: List[Dict[str, Any]] = [
-                    model for model in cached_models_raw if isinstance(model, dict)
-                ]
-                if all_models:
-                    self.logger.info(f"Retrieved {len(all_models)} models from cache")
-
-                    # Apply filter if specified
-                    if filter_by:
-                        filter_lower = filter_by.lower()
-                        filtered_models = [
-                            model
-                            for model in all_models
-                            if filter_lower in model.get("name", "").lower()
-                            or filter_lower in model.get("id", "").lower()
-                        ]
-                        self.logger.info(f"Filtered to {len(filtered_models)} models")
-                        return filtered_models
-                    else:
-                        return all_models
-            except Exception as e:
-                self.logger.warning(f"Failed to get cached models: {e}")
-                # Continue to API fetch
+            cached_models = await self._get_cached_models(filter_by)
+            if cached_models is not None:
+                return cached_models
 
         # Fallback: Fetch directly from API if cache is disabled or failed
         self.logger.info(f"Fetching models directly from API with filter: {filter_by or 'none'}")

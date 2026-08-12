@@ -1,6 +1,6 @@
 import asyncio
 import os
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import httpx
 import pytest
@@ -107,6 +107,107 @@ class TestOpenRouterClient:
             await client.list_models(filter_by="openai")
 
             mock_request.assert_called_once_with("GET", "/models", params={"filter": "openai"})
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_cached_models_preserves_dict_order_and_identity(
+        self, mock_api_key
+    ):
+        logger = Mock()
+        client = OpenRouterClient(api_key=mock_api_key, logger=logger)
+        first = {"id": "first", "name": "First"}
+        second = {"id": "second", "name": "Second"}
+        client._model_cache = Mock()
+        client._model_cache.get_models = AsyncMock(
+            return_value=[first, "not-a-model", second]
+        )
+
+        models = await client._get_cached_models(None)
+
+        assert models == [first, second]
+        assert models[0] is first
+        assert models[1] is second
+        logger.info.assert_called_once_with("Retrieved 2 models from cache")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_cached_models_returns_none_without_usable_models(
+        self, mock_api_key
+    ):
+        logger = Mock()
+        client = OpenRouterClient(api_key=mock_api_key, logger=logger)
+        client._model_cache = Mock()
+        client._model_cache.get_models = AsyncMock(return_value=[None, "invalid"])
+
+        assert await client._get_cached_models(None) is None
+        logger.info.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_cached_models_keeps_empty_filter_result(self, mock_api_key):
+        logger = Mock()
+        client = OpenRouterClient(api_key=mock_api_key, logger=logger)
+        client._model_cache = Mock()
+        client._model_cache.get_models = AsyncMock(
+            return_value=[{"id": "openai/gpt-4", "name": "GPT-4"}]
+        )
+
+        assert await client._get_cached_models("claude") == []
+        assert logger.info.call_args_list == [
+            call("Retrieved 1 models from cache"),
+            call("Filtered to 0 models"),
+        ]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_cached_models_name_match_skips_id_access(self, mock_api_key):
+        class NameOnlyModel(dict):
+            def get(self, key, default=None):
+                if key == "id":
+                    raise AssertionError("id must not be read after a name match")
+                return super().get(key, default)
+
+        client = OpenRouterClient(api_key=mock_api_key)
+        model = NameOnlyModel(name="Target Model")
+        client._model_cache = Mock()
+        client._model_cache.get_models = AsyncMock(return_value=[model])
+
+        models = await client._get_cached_models("target")
+
+        assert models == [model]
+        assert models[0] is model
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_get_cached_models_turns_malformed_fields_into_cache_miss(
+        self, mock_api_key
+    ):
+        logger = Mock()
+        client = OpenRouterClient(api_key=mock_api_key, logger=logger)
+        client._model_cache = Mock()
+        client._model_cache.get_models = AsyncMock(
+            return_value=[{"id": "model", "name": 7}]
+        )
+
+        assert await client._get_cached_models("model") is None
+        logger.warning.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_list_models_does_not_fetch_api_for_empty_cached_filter_result(
+        self, mock_api_key
+    ):
+        client = OpenRouterClient(api_key=mock_api_key)
+        assert client._model_cache is not None
+        client._model_cache.get_models = AsyncMock(
+            return_value=[{"id": "openai/gpt-4", "name": "GPT-4"}]
+        )
+
+        with patch.object(client, "_make_request") as mock_request:
+            models = await client.list_models(filter_by="claude")
+
+        assert models == []
+        mock_request.assert_not_called()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
