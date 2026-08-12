@@ -517,13 +517,12 @@ class OpenRouterClient:
 
         if response.status_code == 401:
             raise AuthenticationError(error_message)
-        elif response.status_code == 429:
+        if response.status_code == 429:
             retry_after = _parse_retry_after(response.headers.get("Retry-After"))
             raise RateLimitError(error_message, retry_after=retry_after)
-        elif response.status_code == 400:
+        if response.status_code == 400:
             raise InvalidRequestError(error_message)
-        else:
-            raise OpenRouterError(f"API error: {error_message}")
+        raise OpenRouterError(f"API error: {error_message}")
 
     async def _get_cached_models(
         self,
