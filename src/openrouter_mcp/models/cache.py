@@ -884,6 +884,17 @@ class ModelCache:
 
         return sorted(list(providers)), vision_count, reasoning_count
 
+    @staticmethod
+    def _calculate_cache_size_mb(models: List[Dict[str, Any]]) -> float:
+        """Calculate the serialized cache size in mebibytes."""
+        try:
+            cache_json = json.dumps(models, ensure_ascii=False)
+            cache_size_bytes = sys.getsizeof(cache_json)
+            return cache_size_bytes / (1024 * 1024)
+        except Exception as e:
+            logger.warning(f"Failed to calculate cache size: {e}")
+            return 0.0
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics and metadata.
@@ -896,15 +907,7 @@ class ModelCache:
             providers, vision_count, reasoning_count = self._summarize_cached_models(
                 self._memory_cache
             )
-
-            # Calculate cache size
-            try:
-                cache_json = json.dumps(self._memory_cache, ensure_ascii=False)
-                cache_size_bytes = sys.getsizeof(cache_json)
-                cache_size_mb = cache_size_bytes / (1024 * 1024)
-            except Exception as e:
-                logger.warning(f"Failed to calculate cache size: {e}")
-                cache_size_mb = 0.0
+            cache_size_mb = self._calculate_cache_size_mb(self._memory_cache)
 
             return {
                 "total_models": len(self._memory_cache),
