@@ -18,7 +18,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class OperationalConfig:
             failure=FailureConfig(cancel_on_first_failure=False, max_failures_before_cancel=5),
         )
 
-    def limits_snapshot(self) -> Dict[str, Any]:
+    def limits_snapshot(self) -> dict[str, Any]:
         """Return shared operational limit fields for status reporting."""
         return {
             "max_history_size": self.storage.max_history_size,
@@ -137,7 +137,7 @@ class ConcurrencyLimiter:
         self.config = config
         self.task_semaphore = asyncio.Semaphore(config.max_concurrent_tasks)
         self.model_semaphore = asyncio.Semaphore(config.max_concurrent_models)
-        self.active_tasks: Set[str] = set()
+        self.active_tasks: set[str] = set()
         self.pending_tasks: deque = deque(maxlen=config.max_pending_tasks)
         self._lock = asyncio.Lock()
 
@@ -195,9 +195,9 @@ class QuotaTracker:
 
     def __init__(self, config: QuotaConfig):
         self.config = config
-        self.request_calls: Dict[str, int] = {}
-        self.request_tokens: Dict[str, int] = {}
-        self.request_costs: Dict[str, float] = {}
+        self.request_calls: dict[str, int] = {}
+        self.request_tokens: dict[str, int] = {}
+        self.request_costs: dict[str, float] = {}
         self.minute_calls: deque = deque()
         self.hour_calls: deque = deque()
         self._lock = asyncio.Lock()
@@ -281,7 +281,7 @@ class QuotaTracker:
         self.request_tokens.pop(request_id, None)
         self.request_costs.pop(request_id, None)
 
-    def get_usage(self, request_id: str) -> Dict[str, Any]:
+    def get_usage(self, request_id: str) -> dict[str, Any]:
         """Get current usage for a request."""
         return {
             "calls": self.request_calls.get(request_id, 0),
@@ -297,9 +297,9 @@ class FailureController:
 
     def __init__(self, config: FailureConfig):
         self.config = config
-        self.request_failures: Dict[str, List[str]] = {}
-        self.circuit_breaker_failures: Dict[str, int] = {}
-        self.circuit_breaker_opened: Dict[str, datetime] = {}
+        self.request_failures: dict[str, list[str]] = {}
+        self.circuit_breaker_failures: dict[str, int] = {}
+        self.circuit_breaker_opened: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
 
     async def record_failure(
@@ -394,7 +394,7 @@ class StorageManager:
     def __init__(self, config: StorageConfig):
         self.config = config
         self.items: deque[tuple[str, Any]] = deque(maxlen=config.max_history_size)
-        self.item_timestamps: Dict[str, datetime] = {}
+        self.item_timestamps: dict[str, datetime] = {}
         self._lock = asyncio.Lock()
         self._cleanup_task: Optional[asyncio.Task[None]] = None
         self._cleanup_started = False
@@ -486,7 +486,7 @@ class StorageManager:
                 item_id, _ = self.items.popleft()
                 self.item_timestamps.pop(item_id, None)
 
-    def replace_items(self, values: List[Any], *, id_prefix: str) -> None:
+    def replace_items(self, values: list[Any], *, id_prefix: str) -> None:
         """Replace stored history for synchronous compatibility setters."""
         self.items = deque(maxlen=self.config.max_history_size)
         self.item_timestamps = {}
@@ -495,7 +495,7 @@ class StorageManager:
             self.items.append((item_id, item))
             self.item_timestamps[item_id] = datetime.now()
 
-    def get_items(self, limit: Optional[int] = None) -> List[Any]:
+    def get_items(self, limit: Optional[int] = None) -> list[Any]:
         """Get stored items."""
         items = [item for _, item in self.items]
         if limit:
@@ -520,7 +520,7 @@ class TaskCancellationManager:
     """Manages cancellation of pending tasks."""
 
     def __init__(self) -> None:
-        self.pending_tasks: Dict[str, Set[asyncio.Task[Any]]] = {}
+        self.pending_tasks: dict[str, set[asyncio.Task[Any]]] = {}
         self._lock = asyncio.Lock()
 
     async def register_task(self, request_id: str, task: asyncio.Task[Any]) -> None:
