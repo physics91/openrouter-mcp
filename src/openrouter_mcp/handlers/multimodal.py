@@ -104,6 +104,63 @@ def validate_image_format(format_name: str) -> bool:
     return format_name.upper() in ImageProcessingConfig.SUPPORTED_FORMATS
 
 
+def _optimize_image_to_limit(
+    image: Image.Image, original_format: str, max_size_bytes: float
+) -> str:
+    """Compress and resize a validated image toward the requested size limit."""
+    if not validate_image_format(original_format):
+        logger.info(f"Converting unsupported format {original_format} to JPEG")
+        if image.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            image_for_paste: Image.Image = (
+                image.convert("RGBA") if image.mode == "P" else image
+            )
+            background.paste(
+                image_for_paste,
+                mask=(
+                    image_for_paste.split()[-1]
+                    if image_for_paste.mode in ("RGBA", "LA")
+                    else None
+                ),
+            )
+            image = background
+        original_format = "JPEG"
+
+    quality = 85
+    while quality > 20:
+        buffer = io.BytesIO()
+        image.save(buffer, format=original_format, quality=quality, optimize=True)
+
+        if len(buffer.getvalue()) <= max_size_bytes:
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        quality -= 15
+
+    width, height = image.size
+    resize_ratio = 0.8
+
+    while resize_ratio > 0.3:
+        new_width = int(width * resize_ratio)
+        new_height = int(height * resize_ratio)
+
+        resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        buffer = io.BytesIO()
+        resized_image.save(buffer, format=original_format, quality=75, optimize=True)
+
+        if len(buffer.getvalue()) <= max_size_bytes:
+            return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        resize_ratio -= 0.1
+
+    buffer = io.BytesIO()
+    resized_image = image.resize(
+        (int(width * 0.3), int(height * 0.3)), Image.Resampling.LANCZOS
+    )
+    resized_image.save(buffer, format=original_format, quality=50, optimize=True)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 def process_image(
     base64_data: str, max_size_mb: int = ImageProcessingConfig.MAX_SIZE_MB
 ) -> Tuple[str, bool]:
@@ -168,66 +225,7 @@ def process_image(
         if len(image_bytes) <= max_size_bytes:
             return base64_data, False
 
-        # Validate format
-        if not validate_image_format(original_format):
-            logger.info(f"Converting unsupported format {original_format} to JPEG")
-            # Convert unsupported formats to JPEG
-            if image.mode in ("RGBA", "LA", "P"):
-                # Convert to RGB for JPEG
-                background = Image.new("RGB", image.size, (255, 255, 255))
-                image_for_paste: Image.Image = image.convert("RGBA") if image.mode == "P" else image
-                background.paste(
-                    image_for_paste,
-                    mask=(
-                        image_for_paste.split()[-1]
-                        if image_for_paste.mode in ("RGBA", "LA")
-                        else None
-                    ),
-                )
-                image = background
-            original_format = "JPEG"
-
-        # Calculate resize ratio to stay under size limit
-        # Start with quality reduction
-        quality = 85
-        while quality > 20:
-            buffer = io.BytesIO()
-            image.save(buffer, format=original_format, quality=quality, optimize=True)
-
-            if len(buffer.getvalue()) <= max_size_bytes:
-                processed_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                return processed_base64, True
-
-            quality -= 15
-
-        # If quality reduction isn't enough, resize image
-        width, height = image.size
-        resize_ratio = 0.8
-
-        while resize_ratio > 0.3:
-            new_width = int(width * resize_ratio)
-            new_height = int(height * resize_ratio)
-
-            resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-            buffer = io.BytesIO()
-            resized_image.save(buffer, format=original_format, quality=75, optimize=True)
-
-            if len(buffer.getvalue()) <= max_size_bytes:
-                processed_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                return processed_base64, True
-
-            resize_ratio -= 0.1
-
-        # If still too large, use the smallest version
-        buffer = io.BytesIO()
-        resized_image = image.resize(
-            (int(width * 0.3), int(height * 0.3)), Image.Resampling.LANCZOS
-        )
-        resized_image.save(buffer, format=original_format, quality=50, optimize=True)
-        processed_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-        return processed_base64, True
+        return _optimize_image_to_limit(image, original_format, max_size_bytes), True
 
     except Exception as e:
         logger.error(f"Failed to process image: {str(e)}")
