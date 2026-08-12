@@ -9,32 +9,33 @@ cross-model validation, and collaborative problem-solving.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from ..collective_intelligence import (
     CollectiveIntelligenceLifecycleManager,
     ConsensusConfig,
     ConsensusStrategy,
     ProcessingResult,
-    TaskContext,
-    TaskType,
     get_lifecycle_manager,
     shutdown_lifecycle_manager,
 )
 
 # Import centralized configuration constants
-from ..config.constants import CollectiveDefaults, ConsensusDefaults
+from ..config.constants import ConsensusDefaults
 
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import get_openrouter_client, mcp
-from ..models.requests import BaseCollectiveRequest
 from ..utils.async_utils import maybe_await
+from . import _collective_requests
 from ._collective_requests import (
     AdaptiveModelRequest,
     CollaborativeSolvingRequest,
     CollectiveChatRequest,
     CrossValidationRequest,
     EnsembleReasoningRequest,
+    _build_collective_request_requirements,
+    _build_requirements,
+    create_task_context,
 )
 from ._collective_serialization import (
     _serialize_consensus_result,
@@ -44,6 +45,8 @@ from ._collective_serialization import (
     _serialize_solving_result,
 )
 from ._openrouter_model_provider import OpenRouterModelProvider
+
+_resolve_collective_max_tokens = _collective_requests._resolve_collective_max_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -62,75 +65,6 @@ async def _get_configured_lifecycle_manager() -> CollectiveIntelligenceLifecycle
     model_provider = OpenRouterModelProvider(client)
     lifecycle_manager.configure(model_provider)
     return lifecycle_manager
-
-
-def _resolve_collective_max_tokens(max_tokens: Optional[int]) -> int:
-    """Apply a safe default cap for live collective requests."""
-    return max_tokens if max_tokens is not None else CollectiveDefaults.DEFAULT_MAX_TOKENS
-
-
-def _build_requirements(
-    *,
-    base: Optional[Dict[str, Any]] = None,
-    temperature: Optional[float] = None,
-    max_tokens: Optional[int] = None,
-    models: Optional[List[str]] = None,
-    extras: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Build requirements dict with consistent keys for CI components."""
-    requirements: Dict[str, Any] = {}
-    if base:
-        requirements.update(base)
-    if extras:
-        requirements.update(extras)
-    if temperature is not None:
-        requirements["temperature"] = temperature
-    if max_tokens is not None:
-        requirements["max_tokens"] = max_tokens
-    if models:
-        requirements["preferred_models"] = models
-    return requirements
-
-
-def _build_collective_request_requirements(
-    request: BaseCollectiveRequest,
-    *,
-    base: Optional[Dict[str, Any]] = None,
-    extras: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Build requirements shared by collective request types."""
-    request_extras = dict(extras or {})
-    if request.system_prompt:
-        request_extras["system_prompt"] = request.system_prompt
-
-    return _build_requirements(
-        base=base,
-        temperature=request.temperature,
-        max_tokens=_resolve_collective_max_tokens(request.max_tokens),
-        models=request.models,
-        extras=request_extras or None,
-    )
-
-
-def create_task_context(
-    content: str,
-    task_type: str = "reasoning",
-    requirements: Optional[Dict[str, Any]] = None,
-    constraints: Optional[Dict[str, Any]] = None,
-) -> TaskContext:
-    """Create a TaskContext from request parameters."""
-    try:
-        task_type_enum = TaskType(task_type.lower())
-    except ValueError:
-        valid = ", ".join(sorted(e.value for e in TaskType))
-        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}")
-
-    return TaskContext(
-        task_type=task_type_enum,
-        content=content,
-        requirements=requirements or {},
-        constraints=constraints or {},
-    )
 
 
 async def _collective_chat_completion_impl(

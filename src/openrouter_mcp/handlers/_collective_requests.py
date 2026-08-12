@@ -6,8 +6,80 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from ..config.constants import ConsensusDefaults
+from ..collective_intelligence import TaskContext, TaskType
+from ..config.constants import CollectiveDefaults, ConsensusDefaults
 from ..models.requests import BaseCollectiveRequest, BaseConsensusRequest
+
+
+def _resolve_collective_max_tokens(max_tokens: Optional[int]) -> int:
+    """Apply a safe default cap for live collective requests."""
+    return (
+        max_tokens if max_tokens is not None else CollectiveDefaults.DEFAULT_MAX_TOKENS
+    )
+
+
+def _build_requirements(
+    *,
+    base: Optional[Dict[str, Any]] = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    models: Optional[List[str]] = None,
+    extras: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build requirements dict with consistent keys for CI components."""
+    requirements: Dict[str, Any] = {}
+    if base:
+        requirements.update(base)
+    if extras:
+        requirements.update(extras)
+    if temperature is not None:
+        requirements["temperature"] = temperature
+    if max_tokens is not None:
+        requirements["max_tokens"] = max_tokens
+    if models:
+        requirements["preferred_models"] = models
+    return requirements
+
+
+def _build_collective_request_requirements(
+    request: BaseCollectiveRequest,
+    *,
+    base: Optional[Dict[str, Any]] = None,
+    extras: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build requirements shared by collective request types."""
+    request_extras = dict(extras or {})
+    if request.system_prompt:
+        request_extras["system_prompt"] = request.system_prompt
+
+    return _build_requirements(
+        base=base,
+        temperature=request.temperature,
+        max_tokens=_resolve_collective_max_tokens(request.max_tokens),
+        models=request.models,
+        extras=request_extras or None,
+    )
+
+
+def create_task_context(
+    content: str,
+    task_type: str = "reasoning",
+    requirements: Optional[Dict[str, Any]] = None,
+    constraints: Optional[Dict[str, Any]] = None,
+) -> TaskContext:
+    """Create a TaskContext from request parameters."""
+    try:
+        task_type_enum = TaskType(task_type.lower())
+    except ValueError:
+        valid = ", ".join(sorted(e.value for e in TaskType))
+        raise ValueError(f"Invalid task_type '{task_type}'. Valid: {valid}")
+
+    return TaskContext(
+        task_type=task_type_enum,
+        content=content,
+        requirements=requirements or {},
+        constraints=constraints or {},
+    )
 
 
 class CollectiveChatRequest(BaseConsensusRequest):
@@ -93,13 +165,17 @@ class CollaborativeSolvingRequest(BaseCollectiveRequest):
 
 
 _ORIGINAL_MODULE = f"{__package__}.collective_intelligence"
-for _request_model in (
+for _compatibility_export in (
+    _resolve_collective_max_tokens,
+    _build_requirements,
+    _build_collective_request_requirements,
+    create_task_context,
     CollectiveChatRequest,
     EnsembleReasoningRequest,
     AdaptiveModelRequest,
     CrossValidationRequest,
     CollaborativeSolvingRequest,
 ):
-    _request_model.__module__ = _ORIGINAL_MODULE
+    _compatibility_export.__module__ = _ORIGINAL_MODULE
 
-del _request_model
+del _compatibility_export
