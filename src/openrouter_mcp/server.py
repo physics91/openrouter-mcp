@@ -93,7 +93,7 @@ async def shutdown_handler() -> None:
         await cleanup_shared_client()
         logger.info("Shared OpenRouter client cleaned up successfully")
     except Exception as e:
-        logger.error(f"Error cleaning up shared client: {e}", exc_info=True)
+        logger.exception(f"Error cleaning up shared client: {e}")
 
     try:
         # Persist free model metrics before shutdown
@@ -104,14 +104,14 @@ async def shutdown_handler() -> None:
             metrics.save()
             logger.info("Free model metrics saved successfully")
     except Exception as e:
-        logger.error(f"Error saving free model metrics: {e}", exc_info=True)
+        logger.exception(f"Error saving free model metrics: {e}")
 
     try:
         # Shutdown lifecycle manager
         await shutdown_lifecycle_manager()
         logger.info("Collective intelligence components shutdown successfully")
     except Exception as e:
-        logger.error(f"Error during lifecycle manager shutdown: {e}", exc_info=True)
+        logger.exception(f"Error during lifecycle manager shutdown: {e}")
 
 
 def _run_shutdown() -> None:
