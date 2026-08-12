@@ -51,6 +51,20 @@ class ModelFilter:
     min_context: Optional[int] = None
 
 
+def _parse_model_cache_data(
+    cache_data: Any,
+) -> Tuple[List[Dict[str, Any]], Optional[datetime]]:
+    """Parse models and update time from a file-cache payload."""
+    models = cache_data.get("models", [])
+    updated_at_str = cache_data.get("updated_at")
+
+    updated_at = None
+    if updated_at_str:
+        updated_at = datetime.fromisoformat(updated_at_str)
+
+    return models, updated_at
+
+
 class HTTPTransport:
     """
     Shared HTTP transport layer for making API requests.
@@ -384,12 +398,7 @@ class ModelCache:
             ) as f:
                 cache_data = json.load(f)
 
-            models = cache_data.get("models", [])
-            updated_at_str = cache_data.get("updated_at")
-
-            updated_at = None
-            if updated_at_str:
-                updated_at = datetime.fromisoformat(updated_at_str)
+            models, updated_at = _parse_model_cache_data(cache_data)
 
             logger.debug(f"Loaded {len(models)} models from cache file (with shared lock)")
             return models, updated_at
