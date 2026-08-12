@@ -363,14 +363,16 @@ class OpenRouterClient:
             return response_data
 
         except httpx.HTTPStatusError as e:
-            self.logger.warning(f"HTTP error {e.response.status_code} for {method} {url}")
+            self.logger.warning(
+                f"HTTP error {e.response.status_code} for {method} {url}"
+            )
             await self._handle_http_error(e.response)
         except Exception as e:
             self._handle_request_error(e, method, url)
 
     async def _stream_request(
         self, endpoint: str, json_data: Dict[str, Any]
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[Any, None]:
         """Make streaming request to OpenRouter API.
 
         Args:
@@ -378,7 +380,7 @@ class OpenRouterClient:
             json_data: JSON payload for the request
 
         Yields:
-            Streaming response chunks as dictionaries
+            Parsed JSON values from streaming response chunks
 
         Raises:
             OpenRouterError: For API errors, network issues, or unexpected errors
@@ -394,37 +396,47 @@ class OpenRouterClient:
                 self.logger.debug(f"Stream response status: {response.status_code}")
                 await maybe_await(response.raise_for_status())
 
-                chunk_count = 0
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data = line[6:]  # Remove "data: " prefix
-                        if data.strip() == "[DONE]":
-                            self.logger.debug(f"Stream completed after {chunk_count} chunks")
-                            break
-                        try:
-                            chunk = json_lib.loads(data)
-                            chunk_count += 1
-
-                            # Log chunk metadata only (don't log content even in verbose mode for streaming)
-                            if chunk_count % 10 == 1:  # Log every 10th chunk to reduce noise
-                                self.logger.debug(
-                                    f"Streaming chunk {chunk_count} "
-                                    f"(keys: {list(chunk.keys()) if isinstance(chunk, dict) else 'non-dict'})"
-                                )
-
-                            yield chunk
-                        except json_lib.JSONDecodeError as e:
-                            # Don't log the actual data content - could contain sensitive info
-                            self.logger.warning(
-                                f"Failed to parse stream chunk (length: {len(data)}): {str(e)}"
-                            )
-                            continue
+                async for chunk in self._iter_stream_chunks(response):
+                    yield chunk
 
         except httpx.HTTPStatusError as e:
-            self.logger.warning(f"HTTP error {e.response.status_code} for streaming POST {url}")
+            self.logger.warning(
+                f"HTTP error {e.response.status_code} for streaming POST {url}"
+            )
             await self._handle_http_error(e.response)
         except Exception as e:
             self._handle_request_error(e, "streaming POST", url)
+
+    async def _iter_stream_chunks(
+        self,
+        response: httpx.Response,
+    ) -> AsyncGenerator[Any, None]:
+        """Parse SSE data lines without exposing streamed content in logs."""
+        chunk_count = 0
+        async for line in response.aiter_lines():
+            if line.startswith("data: "):
+                data = line[6:]  # Remove "data: " prefix
+                if data.strip() == "[DONE]":
+                    self.logger.debug(f"Stream completed after {chunk_count} chunks")
+                    break
+                try:
+                    chunk = json_lib.loads(data)
+                    chunk_count += 1
+
+                    # Log chunk metadata only (don't log content even in verbose mode for streaming)
+                    if chunk_count % 10 == 1:  # Log every 10th chunk to reduce noise
+                        self.logger.debug(
+                            f"Streaming chunk {chunk_count} "
+                            f"(keys: {list(chunk.keys()) if isinstance(chunk, dict) else 'non-dict'})"
+                        )
+
+                    yield chunk
+                except json_lib.JSONDecodeError as e:
+                    # Don't log the actual data content - could contain sensitive info
+                    self.logger.warning(
+                        f"Failed to parse stream chunk (length: {len(data)}): {str(e)}"
+                    )
+                    continue
 
     async def _handle_http_error(self, response: httpx.Response) -> NoReturn:
         """Handle HTTP errors from OpenRouter API.
