@@ -24,7 +24,7 @@ Usage:
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import Any, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -90,7 +90,7 @@ class QuotaAware(Protocol):
 
     async def check_and_increment(
         self, request_id: str, tokens: int = 0, cost: float = 0.0
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Check if request can proceed and increment counters.
 
@@ -113,7 +113,7 @@ class QuotaAware(Protocol):
         """
         ...
 
-    def get_usage(self, request_id: str) -> Dict[str, Any]:
+    def get_usage(self, request_id: str) -> dict[str, Any]:
         """
         Get current usage for a request.
 
@@ -235,7 +235,7 @@ class StorageAware(Protocol):
         """
         ...
 
-    def get_items(self, limit: Optional[int] = None) -> List[Any]:
+    def get_items(self, limit: Optional[int] = None) -> list[Any]:
         """
         Get stored items.
 
