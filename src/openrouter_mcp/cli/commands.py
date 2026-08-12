@@ -194,7 +194,7 @@ def list_mcp_servers(verbose: bool = False) -> list[str]:
         if not servers:
             click.echo("No MCP servers installed.")
             click.echo("\nAvailable presets:")
-            for preset in MCPManager.PRESETS.keys():
+            for preset in MCPManager.PRESETS:
                 click.echo(f"  - {preset}")
             click.echo("\nUse 'claude mcp add <preset-name>' to install a server.")
             return []
@@ -251,7 +251,7 @@ def get_mcp_server_status(server_name: str) -> dict[str, Any]:
 
         if status.get("env"):
             click.echo("  Environment Variables:")
-            for key in status["env"].keys():
+            for key in status["env"]:
                 if "KEY" in key or "TOKEN" in key:
                     click.echo(f"    - {key}: ***")
                 else:
