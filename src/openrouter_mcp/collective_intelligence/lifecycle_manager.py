@@ -151,34 +151,58 @@ class CollectiveIntelligenceLifecycleManager:
             "CrossValidator",
         )
 
-    def _collect_shutdown_tasks(self) -> list[Awaitable[Any]]:
-        """Collect component shutdown tasks in lifecycle order."""
-        shutdown_tasks: list[Awaitable[Any]] = []
+    def _collect_shutdown_tasks(self) -> list[tuple[str, Awaitable[Any]]]:
+        """Collect named component shutdown tasks in lifecycle order."""
+        shutdown_tasks: list[tuple[str, Awaitable[Any]]] = []
 
         if self._consensus_engine is not None:
             logger.info("Shutting down ConsensusEngine...")
-            shutdown_tasks.append(self._consensus_engine.shutdown())
+            shutdown_tasks.append(
+                ("ConsensusEngine", self._consensus_engine.shutdown())
+            )
 
         if self._collaborative_solver is not None:
             logger.info("Shutting down CollaborativeSolver...")
-            shutdown_tasks.append(self._collaborative_solver.shutdown())
+            shutdown_tasks.append(
+                ("CollaborativeSolver", self._collaborative_solver.shutdown())
+            )
 
         if self._ensemble_reasoner is not None:
             logger.info("Shutting down EnsembleReasoner...")
             if hasattr(self._ensemble_reasoner, "shutdown"):
-                shutdown_tasks.append(self._ensemble_reasoner.shutdown())
+                shutdown_tasks.append(
+                    ("EnsembleReasoner", self._ensemble_reasoner.shutdown())
+                )
 
         if self._adaptive_router is not None:
             logger.info("Shutting down AdaptiveRouter...")
             if hasattr(self._adaptive_router, "shutdown"):
-                shutdown_tasks.append(self._adaptive_router.shutdown())
+                shutdown_tasks.append(
+                    ("AdaptiveRouter", self._adaptive_router.shutdown())
+                )
 
         if self._cross_validator is not None:
             logger.info("Shutting down CrossValidator...")
             if hasattr(self._cross_validator, "shutdown"):
-                shutdown_tasks.append(self._cross_validator.shutdown())
+                shutdown_tasks.append(
+                    ("CrossValidator", self._cross_validator.shutdown())
+                )
 
         return shutdown_tasks
+
+    @staticmethod
+    def _log_shutdown_failures(
+        shutdown_tasks: list[tuple[str, Awaitable[Any]]],
+        results: list[Any],
+    ) -> None:
+        """Report component shutdown failures without stopping sibling cleanup."""
+        for (component_name, _), result in zip(shutdown_tasks, results):
+            if isinstance(result, asyncio.CancelledError):
+                logger.warning(f"Component {component_name} shutdown was cancelled")
+            elif isinstance(result, Exception):
+                logger.error(f"Component {component_name} shutdown failed: {result}")
+            elif isinstance(result, BaseException):
+                logger.critical(f"Component {component_name} shutdown failed: {result}")
 
     async def shutdown(self) -> None:
         """
@@ -203,10 +227,11 @@ class CollectiveIntelligenceLifecycleManager:
 
         # Execute all shutdown tasks
         if shutdown_tasks:
-            try:
-                await asyncio.gather(*shutdown_tasks, return_exceptions=True)
-            except Exception as e:
-                logger.error(f"Error during component shutdown: {e}", exc_info=True)
+            results = await asyncio.gather(
+                *(task for _, task in shutdown_tasks),
+                return_exceptions=True,
+            )
+            self._log_shutdown_failures(shutdown_tasks, results)
 
         logger.info("CollectiveIntelligenceLifecycleManager shutdown complete")
 
