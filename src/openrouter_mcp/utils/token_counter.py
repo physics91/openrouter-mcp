@@ -38,6 +38,54 @@ MODEL_ENCODING_MAP = {
 }
 
 
+def _count_message_value_tokens(encoding: tiktoken.Encoding, value: Any) -> int:
+    """Count tokens in one supported chat-message value."""
+    if isinstance(value, str):
+        return len(encoding.encode(value))
+
+    if isinstance(value, list):
+        num_tokens = 0
+        for item in value:
+            if isinstance(item, dict) and "text" in item:
+                num_tokens += len(encoding.encode(item["text"]))
+            # Image tokens are handled separately by the API
+        return num_tokens
+
+    return 0
+
+
+def _count_encoded_message_tokens(
+    encoding: tiktoken.Encoding, messages: List[Dict[str, Any]]
+) -> int:
+    """Count encoded chat-message tokens including formatting overhead."""
+    tokens_per_message = 3
+    tokens_per_name = 1
+    num_tokens = 0
+
+    for message in messages:
+        num_tokens += tokens_per_message
+        for key, value in message.items():
+            num_tokens += _count_message_value_tokens(encoding, value)
+            if key == "name":
+                num_tokens += tokens_per_name
+
+    return num_tokens + 3
+
+
+def _count_fallback_message_chars(messages: List[Dict[str, Any]]) -> int:
+    """Count supported content characters for fallback token estimation."""
+    total_chars = 0
+    for message in messages:
+        content = message.get("content", "")
+        if isinstance(content, str):
+            total_chars += len(content)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and "text" in item:
+                    total_chars += len(item["text"])
+    return total_chars
+
+
 class TokenCounter:
     """
     Token counter for accurate cost estimation.
@@ -137,47 +185,15 @@ class TokenCounter:
 
             # Token counting logic based on OpenAI's cookbook
             # https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb
-
-            tokens_per_message = 3  # Every message follows <|start|>{role/name}\n{content}<|end|>\n
-            tokens_per_name = 1  # If there's a name, add 1 token
-
-            num_tokens = 0
-
-            for message in messages:
-                num_tokens += tokens_per_message
-
-                for key, value in message.items():
-                    if isinstance(value, str):
-                        num_tokens += len(encoding.encode(value))
-                    elif isinstance(value, list):
-                        # Handle multimodal content (e.g., vision)
-                        for item in value:
-                            if isinstance(item, dict) and "text" in item:
-                                num_tokens += len(encoding.encode(item["text"]))
-                            # Image tokens are handled separately by the API
-
-                    if key == "name":
-                        num_tokens += tokens_per_name
-
-            num_tokens += 3  # Every reply is primed with <|start|>assistant<|message|>
-
-            return num_tokens
+            return _count_encoded_message_tokens(encoding, messages)
 
         except Exception as e:
             logger.warning(
-                f"Failed to count message tokens with tiktoken: {e}. " f"Using fallback estimation."
+                f"Failed to count message tokens with tiktoken: {e}. "
+                f"Using fallback estimation."
             )
             # Fallback: sum character counts and divide by 4
-            total_chars = 0
-            for message in messages:
-                content = message.get("content", "")
-                if isinstance(content, str):
-                    total_chars += len(content)
-                elif isinstance(content, list):
-                    for item in content:
-                        if isinstance(item, dict) and "text" in item:
-                            total_chars += len(item["text"])
-
+            total_chars = _count_fallback_message_chars(messages)
             return max(1, total_chars // 4)
 
     def estimate_completion_tokens(
