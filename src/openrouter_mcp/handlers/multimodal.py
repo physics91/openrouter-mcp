@@ -3,7 +3,7 @@
 import base64
 import io
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
@@ -48,7 +48,7 @@ class ImageInput(BaseModel):
 class VisionChatRequest(BaseChatRequest):
     """Request for chat completion with vision."""
 
-    images: List[ImageInput] = Field(..., description="List of images to analyze")
+    images: list[ImageInput] = Field(..., description="List of images to analyze")
 
 
 class VisionModelRequest(BaseModel):
@@ -163,7 +163,7 @@ def _optimize_image_to_limit(
 def _open_validated_image(
     image_bytes: bytes,
     max_size_bytes: float,
-) -> Tuple[Image.Image, str]:
+) -> tuple[Image.Image, str]:
     """Open decoded image bytes after enforcing resource safety limits."""
     safe_limit = max(max_size_bytes * 5, 1024 * 1024)
     if len(image_bytes) > safe_limit:
@@ -196,7 +196,7 @@ def _open_validated_image(
 
 def process_image(
     base64_data: str, max_size_mb: int = ImageProcessingConfig.MAX_SIZE_MB
-) -> Tuple[str, bool]:
+) -> tuple[str, bool]:
     """
     Process an image: resize if too large, optimize for API usage.
 
@@ -238,8 +238,8 @@ def format_vision_message(
     text: str,
     image_data: Optional[str] = None,
     image_type: Optional[str] = None,
-    images: Optional[List[Dict[str, str]]] = None,
-) -> Dict[str, Any]:
+    images: Optional[list[dict[str, str]]] = None,
+) -> dict[str, Any]:
     """
     Format a message for vision models with OpenAI-compatible structure.
 
@@ -252,7 +252,7 @@ def format_vision_message(
     Returns:
         Formatted message dictionary
     """
-    content: List[Dict[str, Any]] = [{"type": "text", "text": text}]
+    content: list[dict[str, Any]] = [{"type": "text", "text": text}]
 
     # Handle single image
     if image_data and image_type:
@@ -276,7 +276,7 @@ def format_vision_message(
     return {"role": "user", "content": content}
 
 
-def is_vision_model(model_info: Dict[str, Any]) -> bool:
+def is_vision_model(model_info: dict[str, Any]) -> bool:
     """
     Check if a model supports vision/image input.
 
@@ -291,7 +291,7 @@ def is_vision_model(model_info: Dict[str, Any]) -> bool:
     return "image" in input_modalities
 
 
-def filter_vision_models(models: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def filter_vision_models(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Filter a list of models to return only vision-capable ones.
 
@@ -304,7 +304,7 @@ def filter_vision_models(models: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [model for model in models if is_vision_model(model)]
 
 
-def get_vision_model_names(models: List[Dict[str, Any]]) -> List[str]:
+def get_vision_model_names(models: list[dict[str, Any]]) -> list[str]:
     """
     Get names of vision-capable models.
 
@@ -319,9 +319,9 @@ def get_vision_model_names(models: List[Dict[str, Any]]) -> List[str]:
 
 
 def _build_vision_messages(
-    base_messages: List[Dict[str, Any]],
-    images: List[ImageInput],
-) -> List[Dict[str, Any]]:
+    base_messages: list[dict[str, Any]],
+    images: list[ImageInput],
+) -> list[dict[str, Any]]:
     if not base_messages:
         return []
 
@@ -347,8 +347,8 @@ def _build_vision_messages(
 async def _stream_vision_chat_with_thrift_metadata(
     client: Any,
     request: VisionChatRequest,
-    vision_messages: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
+    vision_messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """Collect a streaming vision response and enrich its final chunk."""
     logger.info("Initiating streaming vision chat completion")
     stream = client.stream_chat_completion(
@@ -372,8 +372,8 @@ async def _stream_vision_chat_with_thrift_metadata(
 async def _complete_vision_chat_with_thrift_metadata(
     client: Any,
     request: VisionChatRequest,
-    vision_messages: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    vision_messages: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Complete a vision request and enrich its response with thrift metadata."""
     logger.info("Initiating non-streaming vision chat completion")
     response = await client.chat_completion(
@@ -400,7 +400,7 @@ async def _complete_vision_chat_with_thrift_metadata(
 @mcp.tool()
 async def chat_with_vision(
     request: VisionChatRequest,
-) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+) -> Union[dict[str, Any], list[dict[str, Any]]]:
     """
     Generate chat completion with vision capabilities using OpenRouter API.
 
@@ -453,7 +453,7 @@ async def chat_with_vision(
 
 
 @mcp.tool()
-async def list_vision_models(request: VisionModelRequest) -> List[Dict[str, Any]]:
+async def list_vision_models(request: VisionModelRequest) -> list[dict[str, Any]]:
     """
     List all vision-capable models from OpenRouter.
 
