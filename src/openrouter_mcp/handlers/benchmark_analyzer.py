@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 
 
 def _rank_models_by(
-    results: list["EnhancedBenchmarkResult"],
+    results: list[EnhancedBenchmarkResult],
     score_result: Callable[["EnhancedBenchmarkResult"], float],
-) -> list[tuple["EnhancedBenchmarkResult", float]]:
+) -> list[tuple[EnhancedBenchmarkResult, float]]:
     """Rank results with shared failure handling and stable score ordering."""
     if not results:
         return []
 
-    scored_results: list[tuple["EnhancedBenchmarkResult", float]] = []
+    scored_results: list[tuple[EnhancedBenchmarkResult, float]] = []
     for result in results:
         if not result.success or result.metrics is None:
             scored_results.append((result, 0.0))
@@ -33,9 +33,7 @@ def _rank_models_by(
 
 
 def _build_best_performers(
-    successful_results: list[
-        tuple["EnhancedBenchmarkResult", "EnhancedBenchmarkMetrics"]
-    ],
+    successful_results: list[tuple[EnhancedBenchmarkResult, EnhancedBenchmarkMetrics]],
 ) -> dict[str, dict[str, Any]]:
     """Build the category winner summary for successful benchmark results."""
     best_speed = min(successful_results, key=lambda item: item[1].avg_response_time)
@@ -64,9 +62,7 @@ def _build_best_performers(
 
 
 def _calculate_metric_averages(
-    successful_results: list[
-        tuple["EnhancedBenchmarkResult", "EnhancedBenchmarkMetrics"]
-    ],
+    successful_results: list[tuple[EnhancedBenchmarkResult, EnhancedBenchmarkMetrics]],
 ) -> dict[str, float]:
     """Calculate field-wise averages for successful benchmark results."""
     return {
@@ -90,8 +86,8 @@ class ModelPerformanceAnalyzer:
         self.logger = logging.getLogger(__name__)
 
     def rank_models(
-        self, results: list["EnhancedBenchmarkResult"]
-    ) -> list[tuple["EnhancedBenchmarkResult", float]]:
+        self, results: list[EnhancedBenchmarkResult]
+    ) -> list[tuple[EnhancedBenchmarkResult, float]]:
         """Rank models by overall performance score."""
         return _rank_models_by(
             results,
@@ -104,8 +100,8 @@ class ModelPerformanceAnalyzer:
         )
 
     def rank_models_with_weights(
-        self, results: list["EnhancedBenchmarkResult"], weights: dict[str, float]
-    ) -> list[tuple["EnhancedBenchmarkResult", float]]:
+        self, results: list[EnhancedBenchmarkResult], weights: dict[str, float]
+    ) -> list[tuple[EnhancedBenchmarkResult, float]]:
         """Rank models using custom weights."""
         return _rank_models_by(
             results,
@@ -117,15 +113,13 @@ class ModelPerformanceAnalyzer:
             ),
         )
 
-    def compare_models(
-        self, results: list["EnhancedBenchmarkResult"]
-    ) -> dict[str, Any]:
+    def compare_models(self, results: list[EnhancedBenchmarkResult]) -> dict[str, Any]:
         """Provide detailed comparison analysis between models."""
         if not results:
             return {}
 
         successful_results: list[
-            tuple["EnhancedBenchmarkResult", "EnhancedBenchmarkMetrics"]
+            tuple[EnhancedBenchmarkResult, EnhancedBenchmarkMetrics]
         ] = []
         for result in results:
             if result.success and result.metrics is not None:
