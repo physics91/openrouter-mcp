@@ -989,10 +989,11 @@ def _read_benchmark_files(
 
 def _calculate_avg_response_time(results: Dict[str, Any]) -> Optional[float]:
     """결과들의 평균 응답 시간 계산"""
-    times = []
-    for result in results.values():
-        if result.get("success") and result.get("metrics"):
-            times.append(result["metrics"].get("avg_response_time", 0))
+    times = [
+        result["metrics"].get("avg_response_time", 0)
+        for result in results.values()
+        if result.get("success") and result.get("metrics")
+    ]
 
     return sum(times) / len(times) if times else None
 
