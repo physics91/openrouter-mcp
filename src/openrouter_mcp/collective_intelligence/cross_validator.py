@@ -615,6 +615,38 @@ class CrossValidator(CollectiveIntelligenceComponent):
         handler = strategy_dispatch.get(self.config.strategy, self._peer_review_validation)
         return await handler(result, task_context, validator_models)
 
+    def _build_issue_validation_report(
+        self,
+        result: ProcessingResult,
+        task_context: TaskContext,
+        validator_models: List[str],
+        issues: List[ValidationIssue],
+        validator_failures: List[ValidatorFailureRecord],
+        *,
+        strategy: ValidationStrategy,
+    ) -> ValidationReport:
+        """Build a validation report from collected issues and failures."""
+        criteria_scores: Dict[ValidationCriteria, float] = {}
+        for criteria in self.config.criteria:
+            criteria_issues = [issue for issue in issues if issue.criteria == criteria]
+            criteria_scores[criteria] = self._calculate_criteria_score(criteria_issues)
+
+        overall_score = self._calculate_overall_score(criteria_scores)
+        consensus_level = self._calculate_consensus_level(issues, validator_models)
+
+        return ValidationReport(
+            original_result=result,
+            task_context=task_context,
+            validation_strategy=strategy,
+            validator_models=validator_models,
+            issues=issues,
+            overall_score=overall_score,
+            criteria_scores=criteria_scores,
+            consensus_level=consensus_level,
+            recommendations=self._generate_recommendations(issues),
+            metadata=self._build_validator_failure_metadata(validator_failures),
+        )
+
     async def _peer_review_validation(
         self,
         result: ProcessingResult,
@@ -622,8 +654,6 @@ class CrossValidator(CollectiveIntelligenceComponent):
         validator_models: List[str],
     ) -> ValidationReport:
         """Perform peer review validation."""
-
-        criteria_scores: Dict[ValidationCriteria, float] = {}
 
         # Create validation tasks for each validator
         validation_tasks = []
@@ -641,26 +671,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
             validation_results, validator_models
         )
 
-        # Calculate criteria scores
-        for criteria in self.config.criteria:
-            criteria_issues = [issue for issue in all_issues if issue.criteria == criteria]
-            criteria_scores[criteria] = self._calculate_criteria_score(criteria_issues)
-
-        # Calculate overall score and consensus
-        overall_score = self._calculate_overall_score(criteria_scores)
-        consensus_level = self._calculate_consensus_level(all_issues, validator_models)
-
-        return ValidationReport(
-            original_result=result,
-            task_context=task_context,
-            validation_strategy=ValidationStrategy.PEER_REVIEW,
-            validator_models=validator_models,
-            issues=all_issues,
-            overall_score=overall_score,
-            criteria_scores=criteria_scores,
-            consensus_level=consensus_level,
-            recommendations=self._generate_recommendations(all_issues),
-            metadata=self._build_validator_failure_metadata(validator_failures),
+        return self._build_issue_validation_report(
+            result,
+            task_context,
+            validator_models,
+            all_issues,
+            validator_failures,
+            strategy=ValidationStrategy.PEER_REVIEW,
         )
 
     def _collect_peer_review_results(
@@ -834,26 +851,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
                     )
                 )
 
-        # Create validation report
-        criteria_scores = {}
-        for criteria in self.config.criteria:
-            criteria_issues = [issue for issue in all_issues if issue.criteria == criteria]
-            criteria_scores[criteria] = self._calculate_criteria_score(criteria_issues)
-
-        overall_score = self._calculate_overall_score(criteria_scores)
-        consensus_level = self._calculate_consensus_level(all_issues, validator_models)
-
-        return ValidationReport(
-            original_result=result,
-            task_context=task_context,
-            validation_strategy=ValidationStrategy.ADVERSARIAL,
-            validator_models=validator_models,
-            issues=all_issues,
-            overall_score=overall_score,
-            criteria_scores=criteria_scores,
-            consensus_level=consensus_level,
-            recommendations=self._generate_recommendations(all_issues),
-            metadata=self._build_validator_failure_metadata(validator_failures),
+        return self._build_issue_validation_report(
+            result,
+            task_context,
+            validator_models,
+            all_issues,
+            validator_failures,
+            strategy=ValidationStrategy.ADVERSARIAL,
         )
 
     def _parse_adversarial_result(
