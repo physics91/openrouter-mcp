@@ -13,6 +13,42 @@ from src.openrouter_mcp.handlers.benchmark_exporter import (
 pytestmark = pytest.mark.unit
 
 
+def test_serialize_json_result_delegates_raw_success_value():
+    result = SimpleNamespace(response=None, error=None)
+    raw_success = object()
+
+    with patch.object(
+        exporter_module,
+        "_success_value",
+        return_value=raw_success,
+    ) as success_value:
+        serialized = _serialize_json_result("model-raw-success", result)
+
+    assert serialized["success"] is raw_success
+    success_value.assert_called_once_with(result)
+
+
+@pytest.mark.parametrize(
+    ("raw_success", "expected"),
+    [
+        (object(), True),
+        ([], False),
+    ],
+)
+def test_is_successful_converts_shared_raw_value_to_bool(raw_success, expected):
+    result = object()
+
+    with patch.object(
+        exporter_module,
+        "_success_value",
+        return_value=raw_success,
+    ) as success_value:
+        successful = exporter_module._is_successful(result)
+
+    assert successful is expected
+    success_value.assert_called_once_with(result)
+
+
 def test_serialize_json_result_preserves_basic_result_contract():
     result = SimpleNamespace(
         success=False,

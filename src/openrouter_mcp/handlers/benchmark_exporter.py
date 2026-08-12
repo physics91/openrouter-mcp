@@ -9,11 +9,16 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 
-def _is_successful(result: Any) -> bool:
-    """Return the success state supported by both benchmark result variants."""
+def _success_value(result: Any) -> Any:
+    """Return the raw success value supported by both result variants."""
     if hasattr(result, "success"):
-        return bool(result.success)
+        return result.success
     return result.error is None if hasattr(result, "error") else True
+
+
+def _is_successful(result: Any) -> bool:
+    """Return the boolean success state used by rendered reports."""
+    return bool(_success_value(result))
 
 
 def _render_basic_markdown_metrics(result: Any, success: bool) -> List[str]:
@@ -73,11 +78,7 @@ def _render_markdown_result(model_id: str, result: Any) -> List[str]:
 
 def _serialize_json_result(model_id: str, result: Any) -> Dict[str, Any]:
     """Serialize one benchmark result for JSON export."""
-    success = (
-        result.success
-        if hasattr(result, "success")
-        else (result.error is None if hasattr(result, "error") else True)
-    )
+    success = _success_value(result)
 
     result_data = {
         "model_id": model_id,
