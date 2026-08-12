@@ -1,0 +1,135 @@
+from unittest.mock import Mock, call
+
+import pytest
+
+from src.openrouter_mcp.utils import metadata
+
+pytestmark = pytest.mark.unit
+
+
+def test_find_first_pattern_match_preserves_key_and_pattern_order(monkeypatch):
+    events = []
+    first_key = object()
+    second_key = object()
+    pattern_map = {
+        first_key: ["first-miss", "first-hit", "first-unused"],
+        second_key: ["second-unused"],
+    }
+
+    def search(pattern, text):
+        events.append((pattern, text))
+        return object() if pattern == "first-hit" else None
+
+    monkeypatch.setattr(metadata.re, "search", search)
+
+    result = metadata._find_first_pattern_match("source", pattern_map)
+
+    assert result is first_key
+    assert events == [
+        ("first-miss", "source"),
+        ("first-hit", "source"),
+    ]
+
+
+def test_find_first_pattern_match_returns_none_after_all_patterns(monkeypatch):
+    search = Mock(return_value=None)
+    monkeypatch.setattr(metadata.re, "search", search)
+    pattern_map = {"first": ["one", "two"], "second": ["three"]}
+
+    assert metadata._find_first_pattern_match("source", pattern_map) is None
+    assert search.call_args_list == [
+        call("one", "source"),
+        call("two", "source"),
+        call("three", "source"),
+    ]
+
+
+def test_find_first_pattern_match_propagates_search_error_in_order(monkeypatch):
+    events = []
+    expected_error = RuntimeError("invalid pattern")
+
+    def search(pattern, text):
+        events.append((pattern, text))
+        if pattern == "broken":
+            raise expected_error
+        return None
+
+    monkeypatch.setattr(metadata.re, "search", search)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        metadata._find_first_pattern_match(
+            "source",
+            {"first": ["miss", "broken"], "second": ["unused"]},
+        )
+
+    assert exc_info.value is expected_error
+    assert events == [("miss", "source"), ("broken", "source")]
+
+
+def test_extract_provider_prefix_precedence_skips_pattern_helper(monkeypatch):
+    find_match = Mock(side_effect=AssertionError("pattern helper must not run"))
+    monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)
+
+    assert (
+        metadata.extract_provider_from_id("OpenAI/gpt-4")
+        is metadata.ModelProvider.OPENAI
+    )
+    find_match.assert_not_called()
+
+
+def test_extract_provider_delegates_normalized_id_to_pattern_helper(monkeypatch):
+    find_match = Mock(return_value=metadata.ModelProvider.XAI)
+    monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)
+
+    assert metadata.extract_provider_from_id("GROK-Beta") is metadata.ModelProvider.XAI
+    find_match.assert_called_once_with("grok-beta", metadata.PROVIDER_PATTERNS)
+
+
+def test_provider_patterns_keep_first_match_for_overlapping_model_id():
+    assert (
+        metadata.extract_provider_from_id("gpt-llama-3")
+        is metadata.ModelProvider.OPENAI
+    )
+
+
+def test_category_modality_precedence_skips_pattern_helper(monkeypatch):
+    find_match = Mock(side_effect=AssertionError("pattern helper must not run"))
+    monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)
+
+    result = metadata.determine_model_category(
+        {"id": "model", "architecture": {"modality": "TEXT->IMAGE"}}
+    )
+
+    assert result is metadata.ModelCategory.IMAGE
+    find_match.assert_not_called()
+
+
+def test_category_patterns_keep_first_match_for_overlapping_model_data():
+    result = metadata.determine_model_category(
+        {
+            "id": "vendor/vision-image",
+            "name": "Vision Image",
+            "architecture": {"modality": "text"},
+        }
+    )
+
+    assert result is metadata.ModelCategory.IMAGE
+
+
+def test_category_pattern_result_precedes_later_fallbacks(monkeypatch):
+    find_match = Mock(return_value=metadata.ModelCategory.CODE)
+    monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)
+
+    result = metadata.determine_model_category(
+        {
+            "id": "vendor/embedding-model",
+            "name": "Embedding Model",
+            "architecture": {"modality": "text"},
+        }
+    )
+
+    assert result is metadata.ModelCategory.CODE
+    find_match.assert_called_once_with(
+        "vendor/embedding-model embedding model text",
+        metadata.CATEGORY_PATTERNS,
+    )

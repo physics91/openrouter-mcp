@@ -10,11 +10,13 @@ import logging
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypeVar
 
 from .pricing import normalize_pricing, parse_price
 
 logger = logging.getLogger(__name__)
+
+_PatternKey = TypeVar("_PatternKey")
 
 
 class ModelProvider(str, Enum):
@@ -166,6 +168,18 @@ CATEGORY_PATTERNS = {
 }
 
 
+def _find_first_pattern_match(
+    text: str,
+    pattern_map: Dict[_PatternKey, List[str]],
+) -> Optional[_PatternKey]:
+    """Return the first mapping key with a regex matching the supplied text."""
+    for key, patterns in pattern_map.items():
+        for pattern in patterns:
+            if re.search(pattern, text):
+                return key
+    return None
+
+
 def _coerce_non_negative_int(value: Any, default: int = 0) -> int:
     """Coerce nullable numeric values from API payloads into safe integers."""
     try:
@@ -220,10 +234,9 @@ def extract_provider_from_id(model_id: str) -> ModelProvider:
             return provider_map[provider_prefix]
 
     # Pattern-based matching
-    for provider, patterns in PROVIDER_PATTERNS.items():
-        for pattern in patterns:
-            if re.search(pattern, model_id_lower):
-                return provider
+    provider = _find_first_pattern_match(model_id_lower, PROVIDER_PATTERNS)
+    if provider is not None:
+        return provider
 
     return ModelProvider.UNKNOWN
 
@@ -258,10 +271,9 @@ def determine_model_category(model_data: Dict[str, Any]) -> ModelCategory:
     # Pattern-based categorization
     combined_text = f"{model_id} {model_name} {modality}"
 
-    for category, patterns in CATEGORY_PATTERNS.items():
-        for pattern in patterns:
-            if re.search(pattern, combined_text):
-                return category
+    category = _find_first_pattern_match(combined_text, CATEGORY_PATTERNS)
+    if category is not None:
+        return category
 
     # Check for embeddings
     if "embedding" in model_id or "embed" in model_id:
