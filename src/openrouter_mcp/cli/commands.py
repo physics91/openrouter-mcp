@@ -9,7 +9,7 @@ MCP servers in Claude Code CLI.
 
 import logging
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import click
 
@@ -53,7 +53,7 @@ def _add_preset_server(
     *,
     api_key: Optional[str],
     force: bool,
-    options: Dict[str, Any],
+    options: dict[str, Any],
 ) -> bool:
     """Add a server from a preset definition."""
     success = manager.add_server_from_preset(server_name, api_key=api_key, force=force, **options)
@@ -72,7 +72,7 @@ def _add_custom_server(
     *,
     command: Any,
     force: bool,
-    options: Dict[str, Any],
+    options: dict[str, Any],
 ) -> bool:
     """Add a custom server configuration."""
     if not isinstance(command, str) or not command.strip():
@@ -172,7 +172,7 @@ def remove_mcp_server(server_name: str) -> bool:
         return False
 
 
-def list_mcp_servers(verbose: bool = False) -> List[str]:
+def list_mcp_servers(verbose: bool = False) -> list[str]:
     """List all installed MCP servers.
 
     Args:
@@ -218,7 +218,7 @@ def list_mcp_servers(verbose: bool = False) -> List[str]:
         return []
 
 
-def get_mcp_server_status(server_name: str) -> Dict[str, Any]:
+def get_mcp_server_status(server_name: str) -> dict[str, Any]:
     """Get status of an MCP server.
 
     Args:
@@ -266,8 +266,8 @@ def get_mcp_server_status(server_name: str) -> Dict[str, Any]:
 
 def configure_mcp_server(
     server_name: str,
-    env: Optional[Dict[str, str]] = None,
-    args: Optional[List[str]] = None,
+    env: Optional[dict[str, str]] = None,
+    args: Optional[list[str]] = None,
     cwd: Optional[str] = None,
 ) -> bool:
     """Configure an existing MCP server.
@@ -332,19 +332,19 @@ def add(
     api_key: Optional[str],
     force: bool,
     command: Optional[str],
-    args: Tuple[str, ...],
+    args: tuple[str, ...],
     cwd: Optional[str],
-    env: Tuple[str, ...],
+    env: tuple[str, ...],
 ) -> None:
     """Add an MCP server to Claude Code CLI."""
-    env_dict: Dict[str, str] = {}
+    env_dict: dict[str, str] = {}
     if env:
         for env_var in env:
             if "=" in env_var:
                 key, value = env_var.split("=", 1)
                 env_dict[key] = value
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     if command:
         kwargs["command"] = command
     if args:
@@ -385,12 +385,12 @@ def status(server_name: str) -> None:
 @click.option("--cwd", help="New working directory")
 def config(
     server_name: str,
-    env: Tuple[str, ...],
-    args: Tuple[str, ...],
+    env: tuple[str, ...],
+    args: tuple[str, ...],
     cwd: Optional[str],
 ) -> None:
     """Configure an existing MCP server."""
-    env_dict: Dict[str, str] = {}
+    env_dict: dict[str, str] = {}
     if env:
         for env_var in env:
             if "=" in env_var:
