@@ -501,6 +501,27 @@ class ModelCache:
         if self._inflight_refresh is task:
             self._inflight_refresh = None
 
+    async def _load_models_from_file_fallback(
+        self,
+        error: Exception,
+    ) -> List[Dict[str, Any]]:
+        """Load and hydrate file-cached models after an API refresh failure."""
+        logger.warning(f"API fetch failed, trying file cache: {error}")
+        loop = asyncio.get_running_loop()
+        models, last_update = await loop.run_in_executor(
+            self._executor, self._load_from_file_cache
+        )
+
+        if models:
+            with self._cache_lock:
+                self._memory_cache = models
+                self._last_update = last_update or datetime.now()
+            logger.info(f"Using {len(models)} models from file cache fallback")
+            return models
+
+        logger.error("No cached models available and API failed")
+        return []
+
     async def _refresh_models(self) -> List[Dict[str, Any]]:
         """Refresh model metadata from API or fallback file cache."""
         try:
@@ -519,23 +540,7 @@ class ModelCache:
             return models
 
         except Exception as e:
-            # Fallback to file cache if API fails
-            logger.warning(f"API fetch failed, trying file cache: {e}")
-            loop = asyncio.get_running_loop()
-            models, last_update = await loop.run_in_executor(
-                self._executor, self._load_from_file_cache
-            )
-
-            if models:
-                # Hydrate memory cache so filter_models() works after fallback
-                with self._cache_lock:
-                    self._memory_cache = models
-                    self._last_update = last_update or datetime.now()
-                logger.info(f"Using {len(models)} models from file cache fallback")
-                return models
-
-            logger.error("No cached models available and API failed")
-            return []
+            return await self._load_models_from_file_fallback(e)
 
     async def refresh_cache(self, force: bool = False) -> None:
         """

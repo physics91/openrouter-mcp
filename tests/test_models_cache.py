@@ -10,7 +10,7 @@ import asyncio
 import json
 import tempfile
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -323,6 +323,102 @@ class TestModelCache:
         assert fetch_count == 1
         assert mock_save.call_count == 1
         assert all(len(models) == 5 for models in results)
+
+    @pytest.mark.asyncio
+    async def test_file_fallback_hydrates_memory_with_explicit_timestamp(
+        self, cache_config
+    ):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        models = [{"id": "fallback/model"}]
+        updated_at = datetime(2025, 1, 2, 3, 4, 5)
+
+        with patch.object(
+            cache,
+            "_load_from_file_cache",
+            return_value=(models, updated_at),
+        ):
+            result = await cache._load_models_from_file_fallback(
+                RuntimeError("api down")
+            )
+
+        assert result is models
+        assert cache._memory_cache is models
+        assert cache._last_update is updated_at
+
+    @pytest.mark.asyncio
+    async def test_file_fallback_uses_current_time_without_saved_timestamp(
+        self, cache_config
+    ):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        models = [{"id": "fallback/model"}]
+        before = datetime.now()
+
+        with patch.object(
+            cache,
+            "_load_from_file_cache",
+            return_value=(models, None),
+        ):
+            result = await cache._load_models_from_file_fallback(
+                RuntimeError("api down")
+            )
+
+        after = datetime.now()
+        assert result is models
+        assert cache._memory_cache is models
+        assert before <= cache._last_update <= after
+
+    @pytest.mark.asyncio
+    async def test_empty_file_fallback_preserves_existing_memory(self, cache_config):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        existing_models = [{"id": "existing/model"}]
+        existing_timestamp = datetime(2025, 2, 3, 4, 5, 6)
+        cache._memory_cache = existing_models
+        cache._last_update = existing_timestamp
+
+        with patch.object(
+            cache,
+            "_load_from_file_cache",
+            return_value=([], None),
+        ):
+            result = await cache._load_models_from_file_fallback(
+                RuntimeError("api down")
+            )
+
+        assert result == []
+        assert result is not existing_models
+        assert cache._memory_cache is existing_models
+        assert cache._last_update is existing_timestamp
+
+    @pytest.mark.asyncio
+    async def test_refresh_models_forwards_api_error_to_file_fallback(
+        self, cache_config
+    ):
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        api_error = RuntimeError("api down")
+        fallback_models = [{"id": "fallback/model"}]
+
+        with patch.object(
+            cache,
+            "_fetch_models_from_api",
+            side_effect=api_error,
+        ), patch.object(
+            cache,
+            "_load_models_from_file_fallback",
+            new=AsyncMock(return_value=fallback_models),
+        ) as fallback:
+            result = await cache._refresh_models()
+
+        assert result is fallback_models
+        fallback.assert_awaited_once()
+        assert fallback.await_args.args[0] is api_error
 
     def test_get_model_metadata(self, mock_openrouter_models, cache_config):
         """Test extracting enhanced model metadata."""
