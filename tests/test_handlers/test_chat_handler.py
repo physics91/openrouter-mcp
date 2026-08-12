@@ -9,6 +9,7 @@ from src.openrouter_mcp.handlers.chat import (
     ChatCompletionRequest,
     ModelListRequest,
     UsageStatsRequest,
+    _complete_chat_with_thrift_metadata,
     _stream_chat_with_thrift_metadata,
     chat_with_model,
     get_usage_stats,
@@ -27,6 +28,150 @@ from src.openrouter_mcp.runtime_thrift import (
     record_recent_reuse_savings,
     reset_thrift_metrics,
 )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_complete_chat_pipeline_preserves_enrichment_and_event_order():
+    events = []
+    response = {"choices": [{"message": {"content": "hello"}}]}
+    enriched_response = {
+        "choices": [{"message": {"content": "hello"}}],
+        "usage": {"total_tokens": 19},
+    }
+    thrift_metrics = {"compacted_tokens": 3}
+    client = MagicMock()
+
+    async def complete(**kwargs):
+        events.append("complete")
+        return response
+
+    client.chat_completion = AsyncMock(side_effect=complete)
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0.25,
+        max_tokens=33,
+    )
+    messages = [{"role": "user", "content": "serialized"}]
+
+    def snapshot():
+        events.append("snapshot")
+        return thrift_metrics
+
+    async def enrich(*args, **kwargs):
+        events.append("enrich")
+        return enriched_response
+
+    def log(message):
+        events.append(f"log:{message}")
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot",
+        side_effect=snapshot,
+    ) as get_snapshot, patch(
+        "src.openrouter_mcp.handlers.chat.enrich_response_with_thrift_metadata",
+        new=AsyncMock(side_effect=enrich),
+    ) as enrich_response, patch(
+        "src.openrouter_mcp.handlers.chat.logger.info",
+        side_effect=log,
+    ):
+        result = await _complete_chat_with_thrift_metadata(client, request, messages)
+
+    assert result is enriched_response
+    client.chat_completion.assert_awaited_once_with(
+        model="openai/gpt-4",
+        messages=messages,
+        temperature=0.25,
+        max_tokens=33,
+        stream=False,
+    )
+    get_snapshot.assert_called_once_with()
+    enrich_response.assert_awaited_once()
+    enrich_args = enrich_response.await_args
+    assert enrich_args.args == (
+        client,
+        "openai/gpt-4",
+        response,
+        thrift_metrics,
+    )
+    assert enrich_args.kwargs == {
+        "logger": chat_module.logger,
+        "log_context": "chat response",
+    }
+    assert events == [
+        "log:Initiating non-streaming chat completion",
+        "complete",
+        "snapshot",
+        "enrich",
+        "log:Chat completion successful, tokens used: 19",
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_complete_chat_pipeline_rejects_invalid_response_before_enrichment():
+    client = MagicMock()
+    client.chat_completion = AsyncMock(return_value=[])
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+    )
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.get_request_thrift_metrics_snapshot"
+    ) as get_snapshot, patch(
+        "src.openrouter_mcp.handlers.chat.enrich_response_with_thrift_metadata",
+        new_callable=AsyncMock,
+    ) as enrich_response:
+        with pytest.raises(
+            ValueError,
+            match="Invalid response format from chat completion",
+        ):
+            await _complete_chat_with_thrift_metadata(client, request, [])
+
+    get_snapshot.assert_not_called()
+    enrich_response.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_chat_with_model_non_streaming_delegates_compacted_messages():
+    client = MagicMock()
+    request = ChatCompletionRequest(
+        model="openai/gpt-4",
+        messages=[{"role": "user", "content": "hello"}],
+        max_tokens=33,
+    )
+    serialized_messages = [{"role": "user", "content": "serialized"}]
+    compacted_messages = [{"role": "user", "content": "compacted"}]
+    compaction = MagicMock(messages=compacted_messages)
+    expected = {"choices": [{"message": {"content": "hello"}}]}
+
+    with patch(
+        "src.openrouter_mcp.handlers.chat.serialize_messages",
+        return_value=serialized_messages,
+    ) as serialize, patch(
+        "src.openrouter_mcp.handlers.chat.get_openrouter_client",
+        new=AsyncMock(return_value=client),
+    ), patch(
+        "src.openrouter_mcp.handlers.chat.compact_messages_for_model",
+        new=AsyncMock(return_value=compaction),
+    ) as compact, patch(
+        "src.openrouter_mcp.handlers.chat._complete_chat_with_thrift_metadata",
+        new=AsyncMock(return_value=expected),
+    ) as complete_pipeline:
+        result = await chat_with_model(request)
+
+    assert result is expected
+    serialize.assert_called_once_with(request.messages)
+    compact.assert_awaited_once_with(
+        client,
+        "openai/gpt-4",
+        serialized_messages,
+        max_completion_tokens=33,
+    )
+    complete_pipeline.assert_awaited_once_with(client, request, compacted_messages)
 
 
 @pytest.mark.unit

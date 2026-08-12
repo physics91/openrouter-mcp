@@ -78,6 +78,39 @@ async def _stream_chat_with_thrift_metadata(
     return chunks
 
 
+async def _complete_chat_with_thrift_metadata(
+    client: Any,
+    request: ChatCompletionRequest,
+    messages: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Complete a chat request and enrich the response with thrift metadata."""
+    logger.info("Initiating non-streaming chat completion")
+    response = await client.chat_completion(
+        model=request.model,
+        messages=messages,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
+        stream=False,
+    )
+    if not isinstance(response, dict):
+        raise ValueError("Invalid response format from chat completion")
+
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    response = await enrich_response_with_thrift_metadata(
+        client,
+        request.model,
+        response,
+        thrift_metrics,
+        logger=logger,
+        log_context="chat response",
+    )
+
+    logger.info(
+        f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
+    )
+    return response
+
+
 @mcp.tool()
 async def chat_with_model(
     request: ChatCompletionRequest,
@@ -130,31 +163,9 @@ async def chat_with_model(
             if request.stream:
                 return await _stream_chat_with_thrift_metadata(client, request, messages)
             else:
-                logger.info("Initiating non-streaming chat completion")
-                response = await client.chat_completion(
-                    model=request.model,
-                    messages=messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
-                    stream=False,
+                return await _complete_chat_with_thrift_metadata(
+                    client, request, messages
                 )
-                if not isinstance(response, dict):
-                    raise ValueError("Invalid response format from chat completion")
-
-                thrift_metrics = get_request_thrift_metrics_snapshot()
-                response = await enrich_response_with_thrift_metadata(
-                    client,
-                    request.model,
-                    response,
-                    thrift_metrics,
-                    logger=logger,
-                    log_context="chat response",
-                )
-
-                logger.info(
-                    f"Chat completion successful, tokens used: {response.get('usage', {}).get('total_tokens', 'unknown')}"
-                )
-                return response
 
         except Exception as e:
             logger.error(f"Chat completion failed: {str(e)}")
