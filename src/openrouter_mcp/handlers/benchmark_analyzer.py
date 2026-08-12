@@ -62,6 +62,26 @@ def _build_best_performers(
     }
 
 
+def _calculate_metric_averages(
+    successful_results: List[
+        Tuple["EnhancedBenchmarkResult", "EnhancedBenchmarkMetrics"]
+    ],
+) -> Dict[str, float]:
+    """Calculate field-wise averages for successful benchmark results."""
+    return {
+        "response_time": sum(
+            metrics.avg_response_time for _, metrics in successful_results
+        )
+        / len(successful_results),
+        "cost": sum(metrics.avg_cost for _, metrics in successful_results)
+        / len(successful_results),
+        "quality_score": sum(metrics.quality_score for _, metrics in successful_results)
+        / len(successful_results),
+        "throughput": sum(metrics.throughput for _, metrics in successful_results)
+        / len(successful_results),
+    }
+
+
 class ModelPerformanceAnalyzer:
     """Advanced model performance analyzer with ranking and comparison capabilities."""
 
@@ -114,19 +134,11 @@ class ModelPerformanceAnalyzer:
             }
 
         best_performers = _build_best_performers(successful_results)
+        averages = _calculate_metric_averages(successful_results)
 
         return {
             "total_models": len(results),
             "successful_models": len(successful_results),
             "best_performers": best_performers,
-            "averages": {
-                "response_time": sum(metrics.avg_response_time for _, metrics in successful_results)
-                / len(successful_results),
-                "cost": sum(metrics.avg_cost for _, metrics in successful_results)
-                / len(successful_results),
-                "quality_score": sum(metrics.quality_score for _, metrics in successful_results)
-                / len(successful_results),
-                "throughput": sum(metrics.throughput for _, metrics in successful_results)
-                / len(successful_results),
-            },
+            "averages": averages,
         }
