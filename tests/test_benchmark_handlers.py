@@ -436,6 +436,105 @@ This computes the factorial recursively."""
         assert result.response is None
 
     @pytest.mark.asyncio
+    async def test_benchmark_model_preserves_partial_sample_when_pricing_lookup_fails(
+        self, handler
+    ):
+        """A late pricing failure should keep already collected response metrics."""
+        handler.client.chat_completion = AsyncMock(
+            return_value={
+                "choices": [{"message": {"content": "Partial response"}}],
+                "usage": {
+                    "total_tokens": 50,
+                    "prompt_tokens": 20,
+                    "completion_tokens": 30,
+                },
+            }
+        )
+        handler.analyze_response_comprehensive = MagicMock(
+            return_value={
+                "quality_score": 0.88,
+                "response_length": 16,
+                "contains_code_example": True,
+                "language_coherence_score": 0.77,
+            }
+        )
+        handler.model_cache.get_model_info = AsyncMock(
+            side_effect=RuntimeError("pricing unavailable")
+        )
+
+        result = await handler.benchmark_model("test-model", "test prompt")
+
+        assert result.response == "Partial response"
+        assert result.tokens_used == 50
+        assert result.prompt_tokens == 20
+        assert result.completion_tokens == 30
+        assert result.quality_score == 0.88
+        assert result.response_length == 16
+        assert result.contains_code_example is True
+        assert result.language_coherence_score == 0.77
+        assert result.cost == 0.0
+        assert result.error == "Unexpected error: pricing unavailable"
+
+    @pytest.mark.asyncio
+    async def test_benchmark_model_delegates_sample_collection_and_builds_result(
+        self, handler
+    ):
+        """The orchestration layer should consume one mutable collected sample."""
+
+        async def populate_sample(sample, **_kwargs):
+            sample.response_text = "Collected response"
+            sample.tokens_used = 40
+            sample.prompt_tokens = 15
+            sample.completion_tokens = 25
+            sample.cost = 0.125
+            sample.quality_score = 0.91
+            sample.response_length = 18
+            sample.comprehensive_analysis = {
+                "contains_code_example": False,
+                "language_coherence_score": 0.82,
+            }
+
+        collector = AsyncMock(side_effect=populate_sample)
+        handler.client.chat_completion = AsyncMock(
+            side_effect=AssertionError("legacy collection path used")
+        )
+
+        with patch.object(
+            handler,
+            "_collect_benchmark_sample",
+            collector,
+            create=True,
+        ):
+            result = await handler.benchmark_model(
+                model_id="test-model",
+                prompt="test prompt",
+                temperature=0.25,
+                max_tokens=123,
+                timeout=4.5,
+            )
+
+        collector.assert_awaited_once()
+        collected_sample = collector.await_args.args[0]
+        assert isinstance(collected_sample, benchmark_module._BenchmarkSample)
+        assert collector.await_args.kwargs == {
+            "model_id": "test-model",
+            "prompt": "test prompt",
+            "temperature": 0.25,
+            "max_tokens": 123,
+            "timeout": 4.5,
+        }
+        assert result.response == "Collected response"
+        assert result.tokens_used == 40
+        assert result.prompt_tokens == 15
+        assert result.completion_tokens == 25
+        assert result.cost == 0.125
+        assert result.error is None
+        assert result.quality_score == 0.91
+        assert result.response_length == 18
+        assert result.contains_code_example is False
+        assert result.language_coherence_score == 0.82
+
+    @pytest.mark.asyncio
     async def test_benchmark_models_parallel(self, handler):
         """Test parallel benchmarking."""
         mock_response = {

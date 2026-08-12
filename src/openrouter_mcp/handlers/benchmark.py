@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
@@ -112,6 +112,20 @@ def _analyze_benchmark_response(
             quality_score = handler.assess_response_quality(prompt, response_text)
 
     return quality_score, response_length, comprehensive_analysis
+
+
+@dataclass
+class _BenchmarkSample:
+    """Mutable state collected while benchmarking one model response."""
+
+    response_text: Optional[str] = None
+    tokens_used: int = 0
+    cost: float = 0.0
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    quality_score: Optional[float] = None
+    response_length: Optional[int] = None
+    comprehensive_analysis: Dict[str, Any] = field(default_factory=dict)
 
 
 class ResponseQualityAnalyzer:
@@ -1166,46 +1180,19 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         """Benchmark a single model with enhanced error handling and metrics."""
         start_time = time.time()
         error = None
-        response_text = None
-        tokens_used = 0
-        cost = 0.0
-        prompt_tokens = None
-        completion_tokens = None
-        quality_score = None
-        response_length = None
+        sample = _BenchmarkSample()
         throughput_tokens_per_second = None
-        comprehensive_analysis = {}
 
         logger.info(f"Starting benchmark for model: {model_id}")
 
         try:
-            # Make the API call with timeout
-            response = await asyncio.wait_for(
-                self.client.chat_completion(
-                    model=model_id,
-                    messages=self._build_prompt_messages(prompt),
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                ),
+            await self._collect_benchmark_sample(
+                sample,
+                model_id=model_id,
+                prompt=prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
                 timeout=timeout,
-            )
-
-            response_text, tokens_used, prompt_tokens, completion_tokens = (
-                _extract_benchmark_response_data(response, model_id)
-            )
-
-            quality_score, response_length, comprehensive_analysis = (
-                _analyze_benchmark_response(self, prompt, response_text)
-            )
-
-            # Enhanced cost calculation
-            model_info = await self.model_cache.get_model_info(model_id) or {}
-            cost = self._calculate_cost_enhanced(
-                model_info, prompt_tokens, completion_tokens, tokens_used
-            )
-
-            logger.info(
-                f"Successfully benchmarked {model_id}: {tokens_used} tokens, {cost:.6f} cost"
             )
 
         except asyncio.TimeoutError:
@@ -1216,37 +1203,92 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             logger.error(f"Benchmark error for {model_id}: {error}")
         except Exception as e:
             error = f"Unexpected error: {str(e)}"
-            logger.error(f"Unexpected error benchmarking {model_id}: {error}", exc_info=True)
+            logger.error(
+                f"Unexpected error benchmarking {model_id}: {error}", exc_info=True
+            )
 
         response_time_ms = (time.time() - start_time) * 1000
 
         # Calculate throughput
-        if response_time_ms > 0 and tokens_used > 0:
-            throughput_tokens_per_second = (tokens_used / response_time_ms) * 1000
+        if response_time_ms > 0 and sample.tokens_used > 0:
+            throughput_tokens_per_second = (
+                sample.tokens_used / response_time_ms
+            ) * 1000
 
         # Add comprehensive analysis data to result
         result = self._build_benchmark_result(
             model_id=model_id,
             prompt=prompt,
-            response=response_text,
+            response=sample.response_text,
             response_time_ms=response_time_ms,
-            tokens_used=tokens_used,
-            cost=cost,
+            tokens_used=sample.tokens_used,
+            cost=sample.cost,
             timestamp=datetime.now(timezone.utc),
             error=error,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            quality_score=quality_score,
-            response_length=response_length,
+            prompt_tokens=sample.prompt_tokens,
+            completion_tokens=sample.completion_tokens,
+            quality_score=sample.quality_score,
+            response_length=sample.response_length,
             throughput_tokens_per_second=throughput_tokens_per_second,
         )
 
         # Add comprehensive analysis fields if available
-        if comprehensive_analysis:
-            result.contains_code_example = comprehensive_analysis.get("contains_code_example")
-            result.language_coherence_score = comprehensive_analysis.get("language_coherence_score")
+        if sample.comprehensive_analysis:
+            result.contains_code_example = sample.comprehensive_analysis.get(
+                "contains_code_example"
+            )
+            result.language_coherence_score = sample.comprehensive_analysis.get(
+                "language_coherence_score"
+            )
 
         return result
+
+    async def _collect_benchmark_sample(
+        self,
+        sample: _BenchmarkSample,
+        *,
+        model_id: str,
+        prompt: str,
+        temperature: float,
+        max_tokens: int,
+        timeout: float,
+    ) -> None:
+        """Collect the successful benchmark pipeline into caller-owned state."""
+        response = await asyncio.wait_for(
+            self.client.chat_completion(
+                model=model_id,
+                messages=self._build_prompt_messages(prompt),
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
+            timeout=timeout,
+        )
+
+        (
+            sample.response_text,
+            sample.tokens_used,
+            sample.prompt_tokens,
+            sample.completion_tokens,
+        ) = _extract_benchmark_response_data(response, model_id)
+
+        (
+            sample.quality_score,
+            sample.response_length,
+            sample.comprehensive_analysis,
+        ) = _analyze_benchmark_response(self, prompt, sample.response_text)
+
+        model_info = await self.model_cache.get_model_info(model_id) or {}
+        sample.cost = self._calculate_cost_enhanced(
+            model_info,
+            sample.prompt_tokens,
+            sample.completion_tokens,
+            sample.tokens_used,
+        )
+
+        logger.info(
+            f"Successfully benchmarked {model_id}: "
+            f"{sample.tokens_used} tokens, {sample.cost:.6f} cost"
+        )
 
     def _calculate_cost_enhanced(
         self,
