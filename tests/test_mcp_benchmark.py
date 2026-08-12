@@ -339,6 +339,16 @@ class TestMCPBenchmarkTools:
                 assert "results" in result
                 assert result["config"]["categories"] == ["chat"]
                 assert "chat" in result["category_info"]
+                assert result["overall_ranking"] == [
+                    {
+                        "model_id": "gpt-4",
+                        "category": "chat",
+                        "overall_score": 0.9,
+                        "speed_score": 0,
+                        "cost_score": 0,
+                        "quality_score": 0,
+                    }
+                ]
 
     @pytest.mark.asyncio
     async def test_compare_model_categories_speed_prefers_lower_latency(self, mock_env):

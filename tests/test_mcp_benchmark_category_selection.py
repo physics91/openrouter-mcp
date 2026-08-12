@@ -5,6 +5,60 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from src.openrouter_mcp.handlers import mcp_benchmark
+from src.openrouter_mcp.handlers.benchmark import (
+    EnhancedBenchmarkMetrics,
+    EnhancedBenchmarkResult,
+)
+
+
+def test_serialize_category_overall_ranking_preserves_order_and_limit():
+    ranking = []
+    for index in range(11):
+        metrics = None
+        if index == 0:
+            metrics = EnhancedBenchmarkMetrics(
+                speed_score=0.9,
+                cost_score=0.8,
+                quality_score=0.7,
+            )
+        result = EnhancedBenchmarkResult(
+            model_id=f"model-{index}",
+            success=True,
+            response=None,
+            error_message=None,
+            metrics=metrics,
+            timestamp=datetime.now(),
+        )
+        ranking.append((result, 1.0 - (index / 100)))
+
+    serialized = mcp_benchmark._serialize_category_overall_ranking(
+        ranking,
+        [
+            {"id": "model-0", "category": "first-category"},
+            {"id": "model-0", "category": "second-category"},
+        ],
+    )
+
+    assert len(serialized) == 10
+    assert [item["model_id"] for item in serialized] == [
+        f"model-{index}" for index in range(10)
+    ]
+    assert serialized[0] == {
+        "model_id": "model-0",
+        "category": "first-category",
+        "overall_score": 1.0,
+        "speed_score": 0.9,
+        "cost_score": 0.8,
+        "quality_score": 0.7,
+    }
+    assert serialized[1] == {
+        "model_id": "model-1",
+        "category": "unknown",
+        "overall_score": 0.99,
+        "speed_score": 0,
+        "cost_score": 0,
+        "quality_score": 0,
+    }
 
 
 def test_group_category_benchmark_results_preserves_lookup_and_order():

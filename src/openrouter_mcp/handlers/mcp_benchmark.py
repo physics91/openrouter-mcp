@@ -221,6 +221,30 @@ def _group_category_benchmark_results(
     return grouped_results
 
 
+def _serialize_category_overall_ranking(
+    ranking: List[Tuple[EnhancedBenchmarkResult, float]],
+    selected_models: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "model_id": result.model_id,
+            "category": next(
+                (
+                    model.get("category", "unknown")
+                    for model in selected_models
+                    if model["id"] == result.model_id
+                ),
+                "unknown",
+            ),
+            "overall_score": score,
+            "speed_score": result.metrics.speed_score if result.metrics else 0,
+            "cost_score": result.metrics.cost_score if result.metrics else 0,
+            "quality_score": result.metrics.quality_score if result.metrics else 0,
+        }
+        for result, score in ranking[:10]
+    ]
+
+
 # 글로벌 벤치마크 핸들러
 _benchmark_handler: Optional[EnhancedBenchmarkHandler] = None
 _model_cache: Optional[ModelCache] = None
@@ -512,24 +536,10 @@ async def compare_model_categories(
             analyzer = ModelPerformanceAnalyzer()
             ranking = analyzer.rank_models(list(successful_results.values()))
 
-            comparison_data["overall_ranking"] = [
-                {
-                    "model_id": result.model_id,
-                    "category": next(
-                        (
-                            m.get("category", "unknown")
-                            for m in selected_models
-                            if m["id"] == result.model_id
-                        ),
-                        "unknown",
-                    ),
-                    "overall_score": score,
-                    "speed_score": result.metrics.speed_score if result.metrics else 0,
-                    "cost_score": result.metrics.cost_score if result.metrics else 0,
-                    "quality_score": (result.metrics.quality_score if result.metrics else 0),
-                }
-                for result, score in ranking[:10]  # 상위 10개만
-            ]
+            comparison_data["overall_ranking"] = _serialize_category_overall_ranking(
+                ranking,
+                selected_models,
+            )
 
         logger.info(f"카테고리별 비교 완료: {len(successful_results)} 모델 성공")
         return comparison_data
