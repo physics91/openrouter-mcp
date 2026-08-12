@@ -384,10 +384,9 @@ class FailureController:
                 if datetime.now() - opened_at < timeout:
                     logger.warning(f"Circuit breaker open for {component}")
                     return False  # Circuit is open, reject request
-                else:
-                    # Timeout passed, close circuit breaker
-                    del self.circuit_breaker_opened[component]
-                    self.circuit_breaker_failures[component] = 0
+                # Timeout passed, close circuit breaker
+                del self.circuit_breaker_opened[component]
+                self.circuit_breaker_failures[component] = 0
 
             # Check failure threshold
             failures = self.circuit_breaker_failures.get(component, 0)
