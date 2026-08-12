@@ -131,6 +131,25 @@ def _build_model_pricing_result(
     }
 
 
+def _coerce_text_messages(
+    messages: List[Dict[str, Any]],
+) -> Optional[List[Dict[str, str]]]:
+    """Copy simple text messages into the strict validation shape."""
+    if not messages or not all(
+        isinstance(message.get("content"), str) for message in messages
+    ):
+        return None
+
+    text_messages: List[Dict[str, str]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if not isinstance(role, str) or not isinstance(content, str):
+            return None
+        text_messages.append({"role": role, "content": content})
+    return text_messages
+
+
 # Note: SensitiveDataSanitizer has been moved to openrouter_mcp.utils.sanitizer
 # for SRP compliance. Import it from there for new code.
 # The import at module level provides backward compatibility.
@@ -269,14 +288,8 @@ class OpenRouterClient:
 
     def _validate_messages_if_text(self, messages: List[Dict[str, Any]]) -> None:
         """Validate messages when they are simple text-only payloads."""
-        if messages and all(isinstance(msg.get("content"), str) for msg in messages):
-            text_messages: List[Dict[str, str]] = []
-            for message in messages:
-                role = message.get("role")
-                content = message.get("content")
-                if not isinstance(role, str) or not isinstance(content, str):
-                    return
-                text_messages.append({"role": role, "content": content})
+        text_messages = _coerce_text_messages(messages)
+        if text_messages is not None:
             self._validate_messages(text_messages)
 
     def _build_chat_payload(
