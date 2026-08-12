@@ -74,6 +74,12 @@ class CollectiveIntelligenceLifecycleManager:
         self._operational_config = operational_config or OperationalConfig.conservative()
         logger.info("CollectiveIntelligenceLifecycleManager configured")
 
+    def _require_model_provider(self) -> ModelProvider:
+        """Return the configured provider or reject component access."""
+        if self._model_provider is None:
+            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
+        return self._model_provider
+
     async def _get_or_create_component(
         self,
         attr_name: str,
@@ -99,9 +105,7 @@ class CollectiveIntelligenceLifecycleManager:
         self, config: Optional[ConsensusConfig] = None
     ) -> ConsensusEngine:
         """Get or create singleton ConsensusEngine instance."""
-        if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
-        provider = self._model_provider
+        provider = self._require_model_provider()
 
         def factory() -> ConsensusEngine:
             cfg = config if config is not None else ConsensusConfig()
@@ -112,9 +116,7 @@ class CollectiveIntelligenceLifecycleManager:
 
     async def get_collaborative_solver(self) -> CollaborativeSolver:
         """Get or create singleton CollaborativeSolver instance."""
-        if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
-        provider = self._model_provider
+        provider = self._require_model_provider()
         operational_config = self._operational_config
         return await self._get_or_create_component(
             "_collaborative_solver",
@@ -124,9 +126,7 @@ class CollectiveIntelligenceLifecycleManager:
 
     async def get_ensemble_reasoner(self) -> EnsembleReasoner:
         """Get or create singleton EnsembleReasoner instance."""
-        if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
-        provider = self._model_provider
+        provider = self._require_model_provider()
         return await self._get_or_create_component(
             "_ensemble_reasoner",
             lambda: EnsembleReasoner(provider),
@@ -135,9 +135,7 @@ class CollectiveIntelligenceLifecycleManager:
 
     async def get_adaptive_router(self) -> AdaptiveRouter:
         """Get or create singleton AdaptiveRouter instance."""
-        if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
-        provider = self._model_provider
+        provider = self._require_model_provider()
         return await self._get_or_create_component(
             "_adaptive_router",
             lambda: AdaptiveRouter(provider),
@@ -146,9 +144,7 @@ class CollectiveIntelligenceLifecycleManager:
 
     async def get_cross_validator(self) -> CrossValidator:
         """Get or create singleton CrossValidator instance."""
-        if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
-        provider = self._model_provider
+        provider = self._require_model_provider()
         return await self._get_or_create_component(
             "_cross_validator",
             lambda: CrossValidator(provider),
