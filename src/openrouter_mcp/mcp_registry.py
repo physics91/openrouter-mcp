@@ -56,6 +56,15 @@ def _get_client_lock() -> asyncio.Lock:
     return _client_lock
 
 
+def _reset_shared_client_state() -> None:
+    """Clear the published shared-client state."""
+    global _client_instance, _client_initialized, _client_loop
+
+    _client_instance = None
+    _client_initialized = False
+    _client_loop = None
+
+
 def _shared_client_is_closed(client: Optional["OpenRouterClient"]) -> bool:
     """Return True when the wrapped HTTP client has already been closed."""
     if client is None:
@@ -149,8 +158,6 @@ async def get_shared_client() -> "OpenRouterClient":
         The returned client is already in an async context manager, so handlers
         should NOT use 'async with client:' - just call client methods directly.
     """
-    global _client_instance, _client_initialized, _client_loop
-
     current_loop = asyncio.get_running_loop()
     env_key = get_env_value(EnvVars.API_KEY)
 
@@ -193,9 +200,7 @@ async def get_shared_client() -> "OpenRouterClient":
                     client_closed=client_closed,
                 )
             finally:
-                _client_instance = None
-                _client_initialized = False
-                _client_loop = None
+                _reset_shared_client_state()
 
         return await _initialize_shared_client(current_loop, env_key)
 
@@ -212,8 +217,6 @@ async def cleanup_shared_client() -> None:
     This should be called during application shutdown to properly close
     the HTTP client and release resources.
     """
-    global _client_instance, _client_initialized, _client_loop
-
     if _client_instance is not None:
         logger.info("Cleaning up shared OpenRouterClient")
         try:
@@ -222,9 +225,7 @@ async def cleanup_shared_client() -> None:
         except Exception as e:
             logger.error(f"Error during client cleanup: {e}")
         finally:
-            _client_instance = None
-            _client_initialized = False
-            _client_loop = None
+            _reset_shared_client_state()
 
 
 __all__ = ["mcp", "get_shared_client", "get_openrouter_client", "cleanup_shared_client"]
