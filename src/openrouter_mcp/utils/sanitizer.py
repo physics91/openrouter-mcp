@@ -60,7 +60,9 @@ class SensitiveDataSanitizer:
             if key.lower() in sensitive_headers:
                 if sanitized[key].lower().startswith("bearer "):
                     api_key = sanitized[key][7:]  # Remove "Bearer " prefix
-                    sanitized[key] = f"Bearer {SensitiveDataSanitizer.mask_api_key(api_key)}"
+                    sanitized[key] = (
+                        f"Bearer {SensitiveDataSanitizer.mask_api_key(api_key)}"
+                    )
                 else:
                     sanitized[key] = SensitiveDataSanitizer.mask_api_key(sanitized[key])
 
@@ -104,6 +106,14 @@ class SensitiveDataSanitizer:
         return f"{content[:max_length]}... [TRUNCATED: {len(content)} chars total]"
 
     @staticmethod
+    def _sanitize_multimodal_content(content: List[Any]) -> Dict[str, Any]:
+        """Return safe metadata for one multimodal content value."""
+        return {
+            "content_type": "multimodal",
+            "content_parts": len(content),
+        }
+
+    @staticmethod
     def _sanitize_hashed_message_content(content: Any) -> Dict[str, Any]:
         """Sanitize one message content value in hash mode."""
         sanitized = {}
@@ -111,8 +121,7 @@ class SensitiveDataSanitizer:
             sanitized["content_hash"] = SensitiveDataSanitizer.hash_content(content)
             sanitized["content_length"] = len(content)
         elif isinstance(content, list):
-            sanitized["content_type"] = "multimodal"
-            sanitized["content_parts"] = len(content)
+            return SensitiveDataSanitizer._sanitize_multimodal_content(content)
         return sanitized
 
     @staticmethod
@@ -122,8 +131,7 @@ class SensitiveDataSanitizer:
         if isinstance(content, str):
             sanitized["content"] = SensitiveDataSanitizer.truncate_content(content, 50)
         elif isinstance(content, list):
-            sanitized["content_type"] = "multimodal"
-            sanitized["content_parts"] = len(content)
+            return SensitiveDataSanitizer._sanitize_multimodal_content(content)
         return sanitized
 
     @staticmethod
@@ -134,8 +142,7 @@ class SensitiveDataSanitizer:
             sanitized["content_length"] = len(content)
             sanitized["content_type"] = "text"
         elif isinstance(content, list):
-            sanitized["content_type"] = "multimodal"
-            sanitized["content_parts"] = len(content)
+            return SensitiveDataSanitizer._sanitize_multimodal_content(content)
         return sanitized
 
     @staticmethod
@@ -175,7 +182,9 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_payload(payload: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
+    def sanitize_payload(
+        payload: Dict[str, Any], enable_verbose: bool = False
+    ) -> Dict[str, Any]:
         """Sanitize request payload for logging.
 
         Args:
@@ -212,7 +221,9 @@ class SensitiveDataSanitizer:
         return sanitized
 
     @staticmethod
-    def sanitize_response(response: Dict[str, Any], enable_verbose: bool = False) -> Dict[str, Any]:
+    def sanitize_response(
+        response: Dict[str, Any], enable_verbose: bool = False
+    ) -> Dict[str, Any]:
         """Sanitize API response for logging.
 
         Args:
@@ -253,7 +264,9 @@ class SensitiveDataSanitizer:
 
                     sanitized["first_choice_metadata"] = {
                         "role": message.get("role", "unknown"),
-                        "content_length": (len(content) if isinstance(content, str) else 0),
+                        "content_length": (
+                            len(content) if isinstance(content, str) else 0
+                        ),
                         "finish_reason": first_choice.get("finish_reason"),
                     }
 
