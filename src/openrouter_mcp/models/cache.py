@@ -539,22 +539,26 @@ class ModelCache:
         logger.error("No cached models available and API failed")
         return []
 
+    async def _store_refreshed_models(
+        self,
+        models: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Update memory state and persist freshly fetched models."""
+        with self._cache_lock:
+            self._memory_cache = models
+            self._last_update = datetime.now()
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self._executor, self._save_to_file_cache, models)
+
+        logger.info(f"Cache updated with {len(models)} models")
+        return models
+
     async def _refresh_models(self) -> List[Dict[str, Any]]:
         """Refresh model metadata from API or fallback file cache."""
         try:
             models = await self._fetch_models_from_api()
-
-            # Update cache with thread safety
-            with self._cache_lock:
-                self._memory_cache = models
-                self._last_update = datetime.now()
-
-            # Persist to file without blocking the event loop
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(self._executor, self._save_to_file_cache, models)
-
-            logger.info(f"Cache updated with {len(models)} models")
-            return models
+            return await self._store_refreshed_models(models)
 
         except Exception as e:
             return await self._load_models_from_file_fallback(e)
