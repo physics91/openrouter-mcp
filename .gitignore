@@ -57,7 +57,7 @@ venv.bak/
 *.swo
 *~
 .worktree/
-.worktrees/
+/.worktrees/
 
 # Local agent artifacts
 .codex
