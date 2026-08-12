@@ -343,6 +343,38 @@ def _build_vision_messages(
     ]
 
 
+async def _stream_vision_chat_with_thrift_metadata(
+    client: Any,
+    request: VisionChatRequest,
+    vision_messages: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Collect a streaming vision response and enrich its final chunk."""
+    logger.info("Initiating streaming vision chat completion")
+    chunks = cast(
+        List[Dict[str, Any]],
+        await collect_async_iterable(
+            client.stream_chat_completion(
+                model=request.model,
+                messages=vision_messages,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            )
+        ),
+    )
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    chunks = await enrich_final_stream_chunk_with_thrift_metadata(
+        client,
+        request.model,
+        chunks,
+        thrift_metrics,
+        logger=logger,
+        log_context="vision response",
+    )
+
+    logger.info(f"Streaming completed with {len(chunks)} chunks")
+    return chunks
+
+
 @mcp.tool()
 async def chat_with_vision(
     request: VisionChatRequest,
@@ -385,30 +417,9 @@ async def chat_with_vision(
             vision_messages = _build_vision_messages(base_messages, request.images)
 
             if request.stream:
-                logger.info("Initiating streaming vision chat completion")
-                chunks = cast(
-                    List[Dict[str, Any]],
-                    await collect_async_iterable(
-                        client.stream_chat_completion(
-                            model=request.model,
-                            messages=vision_messages,
-                            temperature=request.temperature,
-                            max_tokens=request.max_tokens,
-                        )
-                    ),
+                return await _stream_vision_chat_with_thrift_metadata(
+                    client, request, vision_messages
                 )
-                thrift_metrics = get_request_thrift_metrics_snapshot()
-                chunks = await enrich_final_stream_chunk_with_thrift_metadata(
-                    client,
-                    request.model,
-                    chunks,
-                    thrift_metrics,
-                    logger=logger,
-                    log_context="vision response",
-                )
-
-                logger.info(f"Streaming completed with {len(chunks)} chunks")
-                return chunks
             else:
                 logger.info("Initiating non-streaming vision chat completion")
                 response = await client.chat_completion(

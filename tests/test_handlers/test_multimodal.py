@@ -17,6 +17,7 @@ from openrouter_mcp.handlers.multimodal import (
     ImageInput,
     VisionChatRequest,
     VisionModelRequest,
+    _stream_vision_chat_with_thrift_metadata,
     encode_image_to_base64,
     filter_vision_models,
     format_vision_message,
@@ -34,6 +35,164 @@ from openrouter_mcp.runtime_thrift import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.asyncio
+async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
+    events = []
+    chunk = {"choices": [{"delta": {"content": "image"}}]}
+    enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
+    thrift_metrics = {"compacted_tokens": 3}
+    client = MagicMock()
+
+    async def stream():
+        events.append("stream-start")
+        yield chunk
+        events.append("stream-end")
+
+    def stream_chat_completion(**kwargs):
+        events.append("stream-call")
+        return stream()
+
+    client.stream_chat_completion.side_effect = stream_chat_completion
+    request = VisionChatRequest(
+        model="openai/gpt-4o",
+        messages=[{"role": "user", "content": "analyze"}],
+        images=[ImageInput(data="https://example.com/image.jpg", type="url")],
+        temperature=0.25,
+        max_tokens=33,
+        stream=True,
+    )
+    vision_messages = [{"role": "user", "content": "vision payload"}]
+
+    def snapshot():
+        events.append("snapshot")
+        return thrift_metrics
+
+    async def enrich(*args, **kwargs):
+        events.append("enrich")
+        return enriched_chunks
+
+    def log(message):
+        events.append(f"log:{message}")
+
+    with patch.object(
+        multimodal_module,
+        "get_request_thrift_metrics_snapshot",
+        side_effect=snapshot,
+    ) as get_snapshot, patch.object(
+        multimodal_module,
+        "enrich_final_stream_chunk_with_thrift_metadata",
+        new=AsyncMock(side_effect=enrich),
+    ) as enrich_chunks, patch.object(
+        multimodal_module.logger,
+        "info",
+        side_effect=log,
+    ):
+        result = await _stream_vision_chat_with_thrift_metadata(
+            client, request, vision_messages
+        )
+
+    assert result is enriched_chunks
+    client.stream_chat_completion.assert_called_once_with(
+        model="openai/gpt-4o",
+        messages=vision_messages,
+        temperature=0.25,
+        max_tokens=33,
+    )
+    get_snapshot.assert_called_once_with()
+    enrich_chunks.assert_awaited_once()
+    enrich_args = enrich_chunks.await_args
+    assert enrich_args.args == (
+        client,
+        "openai/gpt-4o",
+        [chunk],
+        thrift_metrics,
+    )
+    assert enrich_args.kwargs == {
+        "logger": multimodal_module.logger,
+        "log_context": "vision response",
+    }
+    assert events == [
+        "log:Initiating streaming vision chat completion",
+        "stream-call",
+        "stream-start",
+        "stream-end",
+        "snapshot",
+        "enrich",
+        "log:Streaming completed with 2 chunks",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stream_vision_pipeline_skips_enrichment_on_collection_error():
+    client = MagicMock()
+    error = RuntimeError("stream failed")
+
+    async def failing_stream():
+        raise error
+        yield
+
+    client.stream_chat_completion.return_value = failing_stream()
+    request = VisionChatRequest(
+        model="openai/gpt-4o",
+        messages=[{"role": "user", "content": "analyze"}],
+        images=[ImageInput(data="https://example.com/image.jpg", type="url")],
+        stream=True,
+    )
+
+    with patch.object(
+        multimodal_module,
+        "get_request_thrift_metrics_snapshot",
+    ) as get_snapshot, patch.object(
+        multimodal_module,
+        "enrich_final_stream_chunk_with_thrift_metadata",
+        new_callable=AsyncMock,
+    ) as enrich_chunks:
+        with pytest.raises(RuntimeError) as raised:
+            await _stream_vision_chat_with_thrift_metadata(client, request, [])
+
+    assert raised.value is error
+    get_snapshot.assert_not_called()
+    enrich_chunks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_with_vision_streaming_delegates_built_messages():
+    client = MagicMock()
+    request = VisionChatRequest(
+        model="openai/gpt-4o",
+        messages=[{"role": "user", "content": "analyze"}],
+        images=[ImageInput(data="https://example.com/image.jpg", type="url")],
+        stream=True,
+    )
+    base_messages = [{"role": "user", "content": "serialized"}]
+    vision_messages = [{"role": "user", "content": "vision payload"}]
+    expected = [{"choices": [{"delta": {"content": "image"}}]}]
+
+    with patch.object(
+        multimodal_module,
+        "get_openrouter_client",
+        new=AsyncMock(return_value=client),
+    ), patch.object(
+        multimodal_module,
+        "serialize_messages",
+        return_value=base_messages,
+    ) as serialize, patch.object(
+        multimodal_module,
+        "_build_vision_messages",
+        return_value=vision_messages,
+    ) as build_messages, patch.object(
+        multimodal_module,
+        "_stream_vision_chat_with_thrift_metadata",
+        new=AsyncMock(return_value=expected),
+    ) as stream_pipeline:
+        result = await multimodal_module.chat_with_vision(request)
+
+    assert result is expected
+    serialize.assert_called_once_with(request.messages)
+    build_messages.assert_called_once_with(base_messages, request.images)
+    stream_pipeline.assert_awaited_once_with(client, request, vision_messages)
 
 
 class TestImageInput:
