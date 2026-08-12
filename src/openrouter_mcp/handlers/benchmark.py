@@ -50,6 +50,31 @@ class BenchmarkError(Exception):
         super().__init__(message)
 
 
+def _extract_benchmark_response_data(
+    response: Dict[str, Any], model_id: str
+) -> tuple[str, int, Optional[int], Optional[int]]:
+    """Validate a benchmark response and extract its text and token usage."""
+    if not response.get("choices") or not response["choices"]:
+        raise BenchmarkError(
+            f"No choices in response from {model_id}", model_id, "NO_CHOICES"
+        )
+
+    choice = response["choices"][0]
+    if not choice.get("message") or not choice["message"].get("content"):
+        raise BenchmarkError(
+            f"No content in response from {model_id}", model_id, "NO_CONTENT"
+        )
+
+    response_text = choice["message"]["content"]
+    usage = response.get("usage", {})
+    return (
+        response_text,
+        usage.get("total_tokens", 0),
+        usage.get("prompt_tokens"),
+        usage.get("completion_tokens"),
+    )
+
+
 class ResponseQualityAnalyzer:
     """Advanced response quality analysis with multiple metrics."""
 
@@ -1060,27 +1085,15 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
                 timeout=timeout,
             )
 
-            # Extract response data with validation
-            if not response.get("choices") or not response["choices"]:
-                raise BenchmarkError(
-                    f"No choices in response from {model_id}", model_id, "NO_CHOICES"
-                )
-
-            choice = response["choices"][0]
-            if not choice.get("message") or not choice["message"].get("content"):
-                raise BenchmarkError(
-                    f"No content in response from {model_id}", model_id, "NO_CONTENT"
-                )
-
-            response_text = choice["message"]["content"]
-            usage = response.get("usage", {})
-            tokens_used = usage.get("total_tokens", 0)
-            prompt_tokens = usage.get("prompt_tokens")
-            completion_tokens = usage.get("completion_tokens")
+            response_text, tokens_used, prompt_tokens, completion_tokens = (
+                _extract_benchmark_response_data(response, model_id)
+            )
 
             # Enhanced response analysis
             if response_text and hasattr(self, "analyze_response_comprehensive"):
-                comprehensive_analysis = self.analyze_response_comprehensive(prompt, response_text)
+                comprehensive_analysis = self.analyze_response_comprehensive(
+                    prompt, response_text
+                )
                 quality_score = comprehensive_analysis.get("quality_score")
                 response_length = comprehensive_analysis.get("response_length")
             elif response_text:
