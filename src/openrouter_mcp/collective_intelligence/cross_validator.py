@@ -1297,13 +1297,13 @@ class CrossValidator(CollectiveIntelligenceComponent):
             suggestions.append(
                 "Address critical issues immediately before using this result"
             )
-            for issue in critical_issues[:3]:  # Top 3 critical issues
-                suggestions.append(f"Critical: {issue.suggestion}")
+            suggestions.extend(
+                f"Critical: {issue.suggestion}" for issue in critical_issues[:3]
+            )
 
         if high_issues:
             suggestions.append("Review and fix high-priority issues")
-            for issue in high_issues[:3]:  # Top 3 high issues
-                suggestions.append(f"High: {issue.suggestion}")
+            suggestions.extend(f"High: {issue.suggestion}" for issue in high_issues[:3])
 
         if validation_report.overall_score < 0.8:
             suggestions.append(
