@@ -87,6 +87,36 @@ def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
         return None
 
 
+def _build_model_pricing_result(
+    pricing: Dict[str, Any],
+    *,
+    pricing_available: bool,
+    fallback_used: bool,
+    source: str,
+) -> Dict[str, Any]:
+    """Normalize model pricing and attach availability metadata."""
+    if pricing_available:
+        normalized = normalize_pricing(pricing, fill_missing=False)
+        if "prompt" not in pricing and "completion" in pricing:
+            normalized["prompt"] = normalized["completion"]
+        if "completion" not in pricing and "prompt" in pricing:
+            normalized["completion"] = normalized["prompt"]
+    else:
+        fallback_used = True
+        source = "fallback"
+        normalized = normalize_pricing(pricing)
+
+    return {
+        "prompt": float(normalized.get("prompt", 0.0)),
+        "completion": float(normalized.get("completion", 0.0)),
+        "_meta": {
+            "pricing_available": pricing_available,
+            "fallback_used": fallback_used,
+            "source": source,
+        },
+    }
+
+
 # Note: SensitiveDataSanitizer has been moved to openrouter_mcp.utils.sanitizer
 # for SRP compliance. Import it from there for new code.
 # The import at module level provides backward compatibility.
@@ -547,7 +577,9 @@ class OpenRouterClient:
             self.logger.warning("Unexpected model list format from API")
             return []
 
-        models: List[Dict[str, Any]] = [model for model in models_raw if isinstance(model, dict)]
+        models: List[Dict[str, Any]] = [
+            model for model in models_raw if isinstance(model, dict)
+        ]
 
         self.logger.info(f"Retrieved {len(models)} models from API")
         return models
@@ -594,28 +626,16 @@ class OpenRouterClient:
             self.logger.warning(f"Failed to fetch pricing for model {model}: {e}")
             fallback_used = True
 
-        if pricing_available:
-            normalized = normalize_pricing(pricing, fill_missing=False)
-            if "prompt" not in pricing and "completion" in pricing:
-                normalized["prompt"] = normalized["completion"]
-            if "completion" not in pricing and "prompt" in pricing:
-                normalized["completion"] = normalized["prompt"]
-        else:
-            fallback_used = True
-            source = "fallback"
-            normalized = normalize_pricing(pricing)
+        return _build_model_pricing_result(
+            pricing,
+            pricing_available=pricing_available,
+            fallback_used=fallback_used,
+            source=source,
+        )
 
-        return {
-            "prompt": float(normalized.get("prompt", 0.0)),
-            "completion": float(normalized.get("completion", 0.0)),
-            "_meta": {
-                "pricing_available": pricing_available,
-                "fallback_used": fallback_used,
-                "source": source,
-            },
-        }
-
-    async def _estimate_prompt_cache_saved_cost(self, model: str, cached_tokens: int) -> float:
+    async def _estimate_prompt_cache_saved_cost(
+        self, model: str, cached_tokens: int
+    ) -> float:
         if cached_tokens <= 0:
             return 0.0
 
