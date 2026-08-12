@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from ..config.constants import PricingDefaults
 
@@ -31,7 +31,7 @@ def _normalize_unit(price: float) -> float:
 
 def _fill_missing_prices(
     prompt_price: float, completion_price: float, default_price: float
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Fill missing or zero prices using cross-fill or default fallback."""
     if prompt_price <= 0 and completion_price <= 0:
         return default_price, default_price
@@ -43,12 +43,12 @@ def _fill_missing_prices(
 
 
 def normalize_pricing(
-    pricing: Optional[Dict[str, Any]],
+    pricing: Optional[dict[str, Any]],
     default_price: float = PricingDefaults.DEFAULT_TOKEN_PRICE,
     *,
     normalize_units: bool = True,
     fill_missing: bool = True,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Normalize pricing dict into prompt/completion floats.
 
     When normalize_units is True (default), values are converted to per-token
@@ -80,7 +80,7 @@ def cost_for_tokens(tokens: int, price: float) -> float:
     return tokens * price
 
 
-def _split_tokens(total_tokens: int) -> Tuple[int, int]:
+def _split_tokens(total_tokens: int) -> tuple[int, int]:
     """Split total tokens into prompt/completion halves."""
     if total_tokens <= 0:
         return 0, 0
@@ -90,8 +90,8 @@ def _split_tokens(total_tokens: int) -> Tuple[int, int]:
 
 
 def estimate_cost_from_usage(
-    usage: Dict[str, int],
-    pricing: Dict[str, Any],
+    usage: dict[str, int],
+    pricing: dict[str, Any],
     default_price: float = PricingDefaults.DEFAULT_TOKEN_PRICE,
 ) -> float:
     """Estimate total cost from usage and pricing."""
@@ -117,7 +117,7 @@ def estimate_cost_from_tokens(
     prompt_tokens: Optional[int],
     completion_tokens: Optional[int],
     total_tokens: int,
-    pricing: Dict[str, Any],
+    pricing: dict[str, Any],
     default_price: float = PricingDefaults.DEFAULT_TOKEN_PRICE,
 ) -> float:
     """Estimate total cost from explicit token counts."""
