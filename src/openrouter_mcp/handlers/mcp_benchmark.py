@@ -239,6 +239,41 @@ def _serialize_benchmark_ranking(
     ]
 
 
+def _build_benchmark_data(
+    results: Dict[str, EnhancedBenchmarkResult],
+    *,
+    timestamp: str,
+    models: List[str],
+    prompt: str,
+    runs: int,
+    delay_seconds: float,
+    include_prompts_in_logs: bool,
+) -> Tuple[Dict[str, Any], Dict[str, EnhancedBenchmarkResult]]:
+    """Serialize benchmark results and derive the successful-model ranking."""
+    benchmark_data: Dict[str, Any] = {
+        "timestamp": timestamp,
+        "config": {
+            "models": models,
+            "prompt": prompt,
+            "runs": runs,
+            "delay_seconds": delay_seconds,
+            "privacy_mode": not include_prompts_in_logs,
+        },
+        "results": {
+            model_id: _serialize_benchmark_result(result, include_prompts_in_logs)
+            for model_id, result in results.items()
+        },
+    }
+
+    successful_results = {key: value for key, value in results.items() if value.success}
+    if successful_results:
+        analyzer = ModelPerformanceAnalyzer()
+        ranking = analyzer.rank_models(list(successful_results.values()))
+        benchmark_data["ranking"] = _serialize_benchmark_ranking(ranking)
+
+    return benchmark_data, successful_results
+
+
 def _serialize_category_benchmark_result(
     model_id: str,
     result: EnhancedBenchmarkResult,
@@ -511,29 +546,15 @@ async def benchmark_models(
             )
         )
 
-        # 결과를 딕셔너리로 변환
-        benchmark_data: Dict[str, Any] = {
-            "timestamp": datetime.now().isoformat(),
-            "config": {
-                "models": models,
-                "prompt": prompt,
-                "runs": runs,
-                "delay_seconds": delay_seconds,
-                "privacy_mode": not include_prompts_in_logs,
-            },
-            "results": {
-                model_id: _serialize_benchmark_result(result, include_prompts_in_logs)
-                for model_id, result in results.items()
-            },
-        }
-
-        # 성능 랭킹 계산
-        successful_results = {k: v for k, v in results.items() if v.success}
-        if successful_results:
-            analyzer = ModelPerformanceAnalyzer()
-            ranking = analyzer.rank_models(list(successful_results.values()))
-
-            benchmark_data["ranking"] = _serialize_benchmark_ranking(ranking)
+        benchmark_data, successful_results = _build_benchmark_data(
+            results,
+            timestamp=datetime.now().isoformat(),
+            models=models,
+            prompt=prompt,
+            runs=runs,
+            delay_seconds=delay_seconds,
+            include_prompts_in_logs=include_prompts_in_logs,
+        )
 
         # 결과 저장
         if save_results:
