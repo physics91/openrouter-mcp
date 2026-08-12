@@ -763,11 +763,6 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         results: List[SubTaskResult] = []
         completed_tasks: set[str] = set()
 
-        # Build dependency graph
-        dependency_map = {}
-        for sub_task in ensemble_task.sub_tasks:
-            dependency_map[sub_task.sub_task_id] = sub_task.dependencies
-
         # Execute tasks in dependency order
         while len(completed_tasks) < len(ensemble_task.sub_tasks):
             ready_tasks = []
