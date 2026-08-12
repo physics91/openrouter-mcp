@@ -279,7 +279,7 @@ class TaskDecomposer:
         if has_deadline and content_length > 1000:
             # Prefer parallel for time-critical complex tasks
             return DecompositionStrategy.PARALLEL
-        elif content_length > 2000:
+        if content_length > 2000:
             # Use hierarchical for very complex tasks
             return DecompositionStrategy.HIERARCHICAL
 
@@ -430,15 +430,13 @@ class TaskDecomposer:
 
         if "analyze" in phase_lower or "understand" in phase_lower:
             return [ModelCapability.REASONING, ModelCapability.ACCURACY]
-        elif "implement" in phase_lower or "generate" in phase_lower:
+        if "implement" in phase_lower or "generate" in phase_lower:
             if task_type == TaskType.CODE_GENERATION:
                 return [ModelCapability.CODE]
-            else:
-                return [ModelCapability.CREATIVITY]
-        elif "test" in phase_lower or "validate" in phase_lower:
+            return [ModelCapability.CREATIVITY]
+        if "test" in phase_lower or "validate" in phase_lower:
             return [ModelCapability.ACCURACY, ModelCapability.REASONING]
-        else:
-            return [ModelCapability.REASONING]
+        return [ModelCapability.REASONING]
 
     def _get_aspect_capabilities(
         self, aspect: str, task_type: TaskType
@@ -448,10 +446,9 @@ class TaskDecomposer:
 
         if "data" in aspect_lower or "statistical" in aspect_lower:
             return [ModelCapability.ACCURACY, ModelCapability.MATH]
-        elif "trend" in aspect_lower or "visualization" in aspect_lower:
+        if "trend" in aspect_lower or "visualization" in aspect_lower:
             return [ModelCapability.REASONING, ModelCapability.CREATIVITY]
-        else:
-            return [ModelCapability.REASONING, ModelCapability.ACCURACY]
+        return [ModelCapability.REASONING, ModelCapability.ACCURACY]
 
     def _get_category_capabilities(
         self, category: str, task_type: TaskType
@@ -461,10 +458,10 @@ class TaskDecomposer:
 
         if "concept" in category_lower or "planning" in category_lower:
             return [ModelCapability.CREATIVITY, ModelCapability.REASONING]
-        elif "creation" in category_lower or "execution" in category_lower:
+        if "creation" in category_lower or "execution" in category_lower:
             return [ModelCapability.CREATIVITY]
-        else:  # review, refinement
-            return [ModelCapability.ACCURACY, ModelCapability.REASONING]
+        # review, refinement
+        return [ModelCapability.ACCURACY, ModelCapability.REASONING]
 
     def _get_subcategory_capabilities(
         self, subcategory: str, task_type: TaskType
@@ -474,10 +471,9 @@ class TaskDecomposer:
 
         if "brainstorm" in subcategory_lower or "draft" in subcategory_lower:
             return [ModelCapability.CREATIVITY]
-        elif "evaluation" in subcategory_lower or "quality" in subcategory_lower:
+        if "evaluation" in subcategory_lower or "quality" in subcategory_lower:
             return [ModelCapability.ACCURACY, ModelCapability.REASONING]
-        else:
-            return [ModelCapability.REASONING]
+        return [ModelCapability.REASONING]
 
 
 class ModelAssigner:
