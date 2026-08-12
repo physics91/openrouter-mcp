@@ -19,6 +19,12 @@ from ..utils.pricing import estimate_cost_from_usage, normalize_pricing
 logger = logging.getLogger(f"{__package__}.collective_intelligence")
 
 
+def _first_response_choice(response: Dict[str, Any]) -> tuple[bool, Any]:
+    """Return whether a response has choices and its first unmodified item."""
+    choices = response.get("choices") or []
+    return (True, choices[0]) if choices else (False, None)
+
+
 class OpenRouterModelProvider:
     """OpenRouter implementation of ModelProvider protocol."""
 
@@ -81,9 +87,10 @@ class OpenRouterModelProvider:
             processing_time = (datetime.now() - start_time).total_seconds()
 
             # Extract response content
+            has_choice, first_choice = _first_response_choice(response)
             content = ""
-            if response.get("choices") and len(response["choices"]) > 0:
-                content = response["choices"][0]["message"]["content"]
+            if has_choice:
+                content = first_choice["message"]["content"]
 
             # Calculate confidence (simplified heuristic)
             confidence = self._calculate_confidence(response, content)
@@ -164,7 +171,8 @@ class OpenRouterModelProvider:
             base_confidence -= 0.2
 
         # Adjust based on finish reason
-        finish_reason = response.get("choices", [{}])[0].get("finish_reason")
+        has_choice, first_choice = _first_response_choice(response)
+        finish_reason = first_choice.get("finish_reason") if has_choice else None
         if finish_reason == "stop":
             base_confidence += 0.1
         elif finish_reason == "length":
