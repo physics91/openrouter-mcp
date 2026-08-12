@@ -380,8 +380,7 @@ class BiasDetectionValidator(SpecializedValidator):
                 bias_check_task, validator_model_id
             )
 
-            issues = self._parse_bias_result(validation_result, validator_model_id)
-            return issues
+            return self._parse_bias_result(validation_result, validator_model_id)
 
         except Exception as e:
             logger.warning(
