@@ -6,6 +6,7 @@ requests and responses.
 """
 
 import logging
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,6 +29,77 @@ def api_key():
 
 class TestClientLoggingSecurity:
     """Test client logging security with real sanitization."""
+
+    @pytest.mark.parametrize(
+        "response_data",
+        [
+            {"choices": []},
+            {"choices": [], "data": [{"id": "model"}]},
+        ],
+    )
+    def test_log_response_data_sanitizes_when_choices_key_exists(
+        self, api_key, mock_logger, response_data
+    ):
+        client = OpenRouterClient(
+            api_key=api_key,
+            logger=mock_logger,
+            enable_verbose_logging=False,
+        )
+        original_response = deepcopy(response_data)
+        sanitized = {"choices": "sanitized"}
+
+        with patch(
+            "src.openrouter_mcp.client.openrouter.SensitiveDataSanitizer.sanitize_response",
+            return_value=sanitized,
+        ) as sanitize:
+            client._log_response_data(response_data)
+
+        sanitize.assert_called_once_with(response_data, enable_verbose=False)
+        assert sanitize.call_args.args[0] is response_data
+        mock_logger.debug.assert_called_once_with(f"Response data: {sanitized}")
+        assert response_data == original_response
+
+    @pytest.mark.parametrize(
+        "response_data",
+        [
+            {"data": [], "second": 2},
+            {"first": 1, "second": 2},
+        ],
+    )
+    def test_log_response_data_logs_ordered_keys_without_choices(
+        self, api_key, mock_logger, response_data
+    ):
+        client = OpenRouterClient(api_key=api_key, logger=mock_logger)
+
+        with patch(
+            "src.openrouter_mcp.client.openrouter.SensitiveDataSanitizer.sanitize_response"
+        ) as sanitize:
+            client._log_response_data(response_data)
+
+        sanitize.assert_not_called()
+        mock_logger.debug.assert_called_once_with(
+            f"Response data keys: {list(response_data.keys())}"
+        )
+
+    def test_log_response_data_propagates_sanitizer_error_before_debug(
+        self, api_key, mock_logger
+    ):
+        client = OpenRouterClient(api_key=api_key, logger=mock_logger)
+        response_data = {"choices": [{"message": {"content": "secret"}}]}
+        original_response = deepcopy(response_data)
+        error = RuntimeError("sanitizer failed")
+
+        with patch(
+            "src.openrouter_mcp.client.openrouter.SensitiveDataSanitizer.sanitize_response",
+            side_effect=error,
+        ) as sanitize:
+            with pytest.raises(RuntimeError) as raised:
+                client._log_response_data(response_data)
+
+        assert raised.value is error
+        assert sanitize.call_args.args[0] is response_data
+        mock_logger.debug.assert_not_called()
+        assert response_data == original_response
 
     @pytest.mark.asyncio
     async def test_api_key_not_logged_in_headers(self, api_key, mock_logger):

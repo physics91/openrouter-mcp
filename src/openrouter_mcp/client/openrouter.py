@@ -308,6 +308,19 @@ class OpenRouterClient:
             return None
         return f"{endpoint}:{serialized}"
 
+    def _log_response_data(self, response_data: Dict[str, Any]) -> None:
+        """Log response metadata while sanitizing completion content."""
+        if "choices" in response_data or "data" in response_data:
+            if "choices" in response_data:
+                sanitized_response = SensitiveDataSanitizer.sanitize_response(
+                    response_data, enable_verbose=self.enable_verbose_logging
+                )
+                self.logger.debug(f"Response data: {sanitized_response}")
+            else:
+                self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+        else:
+            self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+
     async def _make_request(
         self,
         method: str,
@@ -345,19 +358,7 @@ class OpenRouterClient:
             if not isinstance(response_data, dict):
                 raise OpenRouterError(f"Unexpected response type: {type(response_data).__name__}")
 
-            # Sanitize response for logging
-            if "choices" in response_data or "data" in response_data:
-                # This looks like a completion or model list response
-                if "choices" in response_data:
-                    sanitized_response = SensitiveDataSanitizer.sanitize_response(
-                        response_data, enable_verbose=self.enable_verbose_logging
-                    )
-                    self.logger.debug(f"Response data: {sanitized_response}")
-                else:
-                    # For non-completion responses (like model lists), log keys only
-                    self.logger.debug(f"Response data keys: {list(response_data.keys())}")
-            else:
-                self.logger.debug(f"Response data keys: {list(response_data.keys())}")
+            self._log_response_data(response_data)
 
             return response_data
 
