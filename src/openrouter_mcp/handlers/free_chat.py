@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -113,11 +113,11 @@ reset_router = reset_handler_state
 class FreeChatRequest(BaseModel):
     """Request for free chat completion."""
 
-    message: Union[str, List[Dict[str, Any]]] = Field(
+    message: Union[str, list[dict[str, Any]]] = Field(
         ..., description="User message (string or multimodal content parts)"
     )
     system_prompt: str = Field("", description="System prompt (optional)")
-    conversation_history: List[Dict[str, Any]] = Field(
+    conversation_history: list[dict[str, Any]] = Field(
         default_factory=list, description="Previous conversation messages"
     )
     max_tokens: int = Field(
@@ -126,7 +126,7 @@ class FreeChatRequest(BaseModel):
     temperature: float = Field(
         ModelDefaults.TEMPERATURE, description="Sampling temperature"
     )
-    preferred_models: List[str] = Field(
+    preferred_models: list[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
     )
     stream: bool = Field(
@@ -134,8 +134,8 @@ class FreeChatRequest(BaseModel):
     )
 
 
-def _build_free_chat_messages(request: FreeChatRequest) -> List[Dict[str, Any]]:
-    messages: List[Dict[str, Any]] = []
+def _build_free_chat_messages(request: FreeChatRequest) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
     if request.system_prompt:
         messages.append({"role": "system", "content": request.system_prompt})
     messages.extend(request.conversation_history)
@@ -144,7 +144,7 @@ def _build_free_chat_messages(request: FreeChatRequest) -> List[Dict[str, Any]]:
 
 
 def _extract_text_for_classification(
-    message: Union[str, List[Dict[str, Any]]],
+    message: Union[str, list[dict[str, Any]]],
 ) -> str:
     """Extract text content from a message for classifier input."""
     if isinstance(message, str):
@@ -157,8 +157,8 @@ def _extract_text_for_classification(
 
 
 def _infer_required_capabilities(
-    messages: List[Dict[str, Any]],
-) -> Optional[Dict[str, bool]]:
+    messages: list[dict[str, Any]],
+) -> Optional[dict[str, bool]]:
     """Infer required model capabilities from message content."""
     for msg in messages:
         content = msg.get("content")
@@ -169,7 +169,7 @@ def _infer_required_capabilities(
     return None
 
 
-def _normalize_chat_response(response: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_chat_response(response: dict[str, Any]) -> dict[str, Any]:
     """Normalize a non-streaming chat response for the free-chat contract."""
     content = ""
     choices = response.get("choices") or []
@@ -183,10 +183,10 @@ def _normalize_chat_response(response: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _aggregate_stream_chunks(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _aggregate_stream_chunks(chunks: list[dict[str, Any]]) -> dict[str, Any]:
     """Fold buffered stream chunks into the free-chat response contract."""
-    parts: List[str] = []
-    usage: Dict[str, Any] = {}
+    parts: list[str] = []
+    usage: dict[str, Any] = {}
     for chunk in chunks:
         choices = chunk.get("choices") or []
         if choices:
@@ -209,12 +209,12 @@ def _aggregate_stream_chunks(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
 async def _execute_chat(
     client: Any,
     model_id: str,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     temperature: float,
     max_tokens: int,
     stream: bool,
-    fallback_models: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    fallback_models: Optional[list[str]] = None,
+) -> dict[str, Any]:
     """Execute a chat completion (streaming or non-streaming) and return unified result.
 
     When *fallback_models* is provided (non-streaming only), OpenRouter's native
@@ -231,7 +231,7 @@ async def _execute_chat(
     effective_messages = compaction.messages
 
     if not stream:
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         if fallback_models:
             kwargs["models"] = fallback_models
         response = await client.chat_completion(
@@ -276,10 +276,10 @@ async def _try_native_fallback(
     client: Any,
     metrics: MetricsCollector,
     task_type: FreeTaskType,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     request: "FreeChatRequest",
-    required_caps: Optional[Dict[str, bool]],
-) -> Optional[Dict[str, Any]]:
+    required_caps: Optional[dict[str, bool]],
+) -> Optional[dict[str, Any]]:
     """Attempt OpenRouter native fallback with ``models`` array.
 
     Returns the result dict on success, or ``None`` to fall through to the
@@ -344,11 +344,11 @@ async def _try_native_fallback(
 async def _build_result(
     client: Any,
     model_id: str,
-    exec_result: Dict[str, Any],
+    exec_result: dict[str, Any],
     task_type: FreeTaskType,
     metrics: MetricsCollector,
     elapsed_ms: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Record metrics and build the final response dictionary."""
     actual_model = exec_result.get("actual_model") or model_id
     usage = exec_result["usage"]
@@ -369,7 +369,7 @@ async def _build_result(
 
 
 @mcp.tool()
-async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
+async def free_chat(request: FreeChatRequest) -> dict[str, Any]:
     """
     Chat using free OpenRouter models with automatic model selection.
 
@@ -474,7 +474,7 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def list_free_models() -> Dict[str, Any]:
+async def list_free_models() -> dict[str, Any]:
     """List all available free models with quality scores and availability status."""
     router = await _get_router()
     models_info = await router.list_models_with_status()
@@ -489,7 +489,7 @@ def _serialize_free_model_metrics(
     metrics: MetricsCollector,
     model_id: str,
     model_metrics: ModelMetrics,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Serialize one model's metrics for the MCP response."""
     return {
         "total_requests": model_metrics.total_requests,
@@ -504,12 +504,12 @@ def _serialize_free_model_metrics(
 
 
 @mcp.tool()
-async def get_free_model_metrics() -> Dict[str, Any]:
+async def get_free_model_metrics() -> dict[str, Any]:
     """View performance metrics for free models (response time, success rate, throughput)."""
     metrics = _get_metrics()
     all_metrics = metrics.get_all_metrics()
 
-    models: Dict[str, Any] = {}
+    models: dict[str, Any] = {}
     for model_id, model_metrics in all_metrics.items():
         models[model_id] = _serialize_free_model_metrics(
             metrics,
