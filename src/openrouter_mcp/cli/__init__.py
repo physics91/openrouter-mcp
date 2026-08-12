@@ -21,17 +21,14 @@ from .mcp_manager import (
 )
 
 __all__ = [
-    # Manager classes
-    "MCPManager",
-    "MCPServerConfig",
-    # Exceptions
-    "MCPServerNotFoundError",
-    "MCPServerAlreadyExistsError",
     "MCPConfigError",
-    # CLI commands
+    "MCPManager",
+    "MCPServerAlreadyExistsError",
+    "MCPServerConfig",
+    "MCPServerNotFoundError",
     "add_mcp_server",
-    "remove_mcp_server",
-    "list_mcp_servers",
-    "get_mcp_server_status",
     "configure_mcp_server",
+    "get_mcp_server_status",
+    "list_mcp_servers",
+    "remove_mcp_server",
 ]
