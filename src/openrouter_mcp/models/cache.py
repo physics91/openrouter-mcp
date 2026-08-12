@@ -21,6 +21,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 import portalocker
 
 from ..config.constants import APIConfig, CacheConfig, EnvVars
+from ..utils.async_utils import await_cleanup_future
 from ..utils.env import get_env_value
 from ..utils.http import build_openrouter_headers
 
@@ -195,7 +196,12 @@ class ModelCache:
         self._inflight_refresh: Optional[asyncio.Task[List[Dict[str, Any]]]] = None
 
         # Thread pool executor for blocking I/O operations
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="cache-io")
+        self._executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="cache-io"
+        )
+        self._shutdown_started = False
+        self._shutdown_complete = threading.Event()
+        self._shutdown_failure: Optional[BaseException] = None
 
         # Lazy initialization of HTTP transport (created on first API call)
         self._transport: Optional[HTTPTransport] = None
@@ -926,6 +932,142 @@ class ModelCache:
             self._memory_cache = []
             self._last_update = None
 
+    def _claim_shutdown(self) -> bool:
+        """Return whether this caller owns cache resource cleanup."""
+        with self._cache_lock:
+            if self._shutdown_started:
+                return False
+            self._shutdown_started = True
+            return True
+
+    def _complete_shutdown(self, failure: Optional[BaseException]) -> None:
+        with self._cache_lock:
+            self._shutdown_failure = failure
+            self._shutdown_complete.set()
+
+    async def _wait_for_shutdown(self) -> None:
+        wait_task = asyncio.create_task(asyncio.to_thread(self._shutdown_complete.wait))
+        await await_cleanup_future(wait_task)
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure
+
+    @staticmethod
+    async def _cancel_and_reap_refresh(
+        refresh_task: "asyncio.Future[List[Dict[str, Any]]]",
+    ) -> None:
+        if not refresh_task.done():
+            refresh_task.cancel()
+        await asyncio.gather(refresh_task, return_exceptions=True)
+
+    async def _cancel_inflight_refresh(self) -> None:
+        refresh_task = self._inflight_refresh
+        if refresh_task is None:
+            return
+
+        try:
+            owner_loop = refresh_task.get_loop()
+            if owner_loop is asyncio.get_running_loop():
+                reap_task = asyncio.create_task(
+                    self._cancel_and_reap_refresh(refresh_task)
+                )
+                await await_cleanup_future(reap_task)
+            elif owner_loop.is_running():
+                owner_cleanup = self._cancel_and_reap_refresh(refresh_task)
+                try:
+                    concurrent_cleanup = asyncio.run_coroutine_threadsafe(
+                        owner_cleanup, owner_loop
+                    )
+                except BaseException:
+                    owner_cleanup.close()
+                    raise
+                await await_cleanup_future(asyncio.wrap_future(concurrent_cleanup))
+            elif refresh_task.done():
+                try:
+                    refresh_task.result()
+                except BaseException:
+                    pass
+            elif not owner_loop.is_closed():
+                owner_loop.call_soon_threadsafe(refresh_task.cancel)
+                raise RuntimeError(
+                    "Cache refresh owner event loop is not running; cancellation was queued"
+                )
+            else:
+                raise RuntimeError(
+                    "Cannot cancel cache refresh because its owner event loop is closed"
+                )
+        finally:
+            if refresh_task.done() and self._inflight_refresh is refresh_task:
+                self._inflight_refresh = None
+
+    async def _shutdown_executor_async(self) -> None:
+        shutdown_task = asyncio.create_task(
+            asyncio.to_thread(self._executor.shutdown, wait=True)
+        )
+        await await_cleanup_future(shutdown_task)
+        logger.info("ModelCache executor shut down")
+
+    async def _close_transport_async(self) -> None:
+        transport = self._transport
+        if transport is None:
+            return
+
+        transport_task = asyncio.create_task(transport.aclose())
+        await await_cleanup_future(transport_task)
+        if self._transport is transport:
+            self._transport = None
+
+    async def aclose(self) -> None:
+        """Cancel cache work and asynchronously release owned resources."""
+        if not self._claim_shutdown():
+            await self._wait_for_shutdown()
+            return
+
+        first_failure: Optional[BaseException] = None
+        cleanup_steps = (
+            self._cancel_inflight_refresh,
+            self._shutdown_executor_async,
+            self._close_transport_async,
+        )
+        for cleanup_step in cleanup_steps:
+            try:
+                await cleanup_step()
+            except BaseException as exc:
+                if first_failure is None:
+                    first_failure = exc
+
+        self._complete_shutdown(first_failure)
+        if first_failure is not None:
+            raise first_failure
+
+    def _wait_for_sync_shutdown(self) -> None:
+        if not self._shutdown_complete.is_set():
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError(
+                    "Cache shutdown is already running; use await cache.aclose() "
+                    "instead of blocking the event loop"
+                )
+
+        self._shutdown_complete.wait()
+        if self._shutdown_failure is not None:
+            raise self._shutdown_failure
+
+    def _shutdown_executor_sync(self) -> None:
+        self._executor.shutdown(wait=True)
+        logger.info("ModelCache executor shut down")
+
+    def _close_transport_sync(self) -> None:
+        transport = self._transport
+        if transport is None:
+            return
+
+        transport.close()
+        if self._transport is transport:
+            self._transport = None
+
     def shutdown(self) -> None:
         """
         Shutdown the cache and clean up resources.
@@ -933,12 +1075,25 @@ class ModelCache:
         This method should be called when the cache is no longer needed to
         ensure proper cleanup of the thread pool executor.
         """
-        if hasattr(self, "_executor"):
-            self._executor.shutdown(wait=True)
-            logger.info("ModelCache executor shut down")
+        if not self._claim_shutdown():
+            self._wait_for_sync_shutdown()
+            return
 
-        if hasattr(self, "_transport") and self._transport is not None:
-            self._transport.close()
+        first_failure: Optional[BaseException] = None
+        cleanup_steps = (
+            self._shutdown_executor_sync,
+            self._close_transport_sync,
+        )
+        for cleanup_step in cleanup_steps:
+            try:
+                cleanup_step()
+            except BaseException as exc:
+                if first_failure is None:
+                    first_failure = exc
+
+        self._complete_shutdown(first_failure)
+        if first_failure is not None:
+            raise first_failure
 
 
 # Client access moved to _fetch_models_from_api to avoid circular imports

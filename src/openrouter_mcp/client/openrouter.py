@@ -836,7 +836,11 @@ class OpenRouterClient:
 
     async def close(self) -> None:
         """Close the HTTP client."""
-        await self._client.aclose()
+        try:
+            if self._model_cache is not None:
+                await self._model_cache.aclose()
+        finally:
+            await self._client.aclose()
 
     def get_cache_info(self) -> Optional[Dict[str, Any]]:
         """Get information about the model cache.

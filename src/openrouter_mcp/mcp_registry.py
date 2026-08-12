@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 from fastmcp import FastMCP
 
 from .config.constants import APIConfig, CacheConfig, EnvVars
+from .utils.async_utils import await_cleanup_future
 from .utils.env import get_env_value, get_required_env
 
 if TYPE_CHECKING:
@@ -47,6 +48,10 @@ _client_instance: Optional["OpenRouterClient"] = None
 _client_lock: Optional[asyncio.Lock] = None
 _client_initialized = False
 _client_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+class StaleClientCleanupDeferred(RuntimeError):
+    """Raised when stale resources still require their stopped owner loop."""
 
 
 def _get_client_lock() -> asyncio.Lock:
@@ -92,15 +97,35 @@ async def _cleanup_stale_shared_client(
     *,
     loop_closed: bool,
     client_closed: bool,
+    owner_loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
     """Clean up a stale shared client when its owning resources are usable."""
     try:
         if not loop_closed and not client_closed:
-            await client.__aexit__(None, None, None)
+            current_loop = asyncio.get_running_loop()
+            if owner_loop is None or owner_loop is current_loop:
+                await client.__aexit__(None, None, None)
+            elif owner_loop.is_running():
+                owner_cleanup = client.__aexit__(None, None, None)
+                try:
+                    concurrent_cleanup = asyncio.run_coroutine_threadsafe(
+                        owner_cleanup, owner_loop
+                    )
+                except BaseException:
+                    owner_cleanup.close()
+                    raise
+                await await_cleanup_future(asyncio.wrap_future(concurrent_cleanup))
+            else:
+                raise StaleClientCleanupDeferred(
+                    "Cannot reinitialize the shared client while its owner event "
+                    "loop is stopped; resume or close that loop and retry"
+                )
         else:
             logger.info(
                 "Skipping shared client cleanup during reinitialization because the client or owning loop is already closed"
             )
+    except StaleClientCleanupDeferred:
+        raise
     except Exception as e:
         logger.error(f"Error during client reinitialization cleanup: {e}")
 
@@ -193,14 +218,20 @@ async def get_shared_client() -> "OpenRouterClient":
             logger.info(
                 "Reinitializing shared OpenRouterClient due to loop or key change"
             )
+            preserve_stale_state = False
             try:
                 await _cleanup_stale_shared_client(
                     _client_instance,
                     loop_closed=loop_closed,
                     client_closed=client_closed,
+                    owner_loop=_client_loop,
                 )
+            except StaleClientCleanupDeferred:
+                preserve_stale_state = True
+                raise
             finally:
-                _reset_shared_client_state()
+                if not preserve_stale_state:
+                    _reset_shared_client_state()
 
         return await _initialize_shared_client(current_loop, env_key)
 

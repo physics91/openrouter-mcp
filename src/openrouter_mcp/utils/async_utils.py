@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from typing import Any, AsyncIterable, List, TypeVar
 
@@ -23,4 +24,30 @@ async def collect_async_iterable(iterable: AsyncIterable[T]) -> List[T]:
     return items
 
 
-__all__ = ["maybe_await", "collect_async_iterable"]
+async def await_cleanup_future(future: "asyncio.Future[T]") -> T:
+    """Finish and reap cleanup work before preserving its first interruption."""
+    first_failure: BaseException | None = None
+
+    while not future.done():
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as exc:
+            if first_failure is None:
+                first_failure = exc
+        except BaseException as exc:
+            if first_failure is None:
+                first_failure = exc
+            break
+
+    try:
+        result = future.result()
+    except BaseException as exc:
+        if first_failure is None:
+            first_failure = exc
+
+    if first_failure is not None:
+        raise first_failure
+    return result
+
+
+__all__ = ["await_cleanup_future", "collect_async_iterable", "maybe_await"]
