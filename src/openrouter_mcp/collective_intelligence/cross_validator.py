@@ -158,6 +158,23 @@ class ValidationReport:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
+def _copy_validation_report_with_strategy(
+    report: ValidationReport,
+    strategy: ValidationStrategy,
+) -> ValidationReport:
+    return ValidationReport(
+        original_result=report.original_result,
+        task_context=report.task_context,
+        validation_strategy=strategy,
+        validator_models=report.validator_models,
+        issues=report.issues,
+        overall_score=report.overall_score,
+        criteria_scores=report.criteria_scores,
+        consensus_level=report.consensus_level,
+        recommendations=report.recommendations,
+    )
+
+
 class SpecializedValidator:
     """Base class for specialized validation components."""
 
@@ -1027,16 +1044,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         # Similar to peer review but with more focus on quality metrics
         # Get the peer review result and override the strategy
         report = await self._peer_review_validation(result, task_context, validator_models)
-        return ValidationReport(
-            original_result=report.original_result,
-            task_context=report.task_context,
-            validation_strategy=ValidationStrategy.QUALITY_ASSURANCE,
-            validator_models=report.validator_models,
-            issues=report.issues,
-            overall_score=report.overall_score,
-            criteria_scores=report.criteria_scores,
-            consensus_level=report.consensus_level,
-            recommendations=report.recommendations,
+        return _copy_validation_report_with_strategy(
+            report,
+            ValidationStrategy.QUALITY_ASSURANCE,
         )
 
     async def _bias_detection_validation(
@@ -1077,16 +1087,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         else:
             # Fallback to peer review with overridden strategy
             report = await self._peer_review_validation(result, task_context, validator_models)
-            return ValidationReport(
-                original_result=report.original_result,
-                task_context=report.task_context,
-                validation_strategy=ValidationStrategy.BIAS_DETECTION,
-                validator_models=report.validator_models,
-                issues=report.issues,
-                overall_score=report.overall_score,
-                criteria_scores=report.criteria_scores,
-                consensus_level=report.consensus_level,
-                recommendations=report.recommendations,
+            return _copy_validation_report_with_strategy(
+                report,
+                ValidationStrategy.BIAS_DETECTION,
             )
 
     def _calculate_criteria_score(self, criteria_issues: List[ValidationIssue]) -> float:
