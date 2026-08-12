@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Optional
 
 from .metrics import record_deferred_requests
 from .policy import get_runtime_thrift_policy
@@ -33,14 +34,14 @@ class DeferredBatchRequest:
     custom_id: str
     endpoint: str
     model_id: str
-    body: Dict[str, Any]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    body: dict[str, Any]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def provider(self) -> str:
         return _infer_provider(self.model_id)
 
-    def to_jsonl_record(self) -> Dict[str, Any]:
+    def to_jsonl_record(self) -> dict[str, Any]:
         return {
             "custom_id": self.custom_id,
             "method": "POST",
@@ -58,11 +59,11 @@ class DeferredBatchExport:
     manifest_path: Path
     total_requests: int
     group_count: int
-    groups: List[Dict[str, Any]]
+    groups: list[dict[str, Any]]
     sla_window_hours: int
     target_spend_usd: Optional[float]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "batch_dir": str(self.batch_dir),
             "manifest_path": str(self.manifest_path),
@@ -76,14 +77,14 @@ class DeferredBatchExport:
 
 def _write_grouped_request_files(
     batch_dir: Path,
-    requests: List[DeferredBatchRequest],
-) -> List[Dict[str, Any]]:
+    requests: list[DeferredBatchRequest],
+) -> list[dict[str, Any]]:
     """Write provider/model grouped JSONL files and describe each group."""
-    grouped: Dict[tuple[str, str], List[DeferredBatchRequest]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[DeferredBatchRequest]] = defaultdict(list)
     for request in requests:
         grouped[(request.provider, request.model_id)].append(request)
 
-    groups_payload: List[Dict[str, Any]] = []
+    groups_payload: list[dict[str, Any]] = []
     for (provider, model_id), group_requests in sorted(grouped.items()):
         file_name = f"{_slugify(provider)}__{_slugify(model_id)}.jsonl"
         output_path = batch_dir / file_name
@@ -117,7 +118,7 @@ class DeferredBatchLane:
         *,
         sla_window_hours: int = 24,
         target_spend_usd: Optional[float] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> DeferredBatchExport:
         if not get_runtime_thrift_policy().enable_deferred_batch_lane:
             raise ValueError("deferred batch lane is disabled by runtime thrift policy")
