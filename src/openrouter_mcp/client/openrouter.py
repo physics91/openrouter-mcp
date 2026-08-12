@@ -8,7 +8,13 @@ from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
 import httpx
 
 # Import centralized configuration constants
-from ..config.constants import APIConfig, CacheConfig, EnvVars, ModelDefaults, PricingDefaults
+from ..config.constants import (
+    APIConfig,
+    CacheConfig,
+    EnvVars,
+    ModelDefaults,
+    PricingDefaults,
+)
 
 # Import ModelCache for intelligent caching
 from ..models.cache import ModelCache
@@ -34,13 +40,9 @@ from ..utils.token_counter import count_message_tokens, get_token_counter
 class OpenRouterError(Exception):
     """Base exception for OpenRouter API errors."""
 
-    pass
-
 
 class AuthenticationError(OpenRouterError):
     """Raised when API key is invalid or missing."""
-
-    pass
 
 
 class RateLimitError(OpenRouterError):
@@ -53,8 +55,6 @@ class RateLimitError(OpenRouterError):
 
 class InvalidRequestError(OpenRouterError):
     """Raised when request is invalid."""
-
-    pass
 
 
 _MAX_RETRY_AFTER = 3600.0
