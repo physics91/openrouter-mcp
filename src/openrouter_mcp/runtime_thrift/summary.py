@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ._coercion import _as_float, _as_int
 
@@ -13,7 +13,7 @@ def _calculate_cache_efficiency_rates(
     cache_write_prompt_tokens: int,
     cache_hit_requests: int,
     cache_write_requests: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Calculate derived cache rates from caller-normalized counters."""
     cache_hit_request_rate_pct = 0.0
     cache_write_request_rate_pct = 0.0
@@ -48,7 +48,7 @@ def _build_normalized_cache_bucket_summary(
     cache_hit_requests: int,
     cache_write_requests: int,
     saved_cost_usd: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build the shared cache summary envelope from normalized values."""
     rates = _calculate_cache_efficiency_rates(
         observed_requests,
@@ -69,7 +69,7 @@ def _build_normalized_cache_bucket_summary(
     }
 
 
-def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
+def _build_cache_bucket_summary(bucket: dict[str, Any]) -> dict[str, Any]:
     observed_requests = _as_int(bucket.get("observed_requests"))
     cached_prompt_tokens = _as_int(bucket.get("cached_prompt_tokens"))
     cache_write_prompt_tokens = _as_int(bucket.get("cache_write_prompt_tokens"))
@@ -88,8 +88,8 @@ def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _build_cache_efficiency_breakdown(
-    metrics: Dict[str, Any], key: str
-) -> Dict[str, Any]:
+    metrics: dict[str, Any], key: str
+) -> dict[str, Any]:
     raw_breakdown = metrics.get(key)
     if not isinstance(raw_breakdown, dict):
         return {}
@@ -111,7 +111,7 @@ def _build_cache_efficiency_breakdown(
     )
 
 
-def _build_cache_hotspot_reason(bucket: Dict[str, Any]) -> str:
+def _build_cache_hotspot_reason(bucket: dict[str, Any]) -> str:
     cache_hit_request_rate_pct = round(
         _as_float(bucket.get("cache_hit_request_rate_pct")),
         2,
@@ -150,11 +150,11 @@ def _build_cache_hotspot_reason(bucket: Dict[str, Any]) -> str:
 
 
 def _summarize_cache_hotspots(
-    breakdown: Dict[str, Any],
+    breakdown: dict[str, Any],
     *,
     key_name: str,
-) -> list[Dict[str, Any]]:
-    items: list[Dict[str, Any]] = []
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for bucket_key, bucket in breakdown.items():
         if not isinstance(bucket, dict):
             continue
@@ -191,9 +191,9 @@ def _summarize_cache_hotspots(
 
 
 def _build_cache_hotspots(
-    providers: Dict[str, Any],
-    models: Dict[str, Any],
-) -> Dict[str, Any]:
+    providers: dict[str, Any],
+    models: dict[str, Any],
+) -> dict[str, Any]:
 
     return {
         "providers": _summarize_cache_hotspots(providers, key_name="provider"),
@@ -201,7 +201,7 @@ def _build_cache_hotspots(
     }
 
 
-def _build_cache_deadspot_reason(bucket: Dict[str, Any]) -> str:
+def _build_cache_deadspot_reason(bucket: dict[str, Any]) -> str:
     cache_hit_requests = _as_int(bucket.get("cache_hit_requests"))
     cache_hit_request_rate_pct = round(
         _as_float(bucket.get("cache_hit_request_rate_pct")),
@@ -231,11 +231,11 @@ def _build_cache_deadspot_reason(bucket: Dict[str, Any]) -> str:
 
 
 def _summarize_cache_deadspots(
-    breakdown: Dict[str, Any],
+    breakdown: dict[str, Any],
     *,
     key_name: str,
-) -> list[Dict[str, Any]]:
-    items: list[Dict[str, Any]] = []
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     for bucket_key, bucket in breakdown.items():
         if not isinstance(bucket, dict):
             continue
@@ -293,9 +293,9 @@ def _summarize_cache_deadspots(
 
 
 def _build_cache_deadspots(
-    providers: Dict[str, Any],
-    models: Dict[str, Any],
-) -> Dict[str, Any]:
+    providers: dict[str, Any],
+    models: dict[str, Any],
+) -> dict[str, Any]:
 
     return {
         "providers": _summarize_cache_deadspots(providers, key_name="provider"),
@@ -311,7 +311,7 @@ def _build_cache_efficiency_summary(
     cache_write_prompt_tokens: int,
     cache_hit_requests: int,
     cache_write_requests: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     cache_hit_share_pct = 0.0
     if saved_prompt_tokens > 0:
         cache_hit_share_pct = round(
@@ -349,8 +349,8 @@ def _build_cache_efficiency_summary(
 
 
 def _build_cost_savings_summary(
-    stats: Dict[str, Any], thrift_metrics: Dict[str, Any]
-) -> Dict[str, float]:
+    stats: dict[str, Any], thrift_metrics: dict[str, Any]
+) -> dict[str, float]:
     """Calculate the cost-saving fields included in every thrift summary."""
     saved_cost_usd = round(_as_float(thrift_metrics.get("saved_cost_usd")), 8)
     total_cost_usd = _as_float(stats.get("total_cost"))
@@ -371,8 +371,8 @@ def _build_cost_savings_summary(
 
 
 def build_thrift_summary(
-    stats: Dict[str, Any], thrift_metrics: Dict[str, Any]
-) -> Dict[str, Any]:
+    stats: dict[str, Any], thrift_metrics: dict[str, Any]
+) -> dict[str, Any]:
     """Build a compact, human-readable thrift summary."""
     cost_savings = _build_cost_savings_summary(stats, thrift_metrics)
     request_count = _as_int(stats.get("requests"))
