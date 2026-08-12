@@ -170,6 +170,20 @@ def _infer_required_capabilities(
     return None
 
 
+def _normalize_chat_response(response: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a non-streaming chat response for the free-chat contract."""
+    content = ""
+    choices = response.get("choices") or []
+    if choices:
+        content = choices[0].get("message", {}).get("content", "")
+    return {
+        "content": content,
+        "usage": response.get("usage", {}),
+        "streamed": False,
+        "actual_model": response.get("model"),
+    }
+
+
 def _aggregate_stream_chunks(chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Fold buffered stream chunks into the free-chat response contract."""
     parts: List[str] = []
@@ -229,16 +243,7 @@ async def _execute_chat(
             stream=False,
             **kwargs,
         )
-        content = ""
-        choices = response.get("choices") or []
-        if choices:
-            content = choices[0].get("message", {}).get("content", "")
-        return {
-            "content": content,
-            "usage": response.get("usage", {}),
-            "streamed": False,
-            "actual_model": response.get("model"),
-        }
+        return _normalize_chat_response(response)
 
     # Streaming: buffer chunks then return complete result (no native fallback)
     chunks = await collect_async_iterable(

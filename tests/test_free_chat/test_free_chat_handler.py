@@ -1,3 +1,4 @@
+from copy import deepcopy
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,8 @@ from src.openrouter_mcp.free.quota import QuotaExceededError
 from src.openrouter_mcp.handlers.free_chat import (
     FreeChatRequest,
     _aggregate_stream_chunks,
+    _execute_chat,
+    _normalize_chat_response,
     free_chat,
 )
 from src.openrouter_mcp.runtime_thrift import (
@@ -116,6 +119,108 @@ def test_aggregate_stream_chunks_preserves_malformed_choices_error():
         _aggregate_stream_chunks([{"choices": {"unexpected": "choice"}}])
 
     assert raised.value.args == (0,)
+
+
+@pytest.mark.unit
+def test_normalize_chat_response_uses_first_choice_and_preserves_values():
+    usage = {"total_tokens": 3}
+    actual_model = "".join(["provider/", "actual-model"])
+    response = {
+        "choices": [
+            {"message": {"content": "first"}},
+            {"message": {"content": "ignored"}},
+        ],
+        "usage": usage,
+        "model": actual_model,
+    }
+    original_response = deepcopy(response)
+
+    result = _normalize_chat_response(response)
+
+    assert result == {
+        "content": "first",
+        "usage": usage,
+        "streamed": False,
+        "actual_model": actual_model,
+    }
+    assert result["usage"] is usage
+    assert result["actual_model"] is actual_model
+    assert response == original_response
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("choices", [None, [], ()])
+def test_normalize_chat_response_preserves_falsey_choices_and_none_usage(choices):
+    result = _normalize_chat_response(
+        {"choices": choices, "usage": None, "model": None}
+    )
+
+    assert result == {
+        "content": "",
+        "usage": None,
+        "streamed": False,
+        "actual_model": None,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"choices": [None]},
+        {"choices": [{"message": None}]},
+    ],
+)
+def test_normalize_chat_response_preserves_malformed_choice_errors(response):
+    with pytest.raises(AttributeError):
+        _normalize_chat_response(response)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_execute_chat_delegates_non_stream_response_normalization():
+    client = AsyncMock()
+    response = {"choices": []}
+    client.chat_completion.return_value = response
+    original_messages = [{"role": "user", "content": "original"}]
+    effective_messages = [{"role": "user", "content": "compacted"}]
+    compaction = MagicMock(messages=effective_messages)
+    normalized = {"normalized": True}
+
+    with patch(
+        "src.openrouter_mcp.handlers.free_chat.compact_messages_for_model",
+        new=AsyncMock(return_value=compaction),
+    ) as compact, patch(
+        "src.openrouter_mcp.handlers.free_chat._normalize_chat_response",
+        return_value=normalized,
+    ) as normalize:
+        result = await _execute_chat(
+            client,
+            "provider/model",
+            original_messages,
+            0.25,
+            17,
+            False,
+            fallback_models=["provider/model", "provider/fallback"],
+        )
+
+    assert result is normalized
+    compact.assert_awaited_once_with(
+        client,
+        "provider/model",
+        original_messages,
+        max_completion_tokens=17,
+    )
+    client.chat_completion.assert_awaited_once_with(
+        model="provider/model",
+        messages=effective_messages,
+        temperature=0.25,
+        max_tokens=17,
+        stream=False,
+        models=["provider/model", "provider/fallback"],
+    )
+    normalize.assert_called_once_with(response)
+    assert normalize.call_args.args[0] is response
 
 
 class TestFreeChatHandler:
