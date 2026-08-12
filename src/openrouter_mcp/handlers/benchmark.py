@@ -722,7 +722,7 @@ class BenchmarkHandler:
         self,
         model_ids: List[str],
         run_for_model: Callable[[str], Awaitable[Any]],
-        build_error_result: Callable[[str, BaseException], Any],
+        build_error_result: Callable[[str, Exception], Any],
         *,
         max_concurrent: Optional[int] = None,
     ) -> Dict[str, Any]:
@@ -738,12 +738,22 @@ class BenchmarkHandler:
             async with semaphore:
                 try:
                     return await run_for_model(model_id)
-                except BaseException as exc:
+                except Exception as exc:
                     logger.error(f"Benchmark execution error for {model_id}: {exc}")
                     return build_error_result(model_id, exc)
 
-        tasks = [asyncio.create_task(run_with_limit(model_id)) for model_id in model_ids]
-        results_list = await asyncio.gather(*tasks)
+        tasks = [
+            asyncio.create_task(run_with_limit(model_id)) for model_id in model_ids
+        ]
+        try:
+            results_list = await asyncio.gather(*tasks)
+        finally:
+            pending_tasks = [task for task in tasks if not task.done()]
+            for task in pending_tasks:
+                task.cancel()
+            if pending_tasks:
+                await asyncio.gather(*pending_tasks, return_exceptions=True)
+
         return {model_id: result for model_id, result in zip(model_ids, results_list)}
 
     async def benchmark_model(
