@@ -257,6 +257,21 @@ async def _execute_chat(
     return _aggregate_stream_chunks(chunks)
 
 
+def _record_rate_limit_failure(
+    router: FreeModelRouter,
+    metrics: MetricsCollector,
+    model_id: str,
+    error: RateLimitError,
+) -> None:
+    metrics.record_failure(model_id, "RateLimitError")
+    cooldown = (
+        error.retry_after
+        if error.retry_after is not None
+        else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
+    )
+    router.report_rate_limit(model_id, cooldown_seconds=cooldown)
+
+
 async def _try_native_fallback(
     router: FreeModelRouter,
     client: Any,
@@ -315,11 +330,7 @@ async def _try_native_fallback(
     except RateLimitError as e:
         # OpenRouter does not report which model in the array was rate-limited,
         # so we attribute the failure to the primary model.
-        metrics.record_failure(model_ids[0], "RateLimitError")
-        cooldown = (
-            e.retry_after if e.retry_after is not None else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
-        )
-        router.report_rate_limit(model_ids[0], cooldown_seconds=cooldown)
+        _record_rate_limit_failure(router, metrics, model_ids[0], e)
         return None
 
     except (AuthenticationError,):
@@ -448,13 +459,7 @@ async def free_chat(request: FreeChatRequest) -> Dict[str, Any]:
 
             except RateLimitError as e:
                 logger.warning(f"Rate limit hit for {model_id}, trying next model")
-                metrics.record_failure(model_id, "RateLimitError")
-                cooldown = (
-                    e.retry_after
-                    if e.retry_after is not None
-                    else FreeChatConfig.DEFAULT_COOLDOWN_SECONDS
-                )
-                router.report_rate_limit(model_id, cooldown_seconds=cooldown)
+                _record_rate_limit_failure(router, metrics, model_id, e)
                 last_error = e
                 continue
 
