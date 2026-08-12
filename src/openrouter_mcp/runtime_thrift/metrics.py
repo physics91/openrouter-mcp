@@ -212,6 +212,21 @@ def _parse_date(value: str | None) -> date | None:
     return date.fromisoformat(value)
 
 
+def _record_saved_token_totals_on_metrics(
+    metrics: ThriftMetrics,
+    prompt_tokens: int,
+    completion_tokens: int,
+    estimated_cost_usd: float | None = None,
+) -> None:
+    metrics.saved_prompt_tokens += prompt_tokens
+    metrics.saved_completion_tokens += completion_tokens
+    if estimated_cost_usd is None:
+        estimated_cost_usd = (
+            prompt_tokens + completion_tokens
+        ) * PricingDefaults.ESTIMATED_TOKEN_PRICE
+    metrics.saved_cost_usd += max(0.0, float(estimated_cost_usd))
+
+
 def _record_coalesced_savings_on_metrics(
     metrics: ThriftMetrics,
     prompt_tokens: int,
@@ -221,13 +236,12 @@ def _record_coalesced_savings_on_metrics(
     prompt_tokens = max(0, int(prompt_tokens))
     completion_tokens = max(0, int(completion_tokens))
     metrics.coalesced_requests += 1
-    metrics.saved_prompt_tokens += prompt_tokens
-    metrics.saved_completion_tokens += completion_tokens
-    if estimated_cost_usd is None:
-        estimated_cost_usd = (
-            prompt_tokens + completion_tokens
-        ) * PricingDefaults.ESTIMATED_TOKEN_PRICE
-    metrics.saved_cost_usd += max(0.0, float(estimated_cost_usd))
+    _record_saved_token_totals_on_metrics(
+        metrics,
+        prompt_tokens,
+        completion_tokens,
+        estimated_cost_usd,
+    )
 
 
 def _record_recent_reuse_savings_on_metrics(
@@ -241,13 +255,12 @@ def _record_recent_reuse_savings_on_metrics(
     metrics.recent_reuse_requests += 1
     metrics.recent_reuse_prompt_tokens += prompt_tokens
     metrics.recent_reuse_completion_tokens += completion_tokens
-    metrics.saved_prompt_tokens += prompt_tokens
-    metrics.saved_completion_tokens += completion_tokens
-    if estimated_cost_usd is None:
-        estimated_cost_usd = (
-            prompt_tokens + completion_tokens
-        ) * PricingDefaults.ESTIMATED_TOKEN_PRICE
-    metrics.saved_cost_usd += max(0.0, float(estimated_cost_usd))
+    _record_saved_token_totals_on_metrics(
+        metrics,
+        prompt_tokens,
+        completion_tokens,
+        estimated_cost_usd,
+    )
 
 
 def _record_compaction_savings_on_metrics(metrics: ThriftMetrics, tokens_saved: int) -> None:

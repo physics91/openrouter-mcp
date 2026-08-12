@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from src.openrouter_mcp.config.constants import PricingDefaults
 from src.openrouter_mcp.runtime_thrift import (
     ThriftMetricsCollector,
     get_thrift_metrics_snapshot,
@@ -13,12 +14,189 @@ from src.openrouter_mcp.runtime_thrift import (
     reset_thrift_metrics,
 )
 from src.openrouter_mcp.runtime_thrift.metrics import (
+    ThriftMetrics,
+    _record_coalesced_savings_on_metrics,
+    _record_recent_reuse_savings_on_metrics,
+    _record_saved_token_totals_on_metrics,
     get_request_thrift_metrics_snapshot,
     thrift_request_scope,
 )
 
 
+class _MutationTrackingMetrics:
+    def __init__(self):
+        object.__setattr__(self, "mutations", [])
+        object.__setattr__(self, "tracking", False)
+        for field_name in ThriftMetrics.__dataclass_fields__:
+            if field_name not in {
+                "cache_efficiency_by_provider",
+                "cache_efficiency_by_model",
+            }:
+                setattr(self, field_name, 0)
+        object.__setattr__(self, "tracking", True)
+
+    def __setattr__(self, name, value):
+        if self.tracking:
+            self.mutations.append(name)
+        object.__setattr__(self, name, value)
+
+
 class TestRuntimeThriftMetrics:
+    @pytest.mark.unit
+    def test_shared_saved_token_totals_use_default_cost_policy(self):
+        metrics = ThriftMetrics(
+            saved_prompt_tokens=10,
+            saved_completion_tokens=20,
+            saved_cost_usd=1.0,
+        )
+
+        _record_saved_token_totals_on_metrics(
+            metrics,
+            prompt_tokens=2,
+            completion_tokens=3,
+            estimated_cost_usd=None,
+        )
+
+        assert metrics.saved_prompt_tokens == 12
+        assert metrics.saved_completion_tokens == 23
+        assert metrics.saved_cost_usd == pytest.approx(
+            1.0 + (5 * PricingDefaults.ESTIMATED_TOKEN_PRICE)
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("record_savings", "expected_mutations"),
+        [
+            (
+                _record_coalesced_savings_on_metrics,
+                [
+                    "coalesced_requests",
+                    "saved_prompt_tokens",
+                    "saved_completion_tokens",
+                    "saved_cost_usd",
+                ],
+            ),
+            (
+                _record_recent_reuse_savings_on_metrics,
+                [
+                    "recent_reuse_requests",
+                    "recent_reuse_prompt_tokens",
+                    "recent_reuse_completion_tokens",
+                    "saved_prompt_tokens",
+                    "saved_completion_tokens",
+                    "saved_cost_usd",
+                ],
+            ),
+        ],
+    )
+    def test_savings_metrics_preserve_mutation_order(
+        self,
+        record_savings,
+        expected_mutations,
+    ):
+        metrics = _MutationTrackingMetrics()
+
+        record_savings(metrics, prompt_tokens=2, completion_tokens=3)
+
+        assert metrics.mutations == expected_mutations
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "record_savings",
+        [
+            _record_coalesced_savings_on_metrics,
+            _record_recent_reuse_savings_on_metrics,
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("prompt_tokens", "completion_tokens"),
+        [("invalid", 1), (1, "invalid")],
+    )
+    def test_savings_metrics_do_not_mutate_when_token_conversion_fails(
+        self,
+        record_savings,
+        prompt_tokens,
+        completion_tokens,
+    ):
+        metrics = ThriftMetrics()
+
+        with pytest.raises(ValueError):
+            record_savings(metrics, prompt_tokens, completion_tokens)
+
+        assert metrics == ThriftMetrics()
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("record_savings", "expected_metrics"),
+        [
+            (
+                _record_coalesced_savings_on_metrics,
+                ThriftMetrics(
+                    coalesced_requests=1,
+                    saved_prompt_tokens=2,
+                    saved_completion_tokens=3,
+                ),
+            ),
+            (
+                _record_recent_reuse_savings_on_metrics,
+                ThriftMetrics(
+                    recent_reuse_requests=1,
+                    recent_reuse_prompt_tokens=2,
+                    recent_reuse_completion_tokens=3,
+                    saved_prompt_tokens=2,
+                    saved_completion_tokens=3,
+                ),
+            ),
+        ],
+    )
+    def test_savings_metrics_keep_token_mutations_when_cost_conversion_fails(
+        self,
+        record_savings,
+        expected_metrics,
+    ):
+        metrics = ThriftMetrics()
+
+        with pytest.raises(ValueError):
+            record_savings(metrics, 2, 3, estimated_cost_usd="invalid")
+
+        assert metrics == expected_metrics
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("estimated_cost_usd", "expected_cost_usd"),
+        [
+            (0.0, 0.0),
+            (-1.0, 0.0),
+            (float("nan"), 0.0),
+            (float("inf"), float("inf")),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "record_savings",
+        [
+            _record_coalesced_savings_on_metrics,
+            _record_recent_reuse_savings_on_metrics,
+        ],
+    )
+    def test_savings_metrics_preserve_explicit_cost_semantics(
+        self,
+        record_savings,
+        estimated_cost_usd,
+        expected_cost_usd,
+    ):
+        metrics = ThriftMetrics()
+
+        record_savings(
+            metrics,
+            prompt_tokens=-2,
+            completion_tokens=3,
+            estimated_cost_usd=estimated_cost_usd,
+        )
+
+        assert metrics.saved_prompt_tokens == 0
+        assert metrics.saved_completion_tokens == 3
+        assert metrics.saved_cost_usd == expected_cost_usd
+
     @pytest.mark.unit
     def test_request_scope_tracks_local_metrics_without_resetting_global_totals(self):
         reset_thrift_metrics()
