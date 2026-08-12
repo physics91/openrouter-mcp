@@ -139,7 +139,9 @@ class MCPManager:
         """
         if config_path is None:
             system = platform.system()
-            config_path = self.DEFAULT_CONFIG_PATHS.get(system, self.DEFAULT_CONFIG_PATHS["Linux"])
+            config_path = self.DEFAULT_CONFIG_PATHS.get(
+                system, self.DEFAULT_CONFIG_PATHS["Linux"]
+            )
 
         self.config_path = Path(config_path)
         self.config = self._load_config()
@@ -161,7 +163,9 @@ class MCPManager:
             config: dict[str, Any] = loaded
 
             # Ensure mcpServers key exists
-            if "mcpServers" not in config or not isinstance(config.get("mcpServers"), dict):
+            if "mcpServers" not in config or not isinstance(
+                config.get("mcpServers"), dict
+            ):
                 config["mcpServers"] = {}
 
             return config
@@ -380,7 +384,9 @@ class MCPManager:
             if counter == 0:
                 backup_filename = f"{self.config_path.stem}.{timestamp}.backup"
             else:
-                backup_filename = f"{self.config_path.stem}.{timestamp}_{counter}.backup"
+                backup_filename = (
+                    f"{self.config_path.stem}.{timestamp}_{counter}.backup"
+                )
             backup_path = self.config_path.parent / backup_filename
 
             # Check if file already exists
@@ -457,7 +463,9 @@ class MCPManager:
         """
         if preset_name not in self.PRESETS:
             available = ", ".join(self.PRESETS.keys())
-            raise MCPConfigError(f"Unknown preset '{preset_name}'. Available presets: {available}")
+            raise MCPConfigError(
+                f"Unknown preset '{preset_name}'. Available presets: {available}"
+            )
 
         preset: dict[str, Any] = deepcopy(self.PRESETS[preset_name])
 
