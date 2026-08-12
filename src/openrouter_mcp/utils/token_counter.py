@@ -6,7 +6,7 @@ enabling accurate cost estimation for API requests across different models.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import tiktoken
 
@@ -55,7 +55,7 @@ def _count_message_value_tokens(encoding: tiktoken.Encoding, value: Any) -> int:
 
 
 def _count_encoded_message_tokens(
-    encoding: tiktoken.Encoding, messages: List[Dict[str, Any]]
+    encoding: tiktoken.Encoding, messages: list[dict[str, Any]]
 ) -> int:
     """Count encoded chat-message tokens including formatting overhead."""
     tokens_per_message = 3
@@ -72,7 +72,7 @@ def _count_encoded_message_tokens(
     return num_tokens + 3
 
 
-def _count_fallback_message_chars(messages: List[Dict[str, Any]]) -> int:
+def _count_fallback_message_chars(messages: list[dict[str, Any]]) -> int:
     """Count supported content characters for fallback token estimation."""
     total_chars = 0
     for message in messages:
@@ -96,7 +96,7 @@ class TokenCounter:
 
     def __init__(self) -> None:
         """Initialize token counter with encoding cache."""
-        self._encoding_cache: Dict[str, tiktoken.Encoding] = {}
+        self._encoding_cache: dict[str, tiktoken.Encoding] = {}
 
     def _get_encoding_for_model(self, model_id: str) -> tiktoken.Encoding:
         """
@@ -163,7 +163,7 @@ class TokenCounter:
             return max(1, len(text) // 4)
 
     def count_message_tokens(
-        self, messages: List[Dict[str, Any]], model_id: str = "default"
+        self, messages: list[dict[str, Any]], model_id: str = "default"
     ) -> int:
         """
         Count tokens in a list of chat messages.
@@ -254,7 +254,9 @@ def count_tokens(text: str, model_id: str = "default") -> int:
     return counter.count_tokens(text, model_id)
 
 
-def count_message_tokens(messages: List[Dict[str, Any]], model_id: str = "default") -> int:
+def count_message_tokens(
+    messages: list[dict[str, Any]], model_id: str = "default"
+) -> int:
     """
     Convenience function to count tokens in messages.
 
