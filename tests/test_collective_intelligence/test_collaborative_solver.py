@@ -117,6 +117,81 @@ class TestCollaborativeSolver:
                 _parse_solving_strategy(invalid_strategy)
 
     @pytest.mark.unit
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("strategy", "handler_name"),
+        [
+            (SolvingStrategy.SEQUENTIAL, "_solve_sequential"),
+            (SolvingStrategy.PARALLEL, "_solve_parallel"),
+            (SolvingStrategy.HIERARCHICAL, "_solve_hierarchical"),
+            (SolvingStrategy.ITERATIVE, "_solve_iterative"),
+            (SolvingStrategy.ADAPTIVE, "_solve_adaptive"),
+        ],
+    )
+    async def test_execute_solving_strategy_dispatches_exact_handler(
+        self,
+        mock_model_provider,
+        sample_task,
+        strategy,
+        handler_name,
+    ):
+        solver = CollaborativeSolver(mock_model_provider)
+        session = SolvingSession(
+            session_id="dispatch-session",
+            original_task=sample_task,
+            strategy=strategy,
+            components_used=[],
+            intermediate_results=[],
+        )
+        handlers = {
+            name: AsyncMock()
+            for name in (
+                "_solve_sequential",
+                "_solve_parallel",
+                "_solve_hierarchical",
+                "_solve_iterative",
+                "_solve_adaptive",
+            )
+        }
+        expected = Mock()
+        handlers[handler_name].return_value = expected
+        for name, handler in handlers.items():
+            setattr(solver, name, handler)
+
+        result = await solver._execute_solving_strategy(
+            strategy, session, sample_task.task_id
+        )
+
+        assert result is expected
+        handlers[handler_name].assert_awaited_once_with(session, sample_task.task_id)
+        for name, handler in handlers.items():
+            if name != handler_name:
+                handler.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_execute_solving_strategy_falls_back_to_adaptive(
+        self, mock_model_provider, sample_task
+    ):
+        solver = CollaborativeSolver(mock_model_provider)
+        session = SolvingSession(
+            session_id="fallback-session",
+            original_task=sample_task,
+            strategy=SolvingStrategy.ADAPTIVE,
+            components_used=[],
+            intermediate_results=[],
+        )
+        expected = Mock()
+        solver._solve_adaptive = AsyncMock(return_value=expected)
+
+        result = await solver._execute_solving_strategy(
+            object(), session, sample_task.task_id
+        )
+
+        assert result is expected
+        solver._solve_adaptive.assert_awaited_once_with(session, sample_task.task_id)
+
+    @pytest.mark.unit
     def test_collaborative_solver_initialization(self, mock_model_provider):
         """Test CollaborativeSolver initialization."""
         solver = CollaborativeSolver(mock_model_provider)

@@ -135,6 +135,23 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             self.storage_manager.items.append((item_id, item))
             self.storage_manager.item_timestamps[item_id] = datetime.now()
 
+    async def _execute_solving_strategy(
+        self,
+        strategy: Any,
+        session: SolvingSession,
+        request_id: str,
+    ) -> SolvingResult:
+        """Dispatch a solving strategy and return its result."""
+        strategy_dispatch = {
+            SolvingStrategy.SEQUENTIAL: self._solve_sequential,
+            SolvingStrategy.PARALLEL: self._solve_parallel,
+            SolvingStrategy.HIERARCHICAL: self._solve_hierarchical,
+            SolvingStrategy.ITERATIVE: self._solve_iterative,
+            SolvingStrategy.ADAPTIVE: self._solve_adaptive,
+        }
+        handler = strategy_dispatch.get(strategy, self._solve_adaptive)
+        return await handler(session, request_id)
+
     async def process(self, task: TaskContext, **kwargs: Any) -> SolvingResult:
         """
         Solve a complex problem using collaborative AI components.
@@ -189,15 +206,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
                 raise RuntimeError(f"Quota check failed: {reason}")
 
             # Execute strategy with cancellation support
-            strategy_dispatch = {
-                SolvingStrategy.SEQUENTIAL: self._solve_sequential,
-                SolvingStrategy.PARALLEL: self._solve_parallel,
-                SolvingStrategy.HIERARCHICAL: self._solve_hierarchical,
-                SolvingStrategy.ITERATIVE: self._solve_iterative,
-                SolvingStrategy.ADAPTIVE: self._solve_adaptive,
-            }
-            handler = strategy_dispatch.get(strategy, self._solve_adaptive)
-            result = await handler(session, request_id)
+            result = await self._execute_solving_strategy(strategy, session, request_id)
 
             # Finalize session
             session.end_time = datetime.now()
