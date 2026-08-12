@@ -348,14 +348,34 @@ def _build_cache_efficiency_summary(
     }
 
 
+def _build_cost_savings_summary(
+    stats: Dict[str, Any], thrift_metrics: Dict[str, Any]
+) -> Dict[str, float]:
+    """Calculate the cost-saving fields included in every thrift summary."""
+    saved_cost_usd = round(_as_float(thrift_metrics.get("saved_cost_usd")), 8)
+    total_cost_usd = _as_float(stats.get("total_cost"))
+    estimated_cost_without_thrift_usd = round(total_cost_usd + saved_cost_usd, 8)
+
+    effective_cost_reduction_pct = 0.0
+    if estimated_cost_without_thrift_usd > 0:
+        effective_cost_reduction_pct = round(
+            (saved_cost_usd / estimated_cost_without_thrift_usd) * 100.0,
+            2,
+        )
+
+    return {
+        "saved_cost_usd": saved_cost_usd,
+        "estimated_cost_without_thrift_usd": estimated_cost_without_thrift_usd,
+        "effective_cost_reduction_pct": effective_cost_reduction_pct,
+    }
+
+
 def build_thrift_summary(
     stats: Dict[str, Any], thrift_metrics: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Build a compact, human-readable thrift summary."""
-    saved_cost_usd = round(_as_float(thrift_metrics.get("saved_cost_usd")), 8)
-    total_cost_usd = _as_float(stats.get("total_cost"))
+    cost_savings = _build_cost_savings_summary(stats, thrift_metrics)
     request_count = _as_int(stats.get("requests"))
-    estimated_cost_without_thrift_usd = round(total_cost_usd + saved_cost_usd, 8)
 
     cached_prompt_tokens = _as_int(thrift_metrics.get("cached_prompt_tokens"))
     cache_write_prompt_tokens = _as_int(thrift_metrics.get("cache_write_prompt_tokens"))
@@ -373,13 +393,6 @@ def build_thrift_summary(
         0,
         saved_prompt_tokens - cached_prompt_tokens - recent_reuse_prompt_tokens,
     )
-
-    effective_cost_reduction_pct = 0.0
-    if estimated_cost_without_thrift_usd > 0:
-        effective_cost_reduction_pct = round(
-            (saved_cost_usd / estimated_cost_without_thrift_usd) * 100.0,
-            2,
-        )
 
     cache_efficiency = _build_cache_efficiency_summary(
         request_count=request_count,
@@ -400,9 +413,7 @@ def build_thrift_summary(
     )
 
     return {
-        "saved_cost_usd": saved_cost_usd,
-        "estimated_cost_without_thrift_usd": estimated_cost_without_thrift_usd,
-        "effective_cost_reduction_pct": effective_cost_reduction_pct,
+        **cost_savings,
         "prompt_savings_breakdown": {
             "cache_reuse_tokens": cached_prompt_tokens,
             "coalesced_prompt_tokens": coalesced_prompt_tokens,
