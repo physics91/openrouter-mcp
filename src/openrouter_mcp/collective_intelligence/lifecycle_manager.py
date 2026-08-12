@@ -14,8 +14,9 @@ Key Features:
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 from .adaptive_router import AdaptiveRouter
 from .base import ModelProvider
@@ -71,13 +72,17 @@ class CollectiveIntelligenceLifecycleManager:
             operational_config: Optional operational configuration (defaults to conservative)
         """
         self._model_provider = model_provider
-        self._operational_config = operational_config or OperationalConfig.conservative()
+        self._operational_config = (
+            operational_config or OperationalConfig.conservative()
+        )
         logger.info("CollectiveIntelligenceLifecycleManager configured")
 
     def _require_model_provider(self) -> ModelProvider:
         """Return the configured provider or reject component access."""
         if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
+            raise RuntimeError(
+                "LifecycleManager not configured. Call configure() first."
+            )
         return self._model_provider
 
     async def _get_or_create_component(
@@ -90,7 +95,9 @@ class CollectiveIntelligenceLifecycleManager:
         if self._is_shutdown:
             raise RuntimeError("LifecycleManager is shutdown, cannot create instances")
         if self._model_provider is None:
-            raise RuntimeError("LifecycleManager not configured. Call configure() first.")
+            raise RuntimeError(
+                "LifecycleManager not configured. Call configure() first."
+            )
 
         async with self._init_lock:
             instance = getattr(self, attr_name)
@@ -112,7 +119,9 @@ class CollectiveIntelligenceLifecycleManager:
             cfg.operational_config = self._operational_config
             return ConsensusEngine(provider, cfg)
 
-        return await self._get_or_create_component("_consensus_engine", factory, "ConsensusEngine")
+        return await self._get_or_create_component(
+            "_consensus_engine", factory, "ConsensusEngine"
+        )
 
     async def get_collaborative_solver(self) -> CollaborativeSolver:
         """Get or create singleton CollaborativeSolver instance."""
