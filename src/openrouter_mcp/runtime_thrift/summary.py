@@ -4,19 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-
-def _as_int(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _as_float(value: Any) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
+from ._coercion import _as_float, _as_int
 
 
 def _calculate_cache_efficiency_rates(
@@ -80,7 +68,9 @@ def _build_cache_bucket_summary(bucket: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _build_cache_efficiency_breakdown(metrics: Dict[str, Any], key: str) -> Dict[str, Any]:
+def _build_cache_efficiency_breakdown(
+    metrics: Dict[str, Any], key: str
+) -> Dict[str, Any]:
     raw_breakdown = metrics.get(key)
     if not isinstance(raw_breakdown, dict):
         return {}
@@ -339,7 +329,9 @@ def _build_cache_efficiency_summary(
     }
 
 
-def build_thrift_summary(stats: Dict[str, Any], thrift_metrics: Dict[str, Any]) -> Dict[str, Any]:
+def build_thrift_summary(
+    stats: Dict[str, Any], thrift_metrics: Dict[str, Any]
+) -> Dict[str, Any]:
     """Build a compact, human-readable thrift summary."""
     saved_cost_usd = round(_as_float(thrift_metrics.get("saved_cost_usd")), 8)
     total_cost_usd = _as_float(stats.get("total_cost"))
@@ -351,7 +343,9 @@ def build_thrift_summary(stats: Dict[str, Any], thrift_metrics: Dict[str, Any]) 
     cache_hit_requests = _as_int(thrift_metrics.get("cache_hit_requests"))
     cache_write_requests = _as_int(thrift_metrics.get("cache_write_requests"))
     compacted_tokens = _as_int(thrift_metrics.get("compacted_tokens"))
-    recent_reuse_prompt_tokens = _as_int(thrift_metrics.get("recent_reuse_prompt_tokens"))
+    recent_reuse_prompt_tokens = _as_int(
+        thrift_metrics.get("recent_reuse_prompt_tokens")
+    )
     coalesced_requests = _as_int(thrift_metrics.get("coalesced_requests"))
     recent_reuse_requests = _as_int(thrift_metrics.get("recent_reuse_requests"))
     deferred_requests = _as_int(thrift_metrics.get("deferred_requests"))

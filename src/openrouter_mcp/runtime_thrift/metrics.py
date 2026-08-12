@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Iterator, Optional
 
 from ..config.constants import CacheConfig, PricingDefaults
 from ..utils.metadata import extract_provider_from_id
+from ._coercion import _as_float, _as_int
 
 logger = logging.getLogger(__name__)
 _PERSISTENCE_VERSION = 1
@@ -49,22 +50,12 @@ class ThriftMetrics:
     cache_write_prompt_tokens: int = 0
     cache_hit_requests: int = 0
     cache_write_requests: int = 0
-    cache_efficiency_by_provider: Dict[str, CacheEfficiencyBucket] = field(default_factory=dict)
-    cache_efficiency_by_model: Dict[str, CacheEfficiencyBucket] = field(default_factory=dict)
-
-
-def _as_int(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _as_float(value: Any) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
-        return 0.0
+    cache_efficiency_by_provider: Dict[str, CacheEfficiencyBucket] = field(
+        default_factory=dict
+    )
+    cache_efficiency_by_model: Dict[str, CacheEfficiencyBucket] = field(
+        default_factory=dict
+    )
 
 
 def _snapshot_cache_bucket(bucket: CacheEfficiencyBucket) -> Dict[str, Any]:
@@ -133,7 +124,9 @@ def _metrics_from_snapshot(snapshot: Dict[str, Any]) -> ThriftMetrics:
         coalesced_requests=_as_int(snapshot.get("coalesced_requests")),
         recent_reuse_requests=_as_int(snapshot.get("recent_reuse_requests")),
         recent_reuse_prompt_tokens=_as_int(snapshot.get("recent_reuse_prompt_tokens")),
-        recent_reuse_completion_tokens=_as_int(snapshot.get("recent_reuse_completion_tokens")),
+        recent_reuse_completion_tokens=_as_int(
+            snapshot.get("recent_reuse_completion_tokens")
+        ),
         saved_prompt_tokens=_as_int(snapshot.get("saved_prompt_tokens")),
         saved_completion_tokens=_as_int(snapshot.get("saved_completion_tokens")),
         saved_cost_usd=_as_float(snapshot.get("saved_cost_usd")),
@@ -263,13 +256,17 @@ def _record_recent_reuse_savings_on_metrics(
     )
 
 
-def _record_compaction_savings_on_metrics(metrics: ThriftMetrics, tokens_saved: int) -> None:
+def _record_compaction_savings_on_metrics(
+    metrics: ThriftMetrics, tokens_saved: int
+) -> None:
     if tokens_saved <= 0:
         return
     metrics.compacted_tokens += int(tokens_saved)
 
 
-def _record_deferred_requests_on_metrics(metrics: ThriftMetrics, request_count: int) -> None:
+def _record_deferred_requests_on_metrics(
+    metrics: ThriftMetrics, request_count: int
+) -> None:
     if request_count <= 0:
         return
     metrics.deferred_requests += int(request_count)
