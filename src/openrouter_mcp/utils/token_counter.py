@@ -217,9 +217,8 @@ class TokenCounter:
             # Use the smaller of max_tokens or estimated typical length
             estimated = int(prompt_tokens * typical_ratio)
             return min(max_tokens, estimated)
-        else:
-            # Use typical ratio
-            return int(prompt_tokens * typical_ratio)
+        # Use typical ratio
+        return int(prompt_tokens * typical_ratio)
 
 
 # Global singleton instance
