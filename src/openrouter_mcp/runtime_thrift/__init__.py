@@ -23,6 +23,7 @@ from .prefix_cache import PrefixCachePlan, apply_prefix_cache_planner
 from .response_metadata import (
     attach_thrift_metadata,
     attach_thrift_metadata_from_payload,
+    collect_stream_with_request_thrift_metadata,
     enrich_final_stream_chunk_with_request_thrift_metadata,
     enrich_final_stream_chunk_with_thrift_metadata,
     enrich_response_with_request_thrift_metadata,
@@ -47,6 +48,7 @@ __all__ = [
     "build_thrift_summary",
     "compact_messages",
     "compact_messages_for_model",
+    "collect_stream_with_request_thrift_metadata",
     "enrich_final_stream_chunk_with_request_thrift_metadata",
     "enrich_final_stream_chunk_with_thrift_metadata",
     "enrich_response_with_request_thrift_metadata",

@@ -166,18 +166,13 @@ async def test_chat_with_model_non_streaming_delegates_compacted_messages():
 @pytest.mark.asyncio
 async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
     events = []
-    chunk = {"choices": [{"delta": {"content": "hello"}}]}
     enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
     client = MagicMock()
-
-    async def stream():
-        events.append("stream-start")
-        yield chunk
-        events.append("stream-end")
+    stream = object()
 
     def stream_chat_completion(**kwargs):
         events.append("stream-call")
-        return stream()
+        return stream
 
     client.stream_chat_completion.side_effect = stream_chat_completion
     request = ChatCompletionRequest(
@@ -189,8 +184,8 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
     )
     messages = [{"role": "user", "content": "serialized"}]
 
-    async def enrich(*args, **kwargs):
-        events.append("enrich")
+    async def collect(*args, **kwargs):
+        events.append("collect")
         return enriched_chunks
 
     def log(message):
@@ -198,9 +193,9 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
 
     with patch(
         "src.openrouter_mcp.handlers.chat."
-        "enrich_final_stream_chunk_with_request_thrift_metadata",
-        new=AsyncMock(side_effect=enrich),
-    ) as enrich_chunks, patch(
+        "collect_stream_with_request_thrift_metadata",
+        new=AsyncMock(side_effect=collect),
+    ) as collect_stream, patch(
         "src.openrouter_mcp.handlers.chat.logger.info",
         side_effect=log,
     ):
@@ -213,38 +208,32 @@ async def test_stream_chat_pipeline_preserves_call_enrichment_and_event_order():
         temperature=0.25,
         max_tokens=33,
     )
-    enrich_chunks.assert_awaited_once()
-    enrich_args = enrich_chunks.await_args
-    assert enrich_args.args == (
+    collect_stream.assert_awaited_once()
+    collect_args = collect_stream.await_args
+    assert collect_args.args == (
         client,
         "openai/gpt-4",
-        [chunk],
+        stream,
     )
-    assert enrich_args.kwargs == {
+    assert collect_args.kwargs == {
         "logger": chat_module.logger,
         "log_context": "chat response",
     }
     assert events == [
         "log:Initiating streaming chat completion",
         "stream-call",
-        "stream-start",
-        "stream-end",
-        "enrich",
+        "collect",
         "log:Streaming completed with 2 chunks",
     ]
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_stream_chat_pipeline_skips_snapshot_and_enrichment_on_collection_error():
+async def test_stream_chat_pipeline_propagates_helper_failure_before_success_log():
     client = MagicMock()
     error = RuntimeError("stream failed")
-
-    async def failing_stream():
-        raise error
-        yield
-
-    client.stream_chat_completion.return_value = failing_stream()
+    stream = object()
+    client.stream_chat_completion.return_value = stream
     request = ChatCompletionRequest(
         model="openai/gpt-4",
         messages=[{"role": "user", "content": "hello"}],
@@ -254,14 +243,23 @@ async def test_stream_chat_pipeline_skips_snapshot_and_enrichment_on_collection_
 
     with patch(
         "src.openrouter_mcp.handlers.chat."
-        "enrich_final_stream_chunk_with_request_thrift_metadata",
-        new_callable=AsyncMock,
-    ) as enrich_chunks:
+        "collect_stream_with_request_thrift_metadata",
+        new=AsyncMock(side_effect=error),
+    ) as collect_stream, patch(
+        "src.openrouter_mcp.handlers.chat.logger.info",
+    ) as info:
         with pytest.raises(RuntimeError) as raised:
             await _stream_chat_with_thrift_metadata(client, request, messages)
 
     assert raised.value is error
-    enrich_chunks.assert_not_awaited()
+    collect_stream.assert_awaited_once_with(
+        client,
+        "openai/gpt-4",
+        stream,
+        logger=chat_module.logger,
+        log_context="chat response",
+    )
+    info.assert_called_once_with("Initiating streaming chat completion")
 
 
 @pytest.mark.unit

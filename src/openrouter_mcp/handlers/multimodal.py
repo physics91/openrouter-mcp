@@ -3,7 +3,7 @@
 import base64
 import io
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
@@ -16,11 +16,10 @@ from ..mcp_registry import get_openrouter_client, mcp
 # Import centralized request base classes
 from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
-    enrich_final_stream_chunk_with_request_thrift_metadata,
+    collect_stream_with_request_thrift_metadata,
     enrich_response_with_request_thrift_metadata,
     thrift_request_scope,
 )
-from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
 
 logger = logging.getLogger(__name__)
@@ -352,21 +351,16 @@ async def _stream_vision_chat_with_thrift_metadata(
 ) -> List[Dict[str, Any]]:
     """Collect a streaming vision response and enrich its final chunk."""
     logger.info("Initiating streaming vision chat completion")
-    chunks = cast(
-        List[Dict[str, Any]],
-        await collect_async_iterable(
-            client.stream_chat_completion(
-                model=request.model,
-                messages=vision_messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-            )
-        ),
+    stream = client.stream_chat_completion(
+        model=request.model,
+        messages=vision_messages,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
     )
-    chunks = await enrich_final_stream_chunk_with_request_thrift_metadata(
+    chunks = await collect_stream_with_request_thrift_metadata(
         client,
         request.model,
-        chunks,
+        stream,
         logger=logger,
         log_context="vision response",
     )

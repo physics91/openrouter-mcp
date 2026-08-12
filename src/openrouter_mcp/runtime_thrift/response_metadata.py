@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, AsyncIterable, Dict
 
 from ..utils import estimate_cost_from_usage
+from ..utils.async_utils import collect_async_iterable
 from .metrics import get_request_thrift_metrics_snapshot
 from .summary import build_thrift_summary
 
@@ -175,9 +176,29 @@ async def enrich_final_stream_chunk_with_request_thrift_metadata(
     )
 
 
+async def collect_stream_with_request_thrift_metadata(
+    client: Any,
+    model: str,
+    stream: AsyncIterable[Dict[str, Any]],
+    *,
+    logger: logging.Logger | None = None,
+    log_context: str = "response",
+) -> list[Dict[str, Any]]:
+    """Collect a response stream before enriching its final chunk."""
+    chunks = await collect_async_iterable(stream)
+    return await enrich_final_stream_chunk_with_request_thrift_metadata(
+        client,
+        model,
+        chunks,
+        logger=logger,
+        log_context=log_context,
+    )
+
+
 __all__ = [
     "attach_thrift_metadata",
     "attach_thrift_metadata_from_payload",
+    "collect_stream_with_request_thrift_metadata",
     "enrich_final_stream_chunk_with_request_thrift_metadata",
     "enrich_final_stream_chunk_with_thrift_metadata",
     "enrich_response_with_request_thrift_metadata",

@@ -40,18 +40,13 @@ pytestmark = pytest.mark.unit
 @pytest.mark.asyncio
 async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
     events = []
-    chunk = {"choices": [{"delta": {"content": "image"}}]}
     enriched_chunks = [{"chunk": 1}, {"chunk": 2}]
     client = MagicMock()
-
-    async def stream():
-        events.append("stream-start")
-        yield chunk
-        events.append("stream-end")
+    stream = object()
 
     def stream_chat_completion(**kwargs):
         events.append("stream-call")
-        return stream()
+        return stream
 
     client.stream_chat_completion.side_effect = stream_chat_completion
     request = VisionChatRequest(
@@ -64,8 +59,8 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
     )
     vision_messages = [{"role": "user", "content": "vision payload"}]
 
-    async def enrich(*args, **kwargs):
-        events.append("enrich")
+    async def collect(*args, **kwargs):
+        events.append("collect")
         return enriched_chunks
 
     def log(message):
@@ -73,9 +68,9 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
 
     with patch.object(
         multimodal_module,
-        "enrich_final_stream_chunk_with_request_thrift_metadata",
-        new=AsyncMock(side_effect=enrich),
-    ) as enrich_chunks, patch.object(
+        "collect_stream_with_request_thrift_metadata",
+        new=AsyncMock(side_effect=collect),
+    ) as collect_stream, patch.object(
         multimodal_module.logger,
         "info",
         side_effect=log,
@@ -91,37 +86,31 @@ async def test_stream_vision_pipeline_preserves_enrichment_and_event_order():
         temperature=0.25,
         max_tokens=33,
     )
-    enrich_chunks.assert_awaited_once()
-    enrich_args = enrich_chunks.await_args
-    assert enrich_args.args == (
+    collect_stream.assert_awaited_once()
+    collect_args = collect_stream.await_args
+    assert collect_args.args == (
         client,
         "openai/gpt-4o",
-        [chunk],
+        stream,
     )
-    assert enrich_args.kwargs == {
+    assert collect_args.kwargs == {
         "logger": multimodal_module.logger,
         "log_context": "vision response",
     }
     assert events == [
         "log:Initiating streaming vision chat completion",
         "stream-call",
-        "stream-start",
-        "stream-end",
-        "enrich",
+        "collect",
         "log:Streaming completed with 2 chunks",
     ]
 
 
 @pytest.mark.asyncio
-async def test_stream_vision_pipeline_skips_enrichment_on_collection_error():
+async def test_stream_vision_pipeline_propagates_helper_failure_before_success_log():
     client = MagicMock()
     error = RuntimeError("stream failed")
-
-    async def failing_stream():
-        raise error
-        yield
-
-    client.stream_chat_completion.return_value = failing_stream()
+    stream = object()
+    client.stream_chat_completion.return_value = stream
     request = VisionChatRequest(
         model="openai/gpt-4o",
         messages=[{"role": "user", "content": "analyze"}],
@@ -131,14 +120,24 @@ async def test_stream_vision_pipeline_skips_enrichment_on_collection_error():
 
     with patch.object(
         multimodal_module,
-        "enrich_final_stream_chunk_with_request_thrift_metadata",
-        new_callable=AsyncMock,
-    ) as enrich_chunks:
+        "collect_stream_with_request_thrift_metadata",
+        new=AsyncMock(side_effect=error),
+    ) as collect_stream, patch.object(
+        multimodal_module.logger,
+        "info",
+    ) as info:
         with pytest.raises(RuntimeError) as raised:
             await _stream_vision_chat_with_thrift_metadata(client, request, [])
 
     assert raised.value is error
-    enrich_chunks.assert_not_awaited()
+    collect_stream.assert_awaited_once_with(
+        client,
+        "openai/gpt-4o",
+        stream,
+        logger=multimodal_module.logger,
+        log_context="vision response",
+    )
+    info.assert_called_once_with("Initiating streaming vision chat completion")
 
 
 @pytest.mark.asyncio

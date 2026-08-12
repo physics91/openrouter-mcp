@@ -1,7 +1,7 @@
 # mypy: disable-error-code=untyped-decorator
 
 import logging
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -12,13 +12,12 @@ from ..mcp_registry import get_openrouter_client, mcp
 from ..models.requests import BaseChatRequest
 from ..runtime_thrift import (
     attach_thrift_metadata_from_payload,
+    collect_stream_with_request_thrift_metadata,
     compact_messages_for_model,
-    enrich_final_stream_chunk_with_request_thrift_metadata,
     enrich_response_with_request_thrift_metadata,
     get_thrift_metrics_snapshot_for_dates,
     thrift_request_scope,
 )
-from ..utils.async_utils import collect_async_iterable
 from ..utils.message_utils import serialize_messages
 
 logger = logging.getLogger(__name__)
@@ -52,21 +51,16 @@ async def _stream_chat_with_thrift_metadata(
 ) -> List[Dict[str, Any]]:
     """Collect a streaming chat response and enrich its final chunk."""
     logger.info("Initiating streaming chat completion")
-    chunks = cast(
-        List[Dict[str, Any]],
-        await collect_async_iterable(
-            client.stream_chat_completion(
-                model=request.model,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-            )
-        ),
+    stream = client.stream_chat_completion(
+        model=request.model,
+        messages=messages,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
     )
-    chunks = await enrich_final_stream_chunk_with_request_thrift_metadata(
+    chunks = await collect_stream_with_request_thrift_metadata(
         client,
         request.model,
-        chunks,
+        stream,
         logger=logger,
         log_context="chat response",
     )
