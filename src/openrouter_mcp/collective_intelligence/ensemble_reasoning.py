@@ -689,18 +689,41 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         )
         return await handler(ensemble_task)
 
+    async def _execute_assigned_sub_task(
+        self,
+        ensemble_task: EnsembleTask,
+        sub_task: SubTask,
+    ) -> SubTaskResult:
+        """Execute a sub-task with its published assignment and parent context."""
+        assignment = self._find_assignment(
+            sub_task.sub_task_id, ensemble_task.assignments
+        )
+        return await self._execute_single_sub_task(
+            sub_task,
+            assignment,
+            inherited_requirements=ensemble_task.original_task.requirements,
+            inherited_constraints=ensemble_task.original_task.constraints,
+        )
+
+    def _normalize_sub_task_result(
+        self,
+        sub_task: SubTask,
+        assignments: list[ModelAssignment],
+        result: SubTaskResult | BaseException,
+    ) -> SubTaskResult:
+        """Convert a gathered failure into the standard sub-task result shape."""
+        if not isinstance(result, BaseException):
+            return result
+
+        assignment = self._find_assignment(sub_task.sub_task_id, assignments)
+        return self._build_failed_subtask_result(sub_task, assignment, result)
+
     async def _execute_sequential(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
         """Execute sub-tasks sequentially."""
         results = []
 
         for sub_task in ensemble_task.sub_tasks:
-            assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-            result = await self._execute_single_sub_task(
-                sub_task,
-                assignment,
-                inherited_requirements=ensemble_task.original_task.requirements,
-                inherited_constraints=ensemble_task.original_task.constraints,
-            )
+            result = await self._execute_assigned_sub_task(ensemble_task, sub_task)
             results.append(result)
 
             # If a critical task fails, stop execution
@@ -715,30 +738,23 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
     async def _execute_parallel(self, ensemble_task: EnsembleTask) -> List[SubTaskResult]:
         """Execute sub-tasks in parallel."""
 
-        async def execute_with_assignment(sub_task: SubTask) -> SubTaskResult:
-            assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-            return await self._execute_single_sub_task(
-                sub_task,
-                assignment,
-                inherited_requirements=ensemble_task.original_task.requirements,
-                inherited_constraints=ensemble_task.original_task.constraints,
-            )
-
         # Execute all sub-tasks concurrently
-        tasks = [execute_with_assignment(sub_task) for sub_task in ensemble_task.sub_tasks]
+        tasks = [
+            self._execute_assigned_sub_task(ensemble_task, sub_task)
+            for sub_task in ensemble_task.sub_tasks
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Convert exceptions to failed results
         final_results: List[SubTaskResult] = []
         for i, result in enumerate(results):
-            if isinstance(result, BaseException):
-                sub_task = ensemble_task.sub_tasks[i]
-                assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-                final_results.append(
-                    self._build_failed_subtask_result(sub_task, assignment, result)
+            final_results.append(
+                self._normalize_sub_task_result(
+                    ensemble_task.sub_tasks[i],
+                    ensemble_task.assignments,
+                    result,
                 )
-            else:
-                final_results.append(result)
+            )
 
         return final_results
 
@@ -768,29 +784,18 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                 break
 
             # Execute ready tasks in parallel
-            async def execute_ready_task(sub_task: SubTask) -> SubTaskResult:
-                assignment = self._find_assignment(sub_task.sub_task_id, ensemble_task.assignments)
-                return await self._execute_single_sub_task(
-                    sub_task,
-                    assignment,
-                    inherited_requirements=ensemble_task.original_task.requirements,
-                    inherited_constraints=ensemble_task.original_task.constraints,
-                )
-
-            batch_tasks = [execute_ready_task(task) for task in ready_tasks]
+            batch_tasks = [
+                self._execute_assigned_sub_task(ensemble_task, task)
+                for task in ready_tasks
+            ]
             batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
 
             for i, result in enumerate(batch_results):
-                if isinstance(result, BaseException):
-                    sub_task = ready_tasks[i]
-                    assignment = self._find_assignment(
-                        sub_task.sub_task_id, ensemble_task.assignments
-                    )
-                    processed_result = self._build_failed_subtask_result(
-                        sub_task, assignment, result
-                    )
-                else:
-                    processed_result = result
+                processed_result = self._normalize_sub_task_result(
+                    ready_tasks[i],
+                    ensemble_task.assignments,
+                    result,
+                )
 
                 results.append(processed_result)
                 completed_tasks.add(processed_result.sub_task.sub_task_id)
