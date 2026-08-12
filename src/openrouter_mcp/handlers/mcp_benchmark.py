@@ -65,6 +65,30 @@ def _to_float(value: Any, default: float) -> float:
         return default
 
 
+def _deserialize_benchmark_report_results(
+    data: Dict[str, Any],
+) -> Dict[str, ReportResult]:
+    """Convert successful benchmark payloads into report exporter views."""
+    results: Dict[str, ReportResult] = {}
+    for model_id, result_data in data.get("results", {}).items():
+        if result_data.get("success") and result_data.get("metrics"):
+            metrics_data = result_data.get("metrics", {})
+            report_metrics = ReportMetrics(
+                avg_response_time=_to_float(metrics_data.get("avg_response_time"), 0.0),
+                avg_cost=_to_float(metrics_data.get("avg_cost"), 0.0),
+                quality_score=_to_float(metrics_data.get("quality_score"), 0.0),
+                throughput=_to_float(metrics_data.get("throughput"), 0.0),
+            )
+            results[model_id] = ReportResult(
+                model_id=model_id,
+                success=True,
+                response=result_data.get("response", ""),
+                metrics=report_metrics,
+            )
+
+    return results
+
+
 def _extract_response_time_seconds(model: Dict[str, Any]) -> Optional[float]:
     """모델 메타데이터에서 응답시간(초)을 추출."""
     seconds_keys = ("avg_response_time", "response_time", "latency")
@@ -699,23 +723,7 @@ async def export_benchmark_report(
         with open(results_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # BenchmarkResult 객체들로 변환
-        results = {}
-        for model_id, result_data in data.get("results", {}).items():
-            if result_data.get("success") and result_data.get("metrics"):
-                metrics_data = result_data.get("metrics", {})
-                report_metrics = ReportMetrics(
-                    avg_response_time=_to_float(metrics_data.get("avg_response_time"), 0.0),
-                    avg_cost=_to_float(metrics_data.get("avg_cost"), 0.0),
-                    quality_score=_to_float(metrics_data.get("quality_score"), 0.0),
-                    throughput=_to_float(metrics_data.get("throughput"), 0.0),
-                )
-                results[model_id] = ReportResult(
-                    model_id=model_id,
-                    success=True,
-                    response=result_data.get("response", ""),
-                    metrics=report_metrics,
-                )
+        results = _deserialize_benchmark_report_results(data)
 
         if not results:
             return {
