@@ -2,7 +2,7 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ..config.constants import FreeChatConfig
 from ..models.cache import ModelCache
@@ -22,8 +22,8 @@ class FreeModelRouter:
         metrics: Optional[MetricsCollector] = None,
     ) -> None:
         self._cache = model_cache
-        self._cooldowns: Dict[str, float] = {}
-        self._usage_counts: Dict[str, int] = {}
+        self._cooldowns: dict[str, float] = {}
+        self._usage_counts: dict[str, int] = {}
         self._metrics = metrics
 
     def _get_blended_reputation(self, provider: str, model_id: str) -> float:
@@ -47,7 +47,7 @@ class FreeModelRouter:
         return alpha * perf_score + (1 - alpha) * static
 
     def _score_model(
-        self, model: Dict[str, Any], task_type: Optional[FreeTaskType] = None
+        self, model: dict[str, Any], task_type: Optional[FreeTaskType] = None
     ) -> float:
         """Score a model from 0.0 to 1.0 based on quality heuristics."""
         context_length = float(model.get("context_length", 0))
@@ -61,7 +61,7 @@ class FreeModelRouter:
         reputation = self._get_blended_reputation(provider, str(model.get("id", "")))
 
         caps_raw = model.get("capabilities", {})
-        caps: Dict[str, Any] = caps_raw if isinstance(caps_raw, dict) else {}
+        caps: dict[str, Any] = caps_raw if isinstance(caps_raw, dict) else {}
         feature_score = 0.0
         if caps.get("supports_vision", False):
             feature_score += 0.5
@@ -82,7 +82,7 @@ class FreeModelRouter:
 
         return float(min(1.0, base_score))
 
-    def _build_model_status(self, model: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_model_status(self, model: dict[str, Any]) -> dict[str, Any]:
         """Build the public status representation for one free model."""
         return {
             "id": model.get("id", ""),
@@ -93,7 +93,7 @@ class FreeModelRouter:
             "available": self._is_available(model.get("id", "")),
         }
 
-    async def list_models_with_status(self) -> List[Dict[str, Any]]:
+    async def list_models_with_status(self) -> list[dict[str, Any]]:
         """Return all free models with quality scores and availability.
 
         Note: Scores here exclude task-type affinity bonuses since no specific
@@ -137,9 +137,9 @@ class FreeModelRouter:
 
     @staticmethod
     def _filter_by_capabilities(
-        models: List[Dict[str, Any]],
-        required_capabilities: Optional[Dict[str, bool]],
-    ) -> List[Dict[str, Any]]:
+        models: list[dict[str, Any]],
+        required_capabilities: Optional[dict[str, bool]],
+    ) -> list[dict[str, Any]]:
         """Filter models by required capabilities. Returns empty list if none match."""
         if not required_capabilities:
             return models
@@ -155,9 +155,9 @@ class FreeModelRouter:
 
     def _score_available_candidates(
         self,
-        free_models: List[Dict[str, Any]],
+        free_models: list[dict[str, Any]],
         task_type: Optional[FreeTaskType],
-    ) -> List[tuple]:
+    ) -> list[tuple]:
         """Apply usage rotation, availability, and scoring to candidate models."""
         active_ids = {m["id"] for m in free_models}
         if self._usage_counts and len(active_ids) > 0:
@@ -196,8 +196,8 @@ class FreeModelRouter:
     def _get_scored_candidates(
         self,
         task_type: Optional[FreeTaskType] = None,
-        required_capabilities: Optional[Dict[str, bool]] = None,
-    ) -> List[tuple]:
+        required_capabilities: Optional[dict[str, bool]] = None,
+    ) -> list[tuple]:
         """Score and sort available free models by effective score descending.
 
         Returns list of ``(model_dict, effective_score)`` tuples.
@@ -223,9 +223,9 @@ class FreeModelRouter:
 
     async def select_model(
         self,
-        preferred_models: Optional[List[str]] = None,
+        preferred_models: Optional[list[str]] = None,
         task_type: Optional[FreeTaskType] = None,
-        required_capabilities: Optional[Dict[str, bool]] = None,
+        required_capabilities: Optional[dict[str, bool]] = None,
     ) -> str:
         """Select the best available free model."""
         await self._cache.ensure_cache_ready()
@@ -258,10 +258,10 @@ class FreeModelRouter:
     async def select_models(
         self,
         count: int,
-        preferred_models: Optional[List[str]] = None,
+        preferred_models: Optional[list[str]] = None,
         task_type: Optional[FreeTaskType] = None,
-        required_capabilities: Optional[Dict[str, bool]] = None,
-    ) -> List[str]:
+        required_capabilities: Optional[dict[str, bool]] = None,
+    ) -> list[str]:
         """Select top *count* available free models by score.
 
         Does not update usage counts — caller records actual usage after
@@ -274,7 +274,7 @@ class FreeModelRouter:
             task_type=task_type, required_capabilities=required_capabilities
         )
 
-        result: List[str] = []
+        result: list[str] = []
         candidate_ids = [c[0]["id"] for c in candidates]
 
         # Prioritize preferred models if they appear in candidates
