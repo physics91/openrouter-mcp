@@ -220,7 +220,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             raise
 
         except Exception as e:
-            logger.error(f"Consensus building failed for {request_id}: {str(e)}", exc_info=True)
+            logger.exception(f"Consensus building failed for {request_id}: {str(e)}")
 
             # Record failure and check if we should cancel pending tasks
             should_cancel = await self.failure_controller.record_failure(
