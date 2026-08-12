@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,14 +20,14 @@ def _resolve_collective_max_tokens(max_tokens: Optional[int]) -> int:
 
 def _build_requirements(
     *,
-    base: Optional[Dict[str, Any]] = None,
+    base: Optional[dict[str, Any]] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    models: Optional[List[str]] = None,
-    extras: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    models: Optional[list[str]] = None,
+    extras: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """Build requirements dict with consistent keys for CI components."""
-    requirements: Dict[str, Any] = {}
+    requirements: dict[str, Any] = {}
     if base:
         requirements.update(base)
     if extras:
@@ -44,9 +44,9 @@ def _build_requirements(
 def _build_collective_request_requirements(
     request: BaseCollectiveRequest,
     *,
-    base: Optional[Dict[str, Any]] = None,
-    extras: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    base: Optional[dict[str, Any]] = None,
+    extras: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """Build requirements shared by collective request types."""
     request_extras = dict(extras or {})
     if request.system_prompt:
@@ -64,8 +64,8 @@ def _build_collective_request_requirements(
 def create_task_context(
     content: str,
     task_type: str = "reasoning",
-    requirements: Optional[Dict[str, Any]] = None,
-    constraints: Optional[Dict[str, Any]] = None,
+    requirements: Optional[dict[str, Any]] = None,
+    constraints: Optional[dict[str, Any]] = None,
 ) -> TaskContext:
     """Create a TaskContext from request parameters."""
     try:
@@ -128,11 +128,11 @@ class AdaptiveModelRequest(BaseModel):
         "reasoning",
         description="Type of task: reasoning, analysis, creative, factual, code_generation, summarization, translation, math, classification",
     )
-    performance_requirements: Optional[Dict[str, float]] = Field(
+    performance_requirements: Optional[dict[str, float]] = Field(
         None,
         description="Performance requirements as metric-score pairs, e.g. {'accuracy': 0.9, 'speed': 0.7}. Keys are used as routing hints.",
     )
-    constraints: Optional[Dict[str, Any]] = Field(
+    constraints: Optional[dict[str, Any]] = Field(
         None,
         description="Task constraints, e.g. {'max_cost': 0.01, 'preferred_provider': 'openai'}",
     )
@@ -142,7 +142,7 @@ class CrossValidationRequest(BaseCollectiveRequest):
     """Request for cross-model validation."""
 
     content: str = Field(..., description="Content to validate across models")
-    validation_criteria: Optional[List[str]] = Field(
+    validation_criteria: Optional[list[str]] = Field(
         None, description="Specific validation criteria"
     )
     threshold: float = Field(
@@ -155,10 +155,10 @@ class CollaborativeSolvingRequest(BaseCollectiveRequest):
     """Request for collaborative problem solving."""
 
     problem: str = Field(..., description="Problem to solve collaboratively")
-    requirements: Optional[Dict[str, Any]] = Field(
+    requirements: Optional[dict[str, Any]] = Field(
         None, description="Problem requirements"
     )
-    constraints: Optional[Dict[str, Any]] = Field(
+    constraints: Optional[dict[str, Any]] = Field(
         None, description="Problem constraints"
     )
     max_iterations: int = Field(3, description="Maximum number of iteration rounds")
