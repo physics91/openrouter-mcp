@@ -23,6 +23,13 @@ from ..utils.env import get_env_value
 logger = logging.getLogger(__name__)
 
 
+def _copy_config_container(value: Any) -> Any:
+    """Detach built-in mutable containers without coercing loose config values."""
+    if type(value) in (list, dict):
+        return value.copy()
+    return value
+
+
 # Custom Exceptions
 class MCPConfigError(Exception):
     """Base exception for MCP configuration errors."""
@@ -55,7 +62,10 @@ class MCPServerConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format for JSON."""
-        config: Dict[str, Any] = {"command": self.command, "args": self.args}
+        config: Dict[str, Any] = {
+            "command": self.command,
+            "args": _copy_config_container(self.args),
+        }
 
         if self.transport_type:
             config["type"] = self.transport_type
@@ -64,7 +74,7 @@ class MCPServerConfig:
             config["cwd"] = self.cwd
 
         if self.env:
-            config["env"] = self.env
+            config["env"] = _copy_config_container(self.env)
 
         return config
 
@@ -75,9 +85,9 @@ class MCPServerConfig:
             name=name,
             transport_type=data.get("type"),
             command=data.get("command", ""),
-            args=data.get("args", []),
+            args=_copy_config_container(data.get("args", [])),
             cwd=data.get("cwd"),
-            env=data.get("env", {}),
+            env=_copy_config_container(data.get("env", {})),
         )
 
 
