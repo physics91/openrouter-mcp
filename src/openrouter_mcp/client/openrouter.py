@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from math import isnan
 from types import TracebackType
 from typing import Any, NoReturn, Optional
 
@@ -73,7 +74,7 @@ def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
     # Try numeric seconds first
     try:
         value = float(header_value)
-        if value != value:  # NaN check
+        if isnan(value):
             return None
         return max(0.0, min(value, _MAX_RETRY_AFTER))
     except (ValueError, TypeError):
