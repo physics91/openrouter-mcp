@@ -26,13 +26,19 @@ from ..collective_intelligence import (
     ProcessingResult,
     TaskContext,
     TaskType,
+    ValidationResult,
     get_lifecycle_manager,
     shutdown_lifecycle_manager,
 )
 from ..collective_intelligence.base import ModelCapability
 
 # Import centralized configuration constants
-from ..config.constants import CollectiveDefaults, ConsensusDefaults, ModelDefaults, PricingDefaults
+from ..config.constants import (
+    CollectiveDefaults,
+    ConsensusDefaults,
+    ModelDefaults,
+    PricingDefaults,
+)
 
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import get_openrouter_client, mcp
@@ -438,6 +444,72 @@ def create_task_context(
     )
 
 
+def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, Any]:
+    """Serialize a cross-validation result to the MCP response contract."""
+    report = result.validation_report
+    issues = report.issues
+    validator_models = getattr(report, "validator_models", []) or []
+    if not validator_models:
+        seen_models = set()
+        for issue in issues:
+            model_id = getattr(issue, "validator_model_id", None)
+            if model_id and model_id not in seen_models:
+                seen_models.add(model_id)
+                validator_models.append(model_id)
+
+    model_validations = []
+    for model_id in validator_models:
+        model_issues = [
+            issue for issue in issues if issue.validator_model_id == model_id
+        ]
+        criteria_values = {
+            (
+                issue.criteria.value
+                if hasattr(issue.criteria, "value")
+                else str(issue.criteria)
+            )
+            for issue in model_issues
+        }
+        if not criteria_values:
+            criteria_label = "none"
+        elif len(criteria_values) == 1:
+            criteria_label = next(iter(criteria_values))
+        else:
+            criteria_label = "multiple"
+
+        model_validations.append(
+            {
+                "model": model_id,
+                "criteria": criteria_label,
+                "issues_found": len(model_issues),
+            }
+        )
+
+    return {
+        "validation_result": "VALID" if result.is_valid else "INVALID",
+        "validation_score": result.validation_confidence,
+        "validation_issues": [
+            {
+                "criteria": issue.criteria.value,
+                "severity": issue.severity.value,
+                "description": issue.description,
+                "suggestion": issue.suggestion,
+                "confidence": issue.confidence,
+            }
+            for issue in issues
+        ],
+        "model_validations": model_validations,
+        "recommendations": result.improvement_suggestions,
+        "confidence": result.validation_confidence,
+        "processing_time": result.processing_time,
+        "quality_metrics": {
+            "overall_score": result.quality_metrics.overall_score(),
+            "accuracy": result.quality_metrics.accuracy,
+            "consistency": result.quality_metrics.consistency,
+        },
+    }
+
+
 async def _collective_chat_completion_impl(
     request: CollectiveChatRequest,
 ) -> Dict[str, Any]:
@@ -798,63 +870,7 @@ async def _cross_model_validation_impl(
 
         # Perform cross-validation - NO async with (singleton managed by lifecycle)
         result = await cross_validator.process(dummy_result, task)
-
-        report = result.validation_report
-        issues = report.issues
-        validator_models = getattr(report, "validator_models", []) or []
-        if not validator_models:
-            seen_models = set()
-            for issue in issues:
-                model_id = getattr(issue, "validator_model_id", None)
-                if model_id and model_id not in seen_models:
-                    seen_models.add(model_id)
-                    validator_models.append(model_id)
-
-        model_validations = []
-        for model_id in validator_models:
-            model_issues = [issue for issue in issues if issue.validator_model_id == model_id]
-            criteria_values = {
-                (issue.criteria.value if hasattr(issue.criteria, "value") else str(issue.criteria))
-                for issue in model_issues
-            }
-            if not criteria_values:
-                criteria_label = "none"
-            elif len(criteria_values) == 1:
-                criteria_label = next(iter(criteria_values))
-            else:
-                criteria_label = "multiple"
-
-            model_validations.append(
-                {
-                    "model": model_id,
-                    "criteria": criteria_label,
-                    "issues_found": len(model_issues),
-                }
-            )
-
-        return {
-            "validation_result": "VALID" if result.is_valid else "INVALID",
-            "validation_score": result.validation_confidence,
-            "validation_issues": [
-                {
-                    "criteria": issue.criteria.value,
-                    "severity": issue.severity.value,
-                    "description": issue.description,
-                    "suggestion": issue.suggestion,
-                    "confidence": issue.confidence,
-                }
-                for issue in issues
-            ],
-            "model_validations": model_validations,
-            "recommendations": result.improvement_suggestions,
-            "confidence": result.validation_confidence,
-            "processing_time": result.processing_time,
-            "quality_metrics": {
-                "overall_score": result.quality_metrics.overall_score(),
-                "accuracy": result.quality_metrics.accuracy,
-                "consistency": result.quality_metrics.consistency,
-            },
-        }
+        return _serialize_cross_validation_result(result)
 
     except Exception as e:
         logger.error(f"Cross-model validation failed: {str(e)}")
