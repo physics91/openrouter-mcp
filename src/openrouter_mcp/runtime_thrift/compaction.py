@@ -151,6 +151,25 @@ def _build_noop_result(
     )
 
 
+def _partition_compaction_messages(
+    messages: Sequence[Dict[str, Any]],
+    recent_message_count: int,
+) -> Optional[tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]]:
+    prefix_length = _leading_system_prefix_length(messages)
+    prefix = list(messages[:prefix_length])
+    body = list(messages[prefix_length:])
+
+    if len(body) <= recent_message_count:
+        return None
+
+    archived_messages = body[:-recent_message_count]
+    recent_messages = body[-recent_message_count:]
+    if not archived_messages:
+        return None
+
+    return prefix, archived_messages, recent_messages
+
+
 def compact_messages(
     messages: Sequence[Dict[str, Any]],
     model_id: str,
@@ -193,27 +212,15 @@ def compact_messages(
             trigger_threshold_tokens,
         )
 
-    prefix_length = _leading_system_prefix_length(messages)
-    prefix = list(messages[:prefix_length])
-    body = list(messages[prefix_length:])
-
-    if len(body) <= recent_message_count:
+    partition = _partition_compaction_messages(messages, recent_message_count)
+    if partition is None:
         return _build_noop_result(
             messages,
             prompt_tokens,
             context_window_tokens,
             trigger_threshold_tokens,
         )
-
-    archived_messages = body[:-recent_message_count]
-    recent_messages = body[-recent_message_count:]
-    if not archived_messages:
-        return _build_noop_result(
-            messages,
-            prompt_tokens,
-            context_window_tokens,
-            trigger_threshold_tokens,
-        )
+    prefix, archived_messages, recent_messages = partition
 
     compacted_messages = prefix + [_build_summary_message(archived_messages)] + recent_messages
     compacted_prompt_tokens = count_message_tokens(compacted_messages, model_id)

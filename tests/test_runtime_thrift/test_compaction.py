@@ -5,7 +5,43 @@ from src.openrouter_mcp.runtime_thrift import (
     reset_runtime_thrift_policy,
     reset_thrift_metrics,
 )
-from src.openrouter_mcp.runtime_thrift.compaction import compact_messages
+from src.openrouter_mcp.runtime_thrift.compaction import (
+    _partition_compaction_messages,
+    compact_messages,
+)
+
+
+@pytest.mark.unit
+def test_partition_compaction_messages_preserves_prefix_and_recent_overlap():
+    messages = [
+        {"role": "system", "content": "system one"},
+        {"role": "system", "content": "system two"},
+        {"role": "user", "content": "archived one"},
+        {"role": "assistant", "content": "archived two"},
+        {"role": "user", "content": "archived three"},
+        {"role": "assistant", "content": "recent one"},
+        {"role": "user", "content": "recent two"},
+    ]
+
+    assert _partition_compaction_messages(messages, 2) == (
+        messages[:2],
+        messages[2:5],
+        messages[5:],
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("recent_message_count", [2, 0])
+def test_partition_compaction_messages_returns_none_without_archived_messages(
+    recent_message_count,
+):
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "body one"},
+        {"role": "assistant", "content": "body two"},
+    ]
+
+    assert _partition_compaction_messages(messages, recent_message_count) is None
 
 
 class TestCompaction:
