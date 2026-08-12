@@ -11,7 +11,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 from ..config.constants import ConsensusDefaults, PricingDefaults
 from ..utils.async_utils import raise_first_fatal_result
@@ -64,8 +64,8 @@ class ConsensusConfig:
     similarity_threshold: float = ConsensusDefaults.SIMILARITY_THRESHOLD
     timeout_seconds: float = ConsensusDefaults.TIMEOUT_SECONDS
     retry_attempts: int = ConsensusDefaults.RETRY_ATTEMPTS
-    model_weights: Dict[str, float] = field(default_factory=dict)
-    exclude_models: Set[str] = field(default_factory=set)
+    model_weights: dict[str, float] = field(default_factory=dict)
+    exclude_models: set[str] = field(default_factory=set)
     operational_config: Optional[OperationalConfig] = None
 
 
@@ -87,12 +87,12 @@ class ConsensusResult:
     consensus_content: str
     agreement_level: AgreementLevel
     confidence_score: float
-    participating_models: List[str]
-    model_responses: List[ModelResponse]
+    participating_models: list[str]
+    model_responses: list[ModelResponse]
     strategy_used: ConsensusStrategy
     processing_time: float
     quality_metrics: QualityMetrics
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -117,7 +117,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         self.cancellation_manager = controls.cancellation_manager
         self.operational_config = controls.config
 
-        self.model_reliability: Dict[str, float] = {}
+        self.model_reliability: dict[str, float] = {}
 
         # Initialize semantic similarity components
         self.similarity_calculator = SemanticSimilarityCalculator()
@@ -127,12 +127,12 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         )
 
     @property
-    def consensus_history(self) -> List[ConsensusResult]:
+    def consensus_history(self) -> list[ConsensusResult]:
         """Get consensus history as a list for backward compatibility."""
         return self.storage_manager.get_items()
 
     @consensus_history.setter
-    def consensus_history(self, value: List[ConsensusResult]) -> None:
+    def consensus_history(self, value: list[ConsensusResult]) -> None:
         """Set consensus history for backward compatibility."""
         self.storage_manager.replace_items(value, id_prefix="consensus")
 
@@ -248,7 +248,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             # Reset quota tracking for this request
             self.quota_tracker.reset_request(request_id)
 
-    async def _select_models(self, task: TaskContext) -> List[str]:
+    async def _select_models(self, task: TaskContext) -> list[str]:
         """Select appropriate models for consensus building."""
         available_models = await self.model_provider.get_available_models()
 
@@ -319,8 +319,8 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                 )
 
     async def _get_model_responses(
-        self, task: TaskContext, model_ids: List[str], request_id: str
-    ) -> List[ModelResponse]:
+        self, task: TaskContext, model_ids: list[str], request_id: str
+    ) -> list[ModelResponse]:
         """Get responses from all selected models with concurrency control."""
 
         async def get_single_response(model_id: str) -> Optional[ModelResponse]:
@@ -427,7 +427,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return valid_responses
 
     async def _build_consensus(
-        self, task: TaskContext, responses: List[ModelResponse]
+        self, task: TaskContext, responses: list[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus from model responses using the configured strategy."""
         strategy_dispatch = {
@@ -443,7 +443,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     def _build_consensus_result(
         self,
         task: TaskContext,
-        responses: List[ModelResponse],
+        responses: list[ModelResponse],
         selected_response: ModelResponse,
         agreement_level: AgreementLevel,
         confidence_score: float,
@@ -463,7 +463,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         )
 
     def _majority_vote_consensus(
-        self, task: TaskContext, responses: List[ModelResponse]
+        self, task: TaskContext, responses: list[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using majority vote strategy."""
 
@@ -503,7 +503,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         )
 
     def _weighted_average_consensus(
-        self, task: TaskContext, responses: List[ModelResponse]
+        self, task: TaskContext, responses: list[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using weighted average strategy."""
         # This is a simplified implementation
@@ -538,7 +538,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         )
 
     def _confidence_threshold_consensus(
-        self, task: TaskContext, responses: List[ModelResponse]
+        self, task: TaskContext, responses: list[ModelResponse]
     ) -> ConsensusResult:
         """Build consensus using confidence threshold strategy."""
 
@@ -559,8 +559,8 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return self._majority_vote_consensus(task, high_confidence_responses)
 
     def _group_similar_responses(
-        self, responses: List[ModelResponse]
-    ) -> List[List[ModelResponse]]:
+        self, responses: list[ModelResponse]
+    ) -> list[list[ModelResponse]]:
         """
         Group similar responses together using semantic similarity.
 
@@ -619,7 +619,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             return AgreementLevel.NO_CONSENSUS
 
     def _calculate_consensus_confidence(
-        self, consensus_group: List[ModelResponse], all_responses: List[ModelResponse]
+        self, consensus_group: list[ModelResponse], all_responses: list[ModelResponse]
     ) -> float:
         """Calculate confidence score for the consensus."""
 
@@ -640,7 +640,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return group_confidence * size_weight * reliability_weight
 
     def _calculate_quality_metrics(
-        self, consensus_group: List[ModelResponse], all_responses: List[ModelResponse]
+        self, consensus_group: list[ModelResponse], all_responses: list[ModelResponse]
     ) -> QualityMetrics:
         """Calculate quality metrics for the consensus."""
 
@@ -670,7 +670,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         return build_quality_metrics(**metric_values)
 
     def _update_model_reliability(
-        self, responses: List[ModelResponse], consensus: ConsensusResult
+        self, responses: list[ModelResponse], consensus: ConsensusResult
     ) -> None:
         """Update model reliability scores based on consensus participation."""
 
@@ -689,15 +689,15 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
     def get_consensus_history(
         self, limit: Optional[int] = None
-    ) -> List[ConsensusResult]:
+    ) -> list[ConsensusResult]:
         """Get historical consensus results with TTL enforcement."""
         return self.storage_manager.get_items(limit)
 
-    def get_model_reliability_scores(self) -> Dict[str, float]:
+    def get_model_reliability_scores(self) -> dict[str, float]:
         """Get current model reliability scores."""
         return self.model_reliability.copy()
 
-    def get_operational_metrics(self) -> Dict[str, Any]:
+    def get_operational_metrics(self) -> dict[str, Any]:
         """Get operational metrics and limits status."""
         return {
             "active_tasks": self.concurrency_limiter.get_active_count(),
