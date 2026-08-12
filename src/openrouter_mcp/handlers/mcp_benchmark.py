@@ -856,6 +856,31 @@ async def compare_model_performance(
 # 유틸리티 함수들
 
 
+def _build_benchmark_history_entry(
+    filename: str,
+    file_time: datetime,
+    data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build one serialized benchmark history entry."""
+    results = data.get("results", {})
+    successful = sum(1 for result in results.values() if result.get("success", False))
+    total = len(results)
+
+    return {
+        "filename": filename,
+        "timestamp": file_time.isoformat(),
+        "models_tested": list(results.keys()),
+        "success_rate": f"{successful}/{total}",
+        "config": data.get("config", {}),
+        "summary": {
+            "total_models": total,
+            "successful_models": successful,
+            "avg_response_time": _calculate_avg_response_time(results),
+            "best_model": _get_best_model(results),
+        },
+    }
+
+
 def _read_benchmark_files(
     results_dir: str,
     cutoff_date: datetime,
@@ -896,25 +921,7 @@ def _read_benchmark_files(
                     continue
 
             # 요약 정보 생성
-            results = data.get("results", {})
-            successful = sum(1 for r in results.values() if r.get("success", False))
-            total = len(results)
-
-            history.append(
-                {
-                    "filename": filename,
-                    "timestamp": file_time.isoformat(),
-                    "models_tested": list(results.keys()),
-                    "success_rate": f"{successful}/{total}",
-                    "config": data.get("config", {}),
-                    "summary": {
-                        "total_models": total,
-                        "successful_models": successful,
-                        "avg_response_time": _calculate_avg_response_time(results),
-                        "best_model": _get_best_model(results),
-                    },
-                }
-            )
+            history.append(_build_benchmark_history_entry(filename, file_time, data))
 
         except (json.JSONDecodeError, OSError, KeyError) as e:
             logger.warning(f"파일 {filename} 읽기 실패: {e}")

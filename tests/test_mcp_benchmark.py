@@ -919,6 +919,73 @@ class TestMCPBenchmarkTools:
         single_value = _calculate_std([1.0])
         assert single_value == 0
 
+    def test_build_benchmark_history_entry_preserves_summary_contract(self):
+        file_time = datetime(2025, 1, 2, 3, 4, 5)
+        config = {"runs": 3}
+        data = {
+            "config": config,
+            "results": {
+                "model-b": {
+                    "success": True,
+                    "metrics": {"avg_response_time": 2.0, "quality_score": 0.7},
+                },
+                "model-a": {
+                    "success": False,
+                    "metrics": {"avg_response_time": 0.5, "quality_score": 0.9},
+                },
+                "model-c": {
+                    "success": True,
+                    "metrics": {"avg_response_time": 4.0, "quality_score": 0.8},
+                },
+            },
+        }
+        original = json.loads(json.dumps(data))
+
+        entry = mcp_benchmark._build_benchmark_history_entry(
+            "benchmark.json", file_time, data
+        )
+
+        assert entry == {
+            "filename": "benchmark.json",
+            "timestamp": "2025-01-02T03:04:05",
+            "models_tested": ["model-b", "model-a", "model-c"],
+            "success_rate": "2/3",
+            "config": {"runs": 3},
+            "summary": {
+                "total_models": 3,
+                "successful_models": 2,
+                "avg_response_time": 3.0,
+                "best_model": "model-c",
+            },
+        }
+        assert entry["config"] is config
+        assert data == original
+
+    def test_build_benchmark_history_entry_handles_missing_results(self):
+        assert mcp_benchmark._build_benchmark_history_entry(
+            "empty.json", datetime(2025, 1, 1), {}
+        ) == {
+            "filename": "empty.json",
+            "timestamp": "2025-01-01T00:00:00",
+            "models_tested": [],
+            "success_rate": "0/0",
+            "config": {},
+            "summary": {
+                "total_models": 0,
+                "successful_models": 0,
+                "avg_response_time": None,
+                "best_model": None,
+            },
+        }
+
+    def test_build_benchmark_history_entry_preserves_malformed_result_error(self):
+        with pytest.raises(AttributeError):
+            mcp_benchmark._build_benchmark_history_entry(
+                "invalid.json",
+                datetime(2025, 1, 1),
+                {"results": {"model": None}},
+            )
+
     @pytest.mark.asyncio
     async def test_error_handling(self, mock_env):
         """에러 핸들링 테스트"""
