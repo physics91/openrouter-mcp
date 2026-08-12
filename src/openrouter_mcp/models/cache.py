@@ -582,6 +582,18 @@ class ModelCache:
         """Check whether a model matches all unified filter constraints."""
         model_id = model.get("id", "")
 
+        return (
+            self._matches_identity_filters(model, filters)
+            and self._matches_capability_filters(model, filters)
+            and self._matches_metadata_filters(model, filters)
+            and self._matches_trait_filters(model, filters, model_id)
+        )
+
+    def _matches_identity_filters(
+        self, model: Dict[str, Any], filters: ModelFilter
+    ) -> bool:
+        """Check provider and category filters."""
+
         if filters.provider is not None:
             model_provider = model.get("provider", "unknown")
             if self._normalize_enum_or_str(model_provider) != self._normalize_enum_or_str(
@@ -596,6 +608,13 @@ class ModelCache:
             ):
                 return False
 
+        return True
+
+    @staticmethod
+    def _matches_capability_filters(
+        model: Dict[str, Any], filters: ModelFilter
+    ) -> bool:
+        """Check capability filters."""
         if filters.capabilities:
             model_caps = model.get("capabilities", {})
             for key, value in filters.capabilities.items():
@@ -605,6 +624,13 @@ class ModelCache:
                 elif model_caps.get(key) != value:
                     return False
 
+        return True
+
+    @staticmethod
+    def _matches_metadata_filters(
+        model: Dict[str, Any], filters: ModelFilter
+    ) -> bool:
+        """Check tier, quality, and tag filters."""
         if filters.performance_tier and model.get("performance_tier") != filters.performance_tier:
             return False
 
@@ -622,6 +648,13 @@ class ModelCache:
             if not any(tag in model_tags for tag in filters.tags):
                 return False
 
+        return True
+
+    @staticmethod
+    def _matches_trait_filters(
+        model: Dict[str, Any], filters: ModelFilter, model_id: str
+    ) -> bool:
+        """Check boolean traits and minimum context length."""
         if filters.vision_capable is not None:
             caps = model.get("capabilities", {})
             if caps.get("supports_vision", False) != filters.vision_capable:
