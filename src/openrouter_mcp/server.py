@@ -160,7 +160,7 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.info("Server shutdown requested by user")
     except Exception as e:
-        logger.error(f"Server failed to start: {str(e)}")
+        logger.error(f"Server failed to start: {e!s}")
         raise
 
 
