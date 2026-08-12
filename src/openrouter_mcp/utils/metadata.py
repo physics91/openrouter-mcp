@@ -262,7 +262,7 @@ def determine_model_category(model_data: Dict[str, Any]) -> ModelCategory:
     if "image" in modality:
         if "text->image" in modality:
             return ModelCategory.IMAGE
-        elif "text+image" in modality or "image->text" in modality:
+        if "text+image" in modality or "image->text" in modality:
             return ModelCategory.MULTIMODAL
 
     if "audio" in modality:
@@ -622,10 +622,9 @@ def determine_performance_tier(model_data: Dict[str, Any]) -> str:
 
     if quality_score >= 7.5 or prompt_price > 0.01:
         return "premium"
-    elif quality_score >= 5.0 or prompt_price > 0.001:
+    if quality_score >= 5.0 or prompt_price > 0.001:
         return "standard"
-    else:
-        return "economy"
+    return "economy"
 
 
 _ALL_PRICING_FIELDS = (
@@ -669,10 +668,9 @@ def determine_cost_tier(model_data: Dict[str, Any]) -> str:
 
     if total_price < 0.002:
         return "low"
-    elif total_price < 0.02:
+    if total_price < 0.02:
         return "medium"
-    else:
-        return "high"
+    return "high"
 
 
 def _build_model_tags(
