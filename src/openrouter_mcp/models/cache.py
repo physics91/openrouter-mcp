@@ -269,6 +269,23 @@ class ModelCache:
         if not self._memory_cache:
             raise RuntimeError("모델 캐시를 초기화할 수 없습니다. API와 파일 캐시 모두 사용 불가.")
 
+    async def _enhance_fetched_models(
+        self,
+        raw_models_data: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Enhance raw API models in the cache executor."""
+        loop = asyncio.get_running_loop()
+        enhanced_models = await loop.run_in_executor(
+            self._executor,
+            batch_enhance_models,
+            raw_models_data,
+        )
+        logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
+
+        if not isinstance(enhanced_models, list):
+            raise ValueError("Enhanced model payload must be a list")
+        return enhanced_models
+
     async def _fetch_models_from_api(self) -> List[Dict[str, Any]]:
         """
         Fetch latest models from OpenRouter API and enhance with metadata.
@@ -294,16 +311,7 @@ class ModelCache:
 
             logger.info(f"Fetched {len(raw_models_data)} models from OpenRouter API (raw)")
 
-            # Enhance models with metadata in thread executor (CPU-bound)
-            loop = asyncio.get_running_loop()
-            enhanced_models = await loop.run_in_executor(
-                self._executor, batch_enhance_models, raw_models_data
-            )
-            logger.info(f"Enhanced {len(enhanced_models)} models with metadata")
-
-            if not isinstance(enhanced_models, list):
-                raise ValueError("Enhanced model payload must be a list")
-            return enhanced_models
+            return await self._enhance_fetched_models(raw_models_data)
 
         except Exception as e:
             logger.error(f"Failed to fetch models from API: {e}")
