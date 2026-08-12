@@ -13,6 +13,11 @@ from openrouter_mcp.collective_intelligence.base import (
     TaskContext,
     TaskType,
 )
+from openrouter_mcp.collective_intelligence.collaborative_solver import (
+    SolvingResult,
+    SolvingSession,
+    SolvingStrategy,
+)
 from openrouter_mcp.collective_intelligence.consensus_engine import (
     AgreementLevel,
     ConsensusResult,
@@ -39,6 +44,7 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _serialize_cross_validation_result,
     _serialize_ensemble_result,
     _serialize_routing_decision,
+    _serialize_solving_result,
 )
 
 
@@ -118,6 +124,53 @@ def _routing_decision(*, metadata: dict[str, Any]) -> RoutingDecision:
         routing_time=0.02,
         metadata=metadata,
     )
+
+
+def test_serialize_solving_result_preserves_independent_fields() -> None:
+    session = SolvingSession(
+        session_id="session-1",
+        original_task=TaskContext(task_id="solve-task", content="Plan migration"),
+        strategy=SolvingStrategy.ITERATIVE,
+        components_used=["consensus", "validator"],
+        intermediate_results=[],
+    )
+    result = SolvingResult(
+        session=session,
+        final_content="Final migration solution",
+        confidence_score=0.84,
+        quality_assessment=QualityMetrics(
+            accuracy=0.8,
+            consistency=0.7,
+            completeness=0.6,
+            relevance=0.9,
+            confidence=0.85,
+            coherence=0.75,
+        ),
+        solution_path=["Assess", "Migrate"],
+        alternative_solutions=["Replace", "Retire"],
+        improvement_suggestions=["Add rollback drill"],
+        total_processing_time=2.4,
+        component_contributions={"router": 0.4, "reasoner": 0.6},
+    )
+
+    assert _serialize_solving_result(result) == {
+        "final_solution": "Final migration solution",
+        "solution_path": ["Assess", "Migrate"],
+        "alternative_solutions": ["Replace", "Retire"],
+        "quality_assessment": {
+            "overall_score": 0.7666666666666666,
+            "accuracy": 0.8,
+            "consistency": 0.7,
+            "completeness": 0.6,
+        },
+        "component_contributions": {"router": 0.4, "reasoner": 0.6},
+        "confidence": 0.84,
+        "improvement_suggestions": ["Add rollback drill"],
+        "processing_time": 2.4,
+        "session_id": "session-1",
+        "strategy_used": "iterative",
+        "components_used": ["consensus", "validator"],
+    }
 
 
 def test_serialize_routing_decision_preserves_metadata_values() -> None:

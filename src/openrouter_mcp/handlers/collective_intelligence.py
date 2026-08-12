@@ -27,6 +27,7 @@ from ..collective_intelligence import (
     ModelInfo,
     ProcessingResult,
     RoutingDecision,
+    SolvingResult,
     TaskContext,
     TaskType,
     ValidationResult,
@@ -594,6 +595,28 @@ def _serialize_routing_decision(decision: RoutingDecision) -> Dict[str, Any]:
     }
 
 
+def _serialize_solving_result(result: SolvingResult) -> Dict[str, Any]:
+    """Serialize a collaborative solving result to the MCP response contract."""
+    return {
+        "final_solution": result.final_content,
+        "solution_path": result.solution_path,
+        "alternative_solutions": result.alternative_solutions,
+        "quality_assessment": {
+            "overall_score": result.quality_assessment.overall_score(),
+            "accuracy": result.quality_assessment.accuracy,
+            "consistency": result.quality_assessment.consistency,
+            "completeness": result.quality_assessment.completeness,
+        },
+        "component_contributions": result.component_contributions,
+        "confidence": result.confidence_score,
+        "improvement_suggestions": result.improvement_suggestions,
+        "processing_time": result.total_processing_time,
+        "session_id": result.session.session_id,
+        "strategy_used": result.session.strategy.value,
+        "components_used": result.session.components_used,
+    }
+
+
 async def _collective_chat_completion_impl(
     request: CollectiveChatRequest,
 ) -> Dict[str, Any]:
@@ -968,25 +991,7 @@ async def _collaborative_problem_solving_impl(
 
         # Start collaborative solving session - NO async with (singleton managed by lifecycle)
         result = await collaborative_solver.process(task, strategy="iterative")
-
-        return {
-            "final_solution": result.final_content,
-            "solution_path": result.solution_path,
-            "alternative_solutions": result.alternative_solutions,
-            "quality_assessment": {
-                "overall_score": result.quality_assessment.overall_score(),
-                "accuracy": result.quality_assessment.accuracy,
-                "consistency": result.quality_assessment.consistency,
-                "completeness": result.quality_assessment.completeness,
-            },
-            "component_contributions": result.component_contributions,
-            "confidence": result.confidence_score,
-            "improvement_suggestions": result.improvement_suggestions,
-            "processing_time": result.total_processing_time,
-            "session_id": result.session.session_id,
-            "strategy_used": result.session.strategy.value,
-            "components_used": result.session.components_used,
-        }
+        return _serialize_solving_result(result)
 
     except Exception as e:
         logger.error(f"Collaborative problem solving failed: {str(e)}")
