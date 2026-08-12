@@ -71,6 +71,43 @@ def _render_markdown_result(model_id: str, result: Any) -> List[str]:
     return lines
 
 
+def _serialize_json_result(model_id: str, result: Any) -> Dict[str, Any]:
+    """Serialize one benchmark result for JSON export."""
+    success = (
+        result.success
+        if hasattr(result, "success")
+        else (result.error is None if hasattr(result, "error") else True)
+    )
+
+    result_data = {
+        "model_id": model_id,
+        "success": success,
+        "response": getattr(result, "response", None),
+        "error_message": getattr(
+            result, "error_message", getattr(result, "error", None)
+        ),
+    }
+
+    if hasattr(result, "response_time_ms"):
+        result_data["response_time_ms"] = result.response_time_ms
+    if hasattr(result, "cost"):
+        result_data["cost"] = result.cost
+    if hasattr(result, "tokens_used"):
+        result_data["tokens_used"] = result.tokens_used
+
+    if hasattr(result, "metrics") and result.metrics:
+        result_data["metrics"] = {
+            "avg_response_time": getattr(result.metrics, "avg_response_time", 0),
+            "avg_cost": getattr(result.metrics, "avg_cost", 0),
+            "quality_score": getattr(result.metrics, "quality_score", 0),
+            "throughput": getattr(result.metrics, "throughput", 0),
+            "avg_total_tokens": getattr(result.metrics, "avg_total_tokens", 0),
+            "success_rate": getattr(result.metrics, "success_rate", 1.0),
+        }
+
+    return result_data
+
+
 class BenchmarkReportExporter:
     """Exports benchmark results to various formats."""
 
@@ -156,40 +193,7 @@ class BenchmarkReportExporter:
         results_payload: Dict[str, Dict[str, Any]] = {}
 
         for model_id, result in results.items():
-            # Support both BenchmarkResult and EnhancedBenchmarkResult
-            success = (
-                result.success
-                if hasattr(result, "success")
-                else (result.error is None if hasattr(result, "error") else True)
-            )
-
-            result_data = {
-                "model_id": model_id,
-                "success": success,
-                "response": getattr(result, "response", None),
-                "error_message": getattr(result, "error_message", getattr(result, "error", None)),
-            }
-
-            # Add basic metrics from BenchmarkResult
-            if hasattr(result, "response_time_ms"):
-                result_data["response_time_ms"] = result.response_time_ms
-            if hasattr(result, "cost"):
-                result_data["cost"] = result.cost
-            if hasattr(result, "tokens_used"):
-                result_data["tokens_used"] = result.tokens_used
-
-            # Add enhanced metrics if available
-            if hasattr(result, "metrics") and result.metrics:
-                result_data["metrics"] = {
-                    "avg_response_time": getattr(result.metrics, "avg_response_time", 0),
-                    "avg_cost": getattr(result.metrics, "avg_cost", 0),
-                    "quality_score": getattr(result.metrics, "quality_score", 0),
-                    "throughput": getattr(result.metrics, "throughput", 0),
-                    "avg_total_tokens": getattr(result.metrics, "avg_total_tokens", 0),
-                    "success_rate": getattr(result.metrics, "success_rate", 1.0),
-                }
-
-            results_payload[model_id] = result_data
+            results_payload[model_id] = _serialize_json_result(model_id, result)
 
         export_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
