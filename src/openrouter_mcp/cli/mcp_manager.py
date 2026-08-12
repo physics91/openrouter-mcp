@@ -15,7 +15,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional
+from typing import Any, ClassVar, Optional
 
 from ..config.constants import EnvVars
 from ..utils.env import get_env_value
@@ -50,13 +50,13 @@ class MCPServerConfig:
     name: str
     command: str
     transport_type: Optional[str] = None
-    args: List[str] = field(default_factory=list)
+    args: list[str] = field(default_factory=list)
     cwd: Optional[str] = None
-    env: Dict[str, str] = field(default_factory=dict)
+    env: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary format for JSON."""
-        config: Dict[str, Any] = {
+        config: dict[str, Any] = {
             "command": self.command,
             "args": _copy_config_container(self.args),
         }
@@ -73,7 +73,7 @@ class MCPServerConfig:
         return config
 
     @classmethod
-    def from_dict(cls, name: str, data: Dict[str, Any]) -> "MCPServerConfig":
+    def from_dict(cls, name: str, data: dict[str, Any]) -> "MCPServerConfig":
         """Create configuration from dictionary."""
         return cls(
             name=name,
@@ -144,12 +144,12 @@ class MCPManager:
         self.config_path = Path(config_path)
         self.config = self._load_config()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load configuration from file."""
         if not self.config_path.exists():
             # Create default config if file doesn't exist
             self._ensure_config_dir()
-            default_config: Dict[str, Any] = {"mcpServers": {}}
+            default_config: dict[str, Any] = {"mcpServers": {}}
             self._save_config(default_config)
             return default_config
 
@@ -158,7 +158,7 @@ class MCPManager:
                 loaded = json.load(f)
             if not isinstance(loaded, dict):
                 raise MCPConfigError("Invalid configuration file: root must be object")
-            config: Dict[str, Any] = loaded
+            config: dict[str, Any] = loaded
 
             # Ensure mcpServers key exists
             if "mcpServers" not in config or not isinstance(config.get("mcpServers"), dict):
@@ -171,7 +171,7 @@ class MCPManager:
         except Exception as e:
             raise MCPConfigError(f"Failed to load configuration: {e}") from e
 
-    def _save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
+    def _save_config(self, config: Optional[dict[str, Any]] = None) -> None:
         """Save configuration to file."""
         if config is None:
             config = self.config
@@ -270,7 +270,7 @@ class MCPManager:
 
         return MCPServerConfig.from_dict(name, self.config["mcpServers"][name])
 
-    def list_servers(self) -> List[str]:
+    def list_servers(self) -> list[str]:
         """List all installed MCP servers.
 
         Returns:
@@ -278,7 +278,7 @@ class MCPManager:
         """
         return list(self.config["mcpServers"].keys())
 
-    def get_server_status(self, name: str) -> Dict[str, Any]:
+    def get_server_status(self, name: str) -> dict[str, Any]:
         """Get detailed status of an MCP server.
 
         Args:
@@ -459,7 +459,7 @@ class MCPManager:
             available = ", ".join(self.PRESETS.keys())
             raise MCPConfigError(f"Unknown preset '{preset_name}'. Available presets: {available}")
 
-        preset: Dict[str, Any] = deepcopy(self.PRESETS[preset_name])
+        preset: dict[str, Any] = deepcopy(self.PRESETS[preset_name])
 
         # Handle special parameters for specific presets
         if preset_name == "openrouter":
