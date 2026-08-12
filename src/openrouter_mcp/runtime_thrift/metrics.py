@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from threading import Lock
-from typing import Any, Callable, Dict, Iterator, Optional
+from typing import Any, Optional
 
 from ..config.constants import CacheConfig, PricingDefaults
 from ..utils._atomic_file import replace_file_atomically
@@ -50,15 +51,15 @@ class ThriftMetrics:
     cache_write_prompt_tokens: int = 0
     cache_hit_requests: int = 0
     cache_write_requests: int = 0
-    cache_efficiency_by_provider: Dict[str, CacheEfficiencyBucket] = field(
+    cache_efficiency_by_provider: dict[str, CacheEfficiencyBucket] = field(
         default_factory=dict
     )
-    cache_efficiency_by_model: Dict[str, CacheEfficiencyBucket] = field(
+    cache_efficiency_by_model: dict[str, CacheEfficiencyBucket] = field(
         default_factory=dict
     )
 
 
-def _snapshot_cache_bucket(bucket: CacheEfficiencyBucket) -> Dict[str, Any]:
+def _snapshot_cache_bucket(bucket: CacheEfficiencyBucket) -> dict[str, Any]:
     snapshot = asdict(bucket)
     snapshot["saved_cost_usd"] = round(float(snapshot["saved_cost_usd"]), 8)
     return snapshot
@@ -72,7 +73,7 @@ def _normalize_model_key(model: str | None) -> str | None:
 
 
 def _get_cache_bucket(
-    bucket_map: Dict[str, CacheEfficiencyBucket],
+    bucket_map: dict[str, CacheEfficiencyBucket],
     key: str,
 ) -> CacheEfficiencyBucket:
     bucket = bucket_map.get(key)
@@ -94,7 +95,7 @@ def _iter_cache_buckets_for_model(
     yield _get_cache_bucket(metrics.cache_efficiency_by_model, model_key)
 
 
-def _snapshot_from_metrics(metrics: ThriftMetrics) -> Dict[str, Any]:
+def _snapshot_from_metrics(metrics: ThriftMetrics) -> dict[str, Any]:
     snapshot = asdict(metrics)
     snapshot["saved_cost_usd"] = round(float(snapshot["saved_cost_usd"]), 8)
     snapshot["cache_efficiency_by_provider"] = {
@@ -108,7 +109,7 @@ def _snapshot_from_metrics(metrics: ThriftMetrics) -> Dict[str, Any]:
     return snapshot
 
 
-def _cache_bucket_from_snapshot(snapshot: Dict[str, Any]) -> CacheEfficiencyBucket:
+def _cache_bucket_from_snapshot(snapshot: dict[str, Any]) -> CacheEfficiencyBucket:
     return CacheEfficiencyBucket(
         observed_requests=_as_int(snapshot.get("observed_requests")),
         cached_prompt_tokens=_as_int(snapshot.get("cached_prompt_tokens")),
@@ -119,7 +120,7 @@ def _cache_bucket_from_snapshot(snapshot: Dict[str, Any]) -> CacheEfficiencyBuck
     )
 
 
-def _metrics_from_snapshot(snapshot: Dict[str, Any]) -> ThriftMetrics:
+def _metrics_from_snapshot(snapshot: dict[str, Any]) -> ThriftMetrics:
     metrics = ThriftMetrics(
         coalesced_requests=_as_int(snapshot.get("coalesced_requests")),
         recent_reuse_requests=_as_int(snapshot.get("recent_reuse_requests")),
@@ -331,7 +332,7 @@ def thrift_request_scope() -> Iterator[ThriftMetrics]:
         _request_metrics_var.reset(token)
 
 
-def get_request_thrift_metrics_snapshot() -> Dict[str, Any]:
+def get_request_thrift_metrics_snapshot() -> dict[str, Any]:
     request_metrics = _request_metrics_var.get()
     if request_metrics is None:
         return _snapshot_from_metrics(ThriftMetrics())
@@ -349,7 +350,7 @@ class ThriftMetricsCollector:
         now_provider: Callable[[], date | datetime] | None = None,
     ) -> None:
         self._metrics = ThriftMetrics()
-        self._daily_metrics: Dict[str, ThriftMetrics] = {}
+        self._daily_metrics: dict[str, ThriftMetrics] = {}
         self._persistence_path = persistence_path
         self._save_interval = max(1, int(save_interval))
         self._record_count_since_save = 0
@@ -368,7 +369,7 @@ class ThriftMetricsCollector:
             self._daily_metrics[day_key] = day_metrics
         return day_metrics
 
-    def _serialize_days(self) -> Dict[str, Any]:
+    def _serialize_days(self) -> dict[str, Any]:
         return {
             "version": _PERSISTENCE_VERSION,
             "days": {
@@ -395,7 +396,7 @@ class ThriftMetricsCollector:
             if not isinstance(raw_days, dict):
                 raise TypeError("runtime thrift metrics days must be a JSON object")
 
-            loaded_days: Dict[str, ThriftMetrics] = {}
+            loaded_days: dict[str, ThriftMetrics] = {}
             for day_key, snapshot in raw_days.items():
                 date.fromisoformat(str(day_key))
                 if isinstance(snapshot, dict):
@@ -454,7 +455,7 @@ class ThriftMetricsCollector:
             self._record_count_since_save = 0
             self._save()
 
-    def snapshot(self) -> Dict[str, Any]:
+    def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return _snapshot_from_metrics(self._metrics)
 
@@ -462,7 +463,7 @@ class ThriftMetricsCollector:
         self,
         start_date: str | None = None,
         end_date: str | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         with self._lock:
             if start_date is None and end_date is None:
                 return _snapshot_from_metrics(self._metrics)
@@ -559,14 +560,14 @@ _collector = ThriftMetricsCollector(
 )
 
 
-def get_thrift_metrics_snapshot() -> Dict[str, Any]:
+def get_thrift_metrics_snapshot() -> dict[str, Any]:
     return _collector.snapshot()
 
 
 def get_thrift_metrics_snapshot_for_dates(
     start_date: str | None = None,
     end_date: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return _collector.snapshot_for_dates(start_date, end_date)
 
 
