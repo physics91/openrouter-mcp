@@ -9,6 +9,68 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 
+def _is_successful(result: Any) -> bool:
+    """Return the success state supported by both benchmark result variants."""
+    if hasattr(result, "success"):
+        return bool(result.success)
+    return result.error is None if hasattr(result, "error") else True
+
+
+def _render_basic_markdown_metrics(result: Any, success: bool) -> List[str]:
+    """Render metrics exposed by the basic benchmark result."""
+    lines = []
+    if success and hasattr(result, "response_time_ms"):
+        lines.append(f"- **Response Time**: {result.response_time_ms:.2f}ms")
+    if hasattr(result, "cost"):
+        lines.append(f"- **Cost**: ${result.cost:.6f}")
+    if hasattr(result, "tokens_used"):
+        lines.append(f"- **Tokens Used**: {result.tokens_used}")
+    return lines
+
+
+def _render_enhanced_markdown_metrics(result: Any) -> List[str]:
+    """Render metrics exposed by the enhanced benchmark result."""
+    lines = []
+    if hasattr(result, "metrics") and result.metrics:
+        if hasattr(result.metrics, "avg_response_time"):
+            lines.append(
+                f"- **Avg Response Time**: {result.metrics.avg_response_time:.2f}s"
+            )
+        if hasattr(result.metrics, "avg_cost"):
+            lines.append(f"- **Avg Cost**: ${result.metrics.avg_cost:.6f}")
+        if hasattr(result.metrics, "quality_score"):
+            lines.append(f"- **Quality Score**: {result.metrics.quality_score:.2f}")
+        if hasattr(result.metrics, "throughput"):
+            lines.append(f"- **Throughput**: {result.metrics.throughput:.2f} tokens/s")
+    return lines
+
+
+def _render_response_preview(result: Any) -> List[str]:
+    """Render the optional response preview block."""
+    if not (hasattr(result, "response") and result.response):
+        return []
+
+    preview = (
+        result.response[:200] + "..." if len(result.response) > 200 else result.response
+    )
+    return ["", "**Response Preview:**", "```", preview, "```"]
+
+
+def _render_markdown_result(model_id: str, result: Any) -> List[str]:
+    """Render one benchmark result section."""
+    success = _is_successful(result)
+    lines = [
+        f"### {model_id}",
+        "",
+        f"- **Success**: {'✅' if success else '❌'}",
+    ]
+    lines.extend(_render_basic_markdown_metrics(result, success))
+    lines.extend(_render_enhanced_markdown_metrics(result))
+    lines.extend(_render_response_preview(result))
+    lines.append("")
+    return lines
+
+
 class BenchmarkReportExporter:
     """Exports benchmark results to various formats."""
 
@@ -17,71 +79,20 @@ class BenchmarkReportExporter:
 
     async def export_markdown(self, results: Dict[str, Any], output_path: str) -> str:
         """Export benchmark results to Markdown format."""
-
-        # Support both BenchmarkResult (with error) and EnhancedBenchmarkResult (with success)
-        def is_successful(r: Any) -> bool:
-            if hasattr(r, "success"):
-                return bool(r.success)
-            return r.error is None if hasattr(r, "error") else True
-
         lines = [
             "# Benchmark Report",
             f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "",
             "## Summary",
             f"- Models tested: {len(results)}",
-            f"- Successful tests: {sum(1 for r in results.values() if is_successful(r))}",
+            f"- Successful tests: {sum(1 for r in results.values() if _is_successful(r))}",
             "",
             "## Results",
             "",
         ]
 
         for model_id, result in results.items():
-            success = is_successful(result)
-            lines.extend(
-                [
-                    f"### {model_id}",
-                    "",
-                    f"- **Success**: {'✅' if success else '❌'}",
-                ]
-            )
-
-            # Add basic metrics for BenchmarkResult
-            if success and hasattr(result, "response_time_ms"):
-                lines.append(f"- **Response Time**: {result.response_time_ms:.2f}ms")
-            if hasattr(result, "cost"):
-                lines.append(f"- **Cost**: ${result.cost:.6f}")
-            if hasattr(result, "tokens_used"):
-                lines.append(f"- **Tokens Used**: {result.tokens_used}")
-
-            # Add enhanced metrics if available
-            if hasattr(result, "metrics") and result.metrics:
-                if hasattr(result.metrics, "avg_response_time"):
-                    lines.append(
-                        f"- **Avg Response Time**: {result.metrics.avg_response_time:.2f}s"
-                    )
-                if hasattr(result.metrics, "avg_cost"):
-                    lines.append(f"- **Avg Cost**: ${result.metrics.avg_cost:.6f}")
-                if hasattr(result.metrics, "quality_score"):
-                    lines.append(f"- **Quality Score**: {result.metrics.quality_score:.2f}")
-                if hasattr(result.metrics, "throughput"):
-                    lines.append(f"- **Throughput**: {result.metrics.throughput:.2f} tokens/s")
-
-            if hasattr(result, "response") and result.response:
-                preview = (
-                    result.response[:200] + "..." if len(result.response) > 200 else result.response
-                )
-                lines.extend(
-                    [
-                        "",
-                        "**Response Preview:**",
-                        "```",
-                        preview,
-                        "```",
-                    ]
-                )
-
-            lines.append("")
+            lines.extend(_render_markdown_result(model_id, result))
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
