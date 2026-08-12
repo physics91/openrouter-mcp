@@ -96,6 +96,38 @@ async def _cleanup_stale_shared_client(
         logger.error(f"Error during client reinitialization cleanup: {e}")
 
 
+async def _initialize_shared_client(
+    current_loop: asyncio.AbstractEventLoop,
+    env_key: Optional[str],
+) -> "OpenRouterClient":
+    """Create, enter, and publish the shared OpenRouter client."""
+    global _client_instance, _client_initialized, _client_loop
+
+    # Import here to avoid circular dependency
+    from .client.openrouter import OpenRouterClient
+
+    api_key = env_key or get_required_env(EnvVars.API_KEY)
+
+    logger.info("Initializing shared OpenRouterClient singleton")
+    client = OpenRouterClient(
+        api_key=api_key,
+        base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL)
+        or APIConfig.BASE_URL,
+        app_name=get_env_value(EnvVars.APP_NAME),
+        http_referer=get_env_value(EnvVars.HTTP_REFERER),
+        enable_cache=True,
+        cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS,
+    )
+    _client_instance = client
+
+    await client.__aenter__()
+
+    _client_initialized = True
+    _client_loop = current_loop
+    logger.info("Shared OpenRouterClient initialized successfully")
+    return client
+
+
 async def get_shared_client() -> "OpenRouterClient":
     """
     Get or create the singleton OpenRouterClient instance.
@@ -165,31 +197,7 @@ async def get_shared_client() -> "OpenRouterClient":
                 _client_initialized = False
                 _client_loop = None
 
-        # Import here to avoid circular dependency
-        from .client.openrouter import OpenRouterClient
-
-        # Get API key
-        api_key = env_key or get_required_env(EnvVars.API_KEY)
-
-        # Create client with environment configuration
-        logger.info("Initializing shared OpenRouterClient singleton")
-        _client_instance = OpenRouterClient(
-            api_key=api_key,
-            base_url=get_env_value(EnvVars.BASE_URL, APIConfig.BASE_URL) or APIConfig.BASE_URL,
-            app_name=get_env_value(EnvVars.APP_NAME),
-            http_referer=get_env_value(EnvVars.HTTP_REFERER),
-            enable_cache=True,
-            cache_ttl=CacheConfig.DEFAULT_TTL_SECONDS,
-        )
-
-        # Enter the async context manager once
-        await _client_instance.__aenter__()
-
-        _client_initialized = True
-        _client_loop = current_loop
-        logger.info("Shared OpenRouterClient initialized successfully")
-
-    return _client_instance
+        return await _initialize_shared_client(current_loop, env_key)
 
 
 async def get_openrouter_client() -> "OpenRouterClient":
