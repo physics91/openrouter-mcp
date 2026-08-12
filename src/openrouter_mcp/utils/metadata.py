@@ -10,7 +10,7 @@ import logging
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .pricing import normalize_pricing, parse_price
 
@@ -355,56 +355,38 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     )
 
 
-def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extract version information from model data.
-
-    Args:
-        model_data: Model information dictionary
-
-    Returns:
-        Dictionary with version information
-    """
-    model_id = model_data.get("id", "")
-    model_data.get("name", "")
-    created_timestamp = model_data.get("created", 0)
-
-    # Extract version from ID - combine multiple parts
+def _extract_version_parts(model_id: str) -> List[str]:
+    """Extract ordered version fragments from a model identifier."""
     version_parts = []
 
-    # Look for release stage
     stage_match = re.search(r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE)
     if stage_match:
         version_parts.append(stage_match.group(1).lower())
 
-    # Look for Claude model variants
     claude_match = re.search(r"(opus|sonnet|haiku)", model_id, re.IGNORECASE)
     if claude_match:
         version_parts.append(claude_match.group(1).lower())
 
-    # Look for date (both YYYY-MM-DD and YYYYMMDD formats)
     date_match = re.search(r"(\d{4}-\d{2}-\d{2})|(\d{8})", model_id)
     if date_match:
         date_str = date_match.group(1) or date_match.group(2)
-        # Convert YYYYMMDD to YYYY-MM-DD if needed
         if len(date_str) == 8:
             date_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
         version_parts.append(date_str)
 
-    # Look for version number
     version_match = re.search(r"v(\d+(?:\.\d+)*)", model_id, re.IGNORECASE)
     if version_match:
         version_parts.append(f"v{version_match.group(1)}")
 
-    # Look for context indicator
     context_match = re.search(r"(\d+k)", model_id, re.IGNORECASE)
     if context_match:
         version_parts.append(context_match.group(1))
 
-    version = "-".join(version_parts) if version_parts else "unknown"
+    return version_parts
 
-    # Extract family
-    family = "unknown"
+
+def _extract_model_family(model_id: str) -> str:
+    """Extract the first matching known model family."""
     family_patterns = {
         "gpt-4": r"gpt-?4",
         "gpt-3.5": r"gpt-?3\.5",
@@ -420,10 +402,13 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
 
     for family_name, pattern in family_patterns.items():
         if re.search(pattern, model_id, re.IGNORECASE):
-            family = family_name
-            break
+            return family_name
 
-    # Parse release date
+    return "unknown"
+
+
+def _extract_release_date(model_id: str, created_timestamp: Any) -> Optional[str]:
+    """Extract a release date, preferring a date embedded in the model ID."""
     release_date = None
     if created_timestamp:
         try:
@@ -431,12 +416,15 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
         except (ValueError, OSError, OverflowError):
             pass
 
-    # Check if date is in ID
     date_match = re.search(r"(\d{4})-?(\d{2})-?(\d{2})", model_id)
     if date_match:
         release_date = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
 
-    # Determine if latest (heuristic based on known latest models)
+    return release_date
+
+
+def _is_latest_model(model_id: str) -> bool:
+    """Return whether a model ID matches a known latest-model heuristic."""
     latest_models = [
         "gpt-4-turbo",
         "gpt-4o",
@@ -453,7 +441,28 @@ def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
         "deepseek-v3",
     ]
 
-    is_latest = any(latest in model_id.lower() for latest in latest_models)
+    return any(latest in model_id.lower() for latest in latest_models)
+
+
+def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract version information from model data.
+
+    Args:
+        model_data: Model information dictionary
+
+    Returns:
+        Dictionary with version information
+    """
+    model_id = model_data.get("id", "")
+    model_data.get("name", "")
+    created_timestamp = model_data.get("created", 0)
+
+    version_parts = _extract_version_parts(model_id)
+    version = "-".join(version_parts) if version_parts else "unknown"
+    family = _extract_model_family(model_id)
+    release_date = _extract_release_date(model_id, created_timestamp)
+    is_latest = _is_latest_model(model_id)
 
     return {
         "version": version,
