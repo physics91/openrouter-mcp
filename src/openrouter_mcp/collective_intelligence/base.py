@@ -109,7 +109,6 @@ class CollectiveIntelligenceComponent(ABC):
     @abstractmethod
     async def process(self, *args: Any, **kwargs: Any) -> Any:
         """Process a task using this component."""
-        pass
 
     def update_metrics(self, metrics: dict[str, Any]) -> None:
         """Update component metrics."""
