@@ -314,9 +314,9 @@ class CancellationAware(Protocol):
 
 
 __all__ = [
-    "ConcurrencyAware",
-    "QuotaAware",
-    "FailureAware",
-    "StorageAware",
     "CancellationAware",
+    "ConcurrencyAware",
+    "FailureAware",
+    "QuotaAware",
+    "StorageAware",
 ]
