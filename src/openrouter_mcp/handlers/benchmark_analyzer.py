@@ -6,10 +6,29 @@ Benchmark model performance analysis utilities.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple
 
 if TYPE_CHECKING:
     from .benchmark import EnhancedBenchmarkMetrics, EnhancedBenchmarkResult
+
+
+def _rank_models_by(
+    results: List["EnhancedBenchmarkResult"],
+    score_result: Callable[["EnhancedBenchmarkResult"], float],
+) -> List[Tuple["EnhancedBenchmarkResult", float]]:
+    """Rank results with shared failure handling and stable score ordering."""
+    if not results:
+        return []
+
+    scored_results: List[Tuple["EnhancedBenchmarkResult", float]] = []
+    for result in results:
+        if not result.success or result.metrics is None:
+            scored_results.append((result, 0.0))
+            continue
+
+        scored_results.append((result, score_result(result)))
+
+    return sorted(scored_results, key=lambda item: item[1], reverse=True)
 
 
 def _build_best_performers(
@@ -53,52 +72,29 @@ class ModelPerformanceAnalyzer:
         self, results: List["EnhancedBenchmarkResult"]
     ) -> List[Tuple["EnhancedBenchmarkResult", float]]:
         """Rank models by overall performance score."""
-        if not results:
-            return []
-
-        scored_results: List[Tuple["EnhancedBenchmarkResult", float]] = []
-        for result in results:
-            if not result.success or result.metrics is None:
-                scored_results.append((result, 0.0))
-                continue
-
-            # Calculate overall score (weighted combination)
-            overall_score = (
+        return _rank_models_by(
+            results,
+            lambda result: (
                 result.metrics.speed_score * 0.25
                 + result.metrics.cost_score * 0.25
                 + result.metrics.quality_score * 0.35
                 + result.metrics.throughput_score * 0.15
-            )
-
-            scored_results.append((result, overall_score))
-
-        # Sort by score (highest first)
-        return sorted(scored_results, key=lambda x: x[1], reverse=True)
+            ),
+        )
 
     def rank_models_with_weights(
         self, results: List["EnhancedBenchmarkResult"], weights: Dict[str, float]
     ) -> List[Tuple["EnhancedBenchmarkResult", float]]:
         """Rank models using custom weights."""
-        if not results:
-            return []
-
-        scored_results: List[Tuple["EnhancedBenchmarkResult", float]] = []
-        for result in results:
-            if not result.success or result.metrics is None:
-                scored_results.append((result, 0.0))
-                continue
-
-            # Calculate weighted score
-            score = (
+        return _rank_models_by(
+            results,
+            lambda result: (
                 result.metrics.speed_score * weights.get("speed", 0)
                 + result.metrics.cost_score * weights.get("cost", 0)
                 + result.metrics.quality_score * weights.get("quality", 0)
                 + result.metrics.throughput_score * weights.get("throughput", 0)
-            )
-
-            scored_results.append((result, score))
-
-        return sorted(scored_results, key=lambda x: x[1], reverse=True)
+            ),
+        )
 
     def compare_models(self, results: List["EnhancedBenchmarkResult"]) -> Dict[str, Any]:
         """Provide detailed comparison analysis between models."""
