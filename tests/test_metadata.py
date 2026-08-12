@@ -18,6 +18,7 @@ from src.openrouter_mcp.utils.metadata import (
     ModelProvider,
     _build_model_tags,
     _extract_function_and_tool_support,
+    _extract_model_token_limits,
     determine_model_category,
     enhance_model_metadata,
     extract_model_capabilities,
@@ -196,6 +197,43 @@ class TestModelMetadataExtraction:
         assert tags == ["shared"]
         assert "long-context" not in tags
         assert "latest" not in tags
+
+    @pytest.mark.parametrize(
+        ("model_data", "expected"),
+        [
+            ({"context_length": "128000"}, (128000, 4096)),
+            (
+                {
+                    "context_length": "4096",
+                    "top_provider": {"max_completion_tokens": "2048"},
+                },
+                (4096, 2048),
+            ),
+            (
+                {
+                    "context_length": -1,
+                    "top_provider": {"max_completion_tokens": None},
+                },
+                (0, 0),
+            ),
+            (
+                {"top_provider": {"max_completion_tokens": "invalid"}},
+                (0, 0),
+            ),
+            ({"top_provider": {}}, (0, 4096)),
+        ],
+    )
+    def test_extract_model_token_limits_preserves_defaults_and_coercion(
+        self, model_data, expected
+    ):
+        original = json.loads(json.dumps(model_data))
+
+        assert _extract_model_token_limits(model_data) == expected
+        assert model_data == original
+
+    def test_extract_model_token_limits_rejects_truthy_non_mapping_provider(self):
+        with pytest.raises(AttributeError):
+            _extract_model_token_limits({"top_provider": "invalid"})
 
     def test_enhance_model_metadata_complete(self):
         """Test complete metadata enhancement for a model."""

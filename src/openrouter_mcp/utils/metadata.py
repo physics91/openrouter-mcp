@@ -298,6 +298,16 @@ def _extract_function_and_tool_support(
     return supports_functions, supports_tools
 
 
+def _extract_model_token_limits(model_data: Dict[str, Any]) -> tuple[int, int]:
+    """Extract non-negative context and completion token limits."""
+    top_provider = model_data.get("top_provider") or {}
+    max_tokens = _coerce_non_negative_int(model_data.get("context_length"), default=0)
+    raw_max_output = top_provider.get("max_completion_tokens")
+    max_output_default = 4096 if "max_completion_tokens" not in top_provider else 0
+    max_output = _coerce_non_negative_int(raw_max_output, default=max_output_default)
+    return max_tokens, max_output
+
+
 def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     """
     Extract detailed capabilities from model data.
@@ -311,7 +321,6 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     model_id = model_data.get("id", "").lower()
     architecture = model_data.get("architecture") or {}
     modality = architecture.get("modality", "").lower()
-    top_provider = model_data.get("top_provider") or {}
 
     # Vision capability
     supports_vision = (
@@ -335,10 +344,7 @@ def extract_model_capabilities(model_data: Dict[str, Any]) -> ModelCapabilities:
     )
 
     # Token limits
-    max_tokens = _coerce_non_negative_int(model_data.get("context_length"), default=0)
-    raw_max_output = top_provider.get("max_completion_tokens")
-    max_output_default = 4096 if "max_completion_tokens" not in top_provider else 0
-    max_output = _coerce_non_negative_int(raw_max_output, default=max_output_default)
+    max_tokens, max_output = _extract_model_token_limits(model_data)
 
     # Multiple images support (for vision models)
     supports_multiple_images = supports_vision and provider in [
