@@ -63,24 +63,42 @@ class RequestCoalescer(Generic[T]):
             result = await task
         except BaseException:
             if created_task:
-                async with self._lock:
-                    if self._inflight.get(key) is task:
-                        self._inflight.pop(key, None)
+                await self._remove_inflight_task_if_current(key, task)
             raise
 
         if created_task:
-            async with self._lock:
-                if self._inflight.get(key) is task:
-                    self._inflight.pop(key, None)
-                if ttl_seconds > 0:
-                    self._recent[key] = _RecentResult(
-                        value=result,
-                        expires_at=self._time_fn() + ttl_seconds,
-                    )
+            await self._finish_created_task(key, task, result, ttl_seconds)
 
         return result
 
+    async def _remove_inflight_task_if_current(
+        self, key: str, task: asyncio.Task[T]
+    ) -> None:
+        """Remove a failed or cancelled leader without disturbing a replacement."""
+        async with self._lock:
+            if self._inflight.get(key) is task:
+                self._inflight.pop(key, None)
+
+    async def _finish_created_task(
+        self,
+        key: str,
+        task: asyncio.Task[T],
+        result: T,
+        ttl_seconds: int,
+    ) -> None:
+        """Remove a successful leader and optionally cache its result atomically."""
+        async with self._lock:
+            if self._inflight.get(key) is task:
+                self._inflight.pop(key, None)
+            if ttl_seconds > 0:
+                self._recent[key] = _RecentResult(
+                    value=result,
+                    expires_at=self._time_fn() + ttl_seconds,
+                )
+
     def _drop_expired_entries(self, now: float) -> None:
-        expired_keys = [key for key, recent in self._recent.items() if recent.expires_at <= now]
+        expired_keys = [
+            key for key, recent in self._recent.items() if recent.expires_at <= now
+        ]
         for key in expired_keys:
             self._recent.pop(key, None)
