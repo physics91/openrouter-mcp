@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
@@ -14,6 +13,7 @@ from threading import Lock
 from typing import Any, Callable, Dict, Iterator, Optional
 
 from ..config.constants import CacheConfig, PricingDefaults
+from ..utils._atomic_file import replace_file_atomically
 from ..utils.metadata import extract_provider_from_id
 from ._coercion import _as_float, _as_int
 
@@ -425,14 +425,17 @@ class ThriftMetricsCollector:
 
         payload = self._serialize_days()
         try:
-            fd, tmp_path = tempfile.mkstemp(dir=dir_path or ".", suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(payload, handle, ensure_ascii=False, sort_keys=True)
-                os.replace(tmp_path, self._persistence_path)
-            except BaseException:
-                os.unlink(tmp_path)
-                raise
+            replace_file_atomically(
+                self._persistence_path,
+                dir_path,
+                lambda handle: json.dump(
+                    payload,
+                    handle,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
         except OSError as exc:
             logger.warning("Runtime thrift metrics save failed: %s", exc)
 

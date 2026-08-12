@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from ..config.constants import FreeChatConfig
+from ..utils._atomic_file import replace_file_atomically
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,9 @@ class MetricsCollector:
             KeyError,
             AttributeError,
         ) as e:
-            logger.warning("메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e)
+            logger.warning(
+                "메트릭 캐시 파일이 손상되었습니다. 빈 상태로 시작합니다: %s", e
+            )
 
     def _write_metrics_atomically(
         self,
@@ -117,14 +119,11 @@ class MetricsCollector:
     ) -> None:
         """Write a metrics snapshot with temp-file replacement and cleanup."""
         try:
-            fd, tmp_path = tempfile.mkstemp(dir=dir_path or ".", suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w") as f:
-                    json.dump(data, f)
-                os.replace(tmp_path, self._persistence_path)
-            except BaseException:
-                os.unlink(tmp_path)
-                raise
+            replace_file_atomically(
+                self._persistence_path,
+                dir_path,
+                lambda handle: json.dump(data, handle),
+            )
         except OSError as e:
             logger.warning("메트릭 저장 실패: %s", e)
 
@@ -149,7 +148,9 @@ class MetricsCollector:
             self.save()
             self._record_count_since_save = 0
 
-    def record_success(self, model_id: str, latency_ms: float, tokens_used: int) -> None:
+    def record_success(
+        self, model_id: str, latency_ms: float, tokens_used: int
+    ) -> None:
         """Record a successful request for *model_id*."""
         m = self._metrics.setdefault(model_id, ModelMetrics())
         m.total_requests += 1
@@ -188,7 +189,9 @@ class MetricsCollector:
             return 0.0
 
         latency_score = 1.0 - min(m.avg_latency_ms / FreeChatConfig.MAX_LATENCY_MS, 1.0)
-        throughput_score = min(m.tokens_per_second / FreeChatConfig.MAX_TOKENS_PER_SECOND, 1.0)
+        throughput_score = min(
+            m.tokens_per_second / FreeChatConfig.MAX_TOKENS_PER_SECOND, 1.0
+        )
 
         return (
             FreeChatConfig.PERFORMANCE_SUCCESS_WEIGHT * m.success_rate

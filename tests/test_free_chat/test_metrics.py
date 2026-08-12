@@ -270,7 +270,7 @@ class TestMetricsPersistence:
             return result
 
         with patch(
-            "src.openrouter_mcp.free.metrics.tempfile.mkstemp",
+            "src.openrouter_mcp.utils._atomic_file.tempfile.mkstemp",
             side_effect=tracking_mkstemp,
         ), patch(
             "src.openrouter_mcp.free.metrics.json.dump",
@@ -297,10 +297,10 @@ class TestMetricsPersistence:
             return result
 
         with patch(
-            "src.openrouter_mcp.free.metrics.tempfile.mkstemp",
+            "src.openrouter_mcp.utils._atomic_file.tempfile.mkstemp",
             side_effect=tracking_mkstemp,
         ), patch(
-            "src.openrouter_mcp.free.metrics.os.replace",
+            "src.openrouter_mcp.utils._atomic_file.os.replace",
             side_effect=OSError("disk full"),
         ), patch(
             "src.openrouter_mcp.free.metrics.logger.warning"
