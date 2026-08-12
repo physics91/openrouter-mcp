@@ -9,26 +9,26 @@ including aliases, capabilities, and quality tiers.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Cache for loaded configuration
-_config_cache: Optional[Dict[str, Any]] = None
+_config_cache: Optional[dict[str, Any]] = None
 
 
 class ProviderConfigError(RuntimeError):
     """Provider 설정 로드 실패."""
 
 
-def _as_str_dict(value: Any) -> Dict[str, Any]:
+def _as_str_dict(value: Any) -> dict[str, Any]:
     """JSON 객체를 string-key dict로 정규화."""
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
 
 
-def _build_default_config() -> Dict[str, Any]:
+def _build_default_config() -> dict[str, Any]:
     """새 기본 설정 사본 생성."""
     return {
         "providers": {},
@@ -37,7 +37,7 @@ def _build_default_config() -> Dict[str, Any]:
     }
 
 
-def load_provider_config() -> Dict[str, Any]:
+def load_provider_config() -> dict[str, Any]:
     """
     Load provider configuration from JSON file.
 
@@ -104,7 +104,7 @@ def resolve_provider_alias(provider_name: str) -> str:
     return provider_lower
 
 
-def get_provider_info(provider_name: str) -> Dict[str, Any]:
+def get_provider_info(provider_name: str) -> dict[str, Any]:
     """
     Get detailed information about a provider.
 
@@ -135,7 +135,7 @@ def get_provider_info(provider_name: str) -> Dict[str, Any]:
     }
 
 
-def get_quality_tier_info(tier_name: str) -> Dict[str, Any]:
+def get_quality_tier_info(tier_name: str) -> dict[str, Any]:
     """
     Get information about a quality tier.
 
