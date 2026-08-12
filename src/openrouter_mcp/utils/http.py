@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Optional
 
 from ..config.constants import EnvVars
 from .env import get_env_value
@@ -14,7 +14,7 @@ def build_openrouter_headers(
     http_referer: Optional[str] = None,
     *,
     fallback_to_env: bool = True,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Build OpenRouter request headers with optional tracking metadata."""
     if fallback_to_env:
         if app_name is None:
