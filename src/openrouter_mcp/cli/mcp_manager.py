@@ -191,6 +191,16 @@ class MCPManager:
         """Public method to save current configuration."""
         self._save_config()
 
+    def _store_server_config(self, config: MCPServerConfig, *, action: str) -> None:
+        """Normalize and persist a validated server configuration."""
+        if config.cwd:
+            config.cwd = str(Path(config.cwd).expanduser().resolve())
+
+        self.config["mcpServers"][config.name] = config.to_dict()
+        self._save_config()
+
+        logger.info(f"{action} MCP server: {config.name}")
+
     def add_server(self, config: MCPServerConfig, force: bool = False) -> None:
         """Add an MCP server to the configuration.
 
@@ -206,14 +216,7 @@ class MCPManager:
                 f"Server '{config.name}' already exists. Use force=True to overwrite."
             )
 
-        # Expand paths if needed
-        if config.cwd:
-            config.cwd = str(Path(config.cwd).expanduser().resolve())
-
-        self.config["mcpServers"][config.name] = config.to_dict()
-        self._save_config()
-
-        logger.info(f"Added MCP server: {config.name}")
+        self._store_server_config(config, action="Added")
 
     def remove_server(self, name: str) -> None:
         """Remove an MCP server from the configuration.
@@ -244,14 +247,7 @@ class MCPManager:
         if config.name not in self.config["mcpServers"]:
             raise MCPServerNotFoundError(f"Server '{config.name}' not found")
 
-        # Expand paths if needed
-        if config.cwd:
-            config.cwd = str(Path(config.cwd).expanduser().resolve())
-
-        self.config["mcpServers"][config.name] = config.to_dict()
-        self._save_config()
-
-        logger.info(f"Updated MCP server: {config.name}")
+        self._store_server_config(config, action="Updated")
 
     def get_server(self, name: str) -> MCPServerConfig:
         """Get a server configuration by name.
