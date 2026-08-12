@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List
+from collections.abc import Iterable
+from typing import Any
 
 
-def serialize_messages(messages: Iterable[Any]) -> List[Dict[str, Any]]:
+def serialize_messages(messages: Iterable[Any]) -> list[dict[str, Any]]:
     """Convert message objects to dictionaries expected by the client."""
-    serialized: List[Dict[str, Any]] = []
+    serialized: list[dict[str, Any]] = []
 
     for message in messages:
         if isinstance(message, dict):
