@@ -332,7 +332,7 @@ async def _try_native_fallback(
         _record_rate_limit_failure(router, metrics, model_ids[0], e)
         return None
 
-    except (AuthenticationError,):
+    except AuthenticationError:
         raise
 
     except OpenRouterError as e:
