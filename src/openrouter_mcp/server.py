@@ -62,7 +62,9 @@ def validate_environment() -> None:
             missing_vars.append(var)
 
     if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        logger.error(
+            f"Missing required environment variables: {', '.join(missing_vars)}"
+        )
         logger.error("Please set these variables in your .env file or environment")
         raise ValueError(f"Missing required environment variables: {missing_vars}")
 
