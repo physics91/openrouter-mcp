@@ -205,7 +205,8 @@ class SemanticSimilarityCalculator:
         return [
             token
             for token in tokens
-            if len(token) >= self.min_token_length and token not in EXTENDED_ENGLISH_STOPWORDS
+            if len(token) >= self.min_token_length
+            and token not in EXTENDED_ENGLISH_STOPWORDS
         ]
 
     def _jaccard_similarity(self, text1: str, text2: str) -> float:
@@ -463,7 +464,9 @@ class ResponseGrouper:
         if len(texts) == 1:
             return [[0]]
 
-        representative_indices, duplicate_members = self._collect_duplicate_members(texts)
+        representative_indices, duplicate_members = self._collect_duplicate_members(
+            texts
+        )
 
         groups: list[list[int]] = []
         assigned_representatives: set[int] = set()
