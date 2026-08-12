@@ -431,6 +431,28 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         handler = strategy_dispatch.get(self.config.strategy, self._majority_vote_consensus)
         return handler(task, responses)
 
+    def _build_consensus_result(
+        self,
+        task: TaskContext,
+        responses: List[ModelResponse],
+        selected_response: ModelResponse,
+        agreement_level: AgreementLevel,
+        confidence_score: float,
+        quality_metrics: QualityMetrics,
+    ) -> ConsensusResult:
+        """Build the result envelope shared by consensus strategies."""
+        return ConsensusResult(
+            task_id=task.task_id,
+            consensus_content=selected_response.result.content,
+            agreement_level=agreement_level,
+            confidence_score=confidence_score,
+            participating_models=[response.model_id for response in responses],
+            model_responses=responses,
+            strategy_used=self.config.strategy,
+            processing_time=0.0,
+            quality_metrics=quality_metrics,
+        )
+
     def _majority_vote_consensus(
         self, task: TaskContext, responses: List[ModelResponse]
     ) -> ConsensusResult:
@@ -458,16 +480,13 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         # Calculate quality metrics
         quality_metrics = self._calculate_quality_metrics(best_group, responses)
 
-        return ConsensusResult(
-            task_id=task.task_id,
-            consensus_content=best_response.result.content,
-            agreement_level=agreement_level,
-            confidence_score=consensus_confidence,
-            participating_models=[r.model_id for r in responses],
-            model_responses=responses,
-            strategy_used=self.config.strategy,
-            processing_time=0.0,  # Will be set by caller
-            quality_metrics=quality_metrics,
+        return self._build_consensus_result(
+            task,
+            responses,
+            best_response,
+            agreement_level,
+            consensus_confidence,
+            quality_metrics,
         )
 
     def _weighted_average_consensus(
@@ -496,16 +515,13 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
         quality_metrics = self._calculate_quality_metrics(responses, responses)
 
-        return ConsensusResult(
-            task_id=task.task_id,
-            consensus_content=best_response.result.content,
-            agreement_level=AgreementLevel.MODERATE_CONSENSUS,
-            confidence_score=avg_confidence,
-            participating_models=[r.model_id for r in responses],
-            model_responses=responses,
-            strategy_used=self.config.strategy,
-            processing_time=0.0,
-            quality_metrics=quality_metrics,
+        return self._build_consensus_result(
+            task,
+            responses,
+            best_response,
+            AgreementLevel.MODERATE_CONSENSUS,
+            avg_confidence,
+            quality_metrics,
         )
 
     def _confidence_threshold_consensus(
