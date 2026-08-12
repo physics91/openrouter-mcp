@@ -445,7 +445,7 @@ class StorageManager:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.error(f"Cleanup task error: {e}", exc_info=True)
+                    logger.exception(f"Cleanup task error: {e}")
                     await asyncio.sleep(60)
 
         self._cleanup_task = asyncio.create_task(cleanup_loop())
