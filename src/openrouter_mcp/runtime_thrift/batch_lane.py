@@ -74,6 +74,36 @@ class DeferredBatchExport:
         }
 
 
+def _write_grouped_request_files(
+    batch_dir: Path,
+    requests: List[DeferredBatchRequest],
+) -> List[Dict[str, Any]]:
+    """Write provider/model grouped JSONL files and describe each group."""
+    grouped: Dict[tuple[str, str], List[DeferredBatchRequest]] = defaultdict(list)
+    for request in requests:
+        grouped[(request.provider, request.model_id)].append(request)
+
+    groups_payload: List[Dict[str, Any]] = []
+    for (provider, model_id), group_requests in sorted(grouped.items()):
+        file_name = f"{_slugify(provider)}__{_slugify(model_id)}.jsonl"
+        output_path = batch_dir / file_name
+        with open(output_path, "w", encoding="utf-8") as handle:
+            for request in group_requests:
+                handle.write(json.dumps(request.to_jsonl_record(), ensure_ascii=False))
+                handle.write("\n")
+
+        groups_payload.append(
+            {
+                "provider": provider,
+                "model_id": model_id,
+                "file_name": file_name,
+                "request_count": len(group_requests),
+            }
+        )
+
+    return groups_payload
+
+
 class DeferredBatchLane:
     """Write deferred-execution requests into grouped JSONL artifacts."""
 
@@ -101,27 +131,7 @@ class DeferredBatchLane:
         batch_dir = self.base_dir / batch_id
         batch_dir.mkdir(parents=True, exist_ok=True)
 
-        grouped: Dict[tuple[str, str], List[DeferredBatchRequest]] = defaultdict(list)
-        for request in request_list:
-            grouped[(request.provider, request.model_id)].append(request)
-
-        groups_payload: List[Dict[str, Any]] = []
-        for (provider, model_id), group_requests in sorted(grouped.items()):
-            file_name = f"{_slugify(provider)}__{_slugify(model_id)}.jsonl"
-            output_path = batch_dir / file_name
-            with open(output_path, "w", encoding="utf-8") as handle:
-                for request in group_requests:
-                    handle.write(json.dumps(request.to_jsonl_record(), ensure_ascii=False))
-                    handle.write("\n")
-
-            groups_payload.append(
-                {
-                    "provider": provider,
-                    "model_id": model_id,
-                    "file_name": file_name,
-                    "request_count": len(group_requests),
-                }
-            )
+        groups_payload = _write_grouped_request_files(batch_dir, request_list)
 
         manifest_path = batch_dir / "manifest.json"
         manifest = {
