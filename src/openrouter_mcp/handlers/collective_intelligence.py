@@ -26,6 +26,7 @@ from ..collective_intelligence import (
     EnsembleResult,
     ModelInfo,
     ProcessingResult,
+    RoutingDecision,
     TaskContext,
     TaskType,
     ValidationResult,
@@ -568,6 +569,31 @@ def _serialize_ensemble_result(result: EnsembleResult) -> Dict[str, Any]:
     }
 
 
+def _serialize_routing_decision(decision: RoutingDecision) -> Dict[str, Any]:
+    """Serialize a routing decision to the MCP response contract."""
+    return {
+        "selected_model": decision.selected_model_id,
+        "selection_reasoning": decision.justification,
+        "confidence": decision.confidence_score,
+        "alternative_models": [
+            {"model": alternative[0], "score": alternative[1]}
+            for alternative in decision.alternative_models[:3]
+        ],
+        "routing_metrics": {
+            "expected_performance": decision.expected_performance,
+            "strategy_used": decision.strategy_used.value,
+            "total_candidates": decision.metadata.get("total_candidates", 0),
+            "constraints_applied": decision.metadata.get("constraints_applied", []),
+            "constraints_unmet": decision.metadata.get("constraints_unmet", []),
+            "filtered_candidates": decision.metadata.get("filtered_candidates", 0),
+            "performance_weights": decision.metadata.get("performance_weights", {}),
+            "preference_matches": decision.metadata.get("preference_matches", []),
+            "thrift_feedback": decision.metadata.get("thrift_feedback"),
+        },
+        "selection_time": decision.routing_time,
+    }
+
+
 async def _collective_chat_completion_impl(
     request: CollectiveChatRequest,
 ) -> Dict[str, Any]:
@@ -773,28 +799,7 @@ async def _adaptive_model_selection_impl(
 
         # Perform adaptive routing - NO async with (singleton managed by lifecycle)
         decision = await adaptive_router.process(task)
-
-        return {
-            "selected_model": decision.selected_model_id,
-            "selection_reasoning": decision.justification,
-            "confidence": decision.confidence_score,
-            "alternative_models": [
-                {"model": alt[0], "score": alt[1]}
-                for alt in decision.alternative_models[:3]  # Top 3 alternatives
-            ],
-            "routing_metrics": {
-                "expected_performance": decision.expected_performance,
-                "strategy_used": decision.strategy_used.value,
-                "total_candidates": decision.metadata.get("total_candidates", 0),
-                "constraints_applied": decision.metadata.get("constraints_applied", []),
-                "constraints_unmet": decision.metadata.get("constraints_unmet", []),
-                "filtered_candidates": decision.metadata.get("filtered_candidates", 0),
-                "performance_weights": decision.metadata.get("performance_weights", {}),
-                "preference_matches": decision.metadata.get("preference_matches", []),
-                "thrift_feedback": decision.metadata.get("thrift_feedback"),
-            },
-            "selection_time": decision.routing_time,
-        }
+        return _serialize_routing_decision(decision)
 
     except Exception as e:
         logger.error(f"Adaptive model selection failed: {str(e)}")

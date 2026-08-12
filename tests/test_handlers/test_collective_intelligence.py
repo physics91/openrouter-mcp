@@ -1,5 +1,11 @@
 """Focused tests for collective-intelligence handler response serialization."""
 
+from typing import Any
+
+from openrouter_mcp.collective_intelligence.adaptive_router import (
+    RoutingDecision,
+    RoutingStrategy,
+)
 from openrouter_mcp.collective_intelligence.base import (
     PerformanceMetrics,
     ProcessingResult,
@@ -32,6 +38,7 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _serialize_consensus_result,
     _serialize_cross_validation_result,
     _serialize_ensemble_result,
+    _serialize_routing_decision,
 )
 
 
@@ -92,6 +99,89 @@ def _issue(
         evidence=f"Evidence {issue_id}",
         validator_model_id=validator_model_id,
     )
+
+
+def _routing_decision(*, metadata: dict[str, Any]) -> RoutingDecision:
+    return RoutingDecision(
+        task_id="routing-task",
+        selected_model_id="selected-model",
+        strategy_used=RoutingStrategy.ADAPTIVE,
+        confidence_score=0.88,
+        expected_performance={"quality": 0.91},
+        alternative_models=[
+            ("model-a", 0.8),
+            ("model-b", 0.7),
+            ("model-c", 0.6),
+            ("model-d", 0.5),
+        ],
+        justification="Best overall fit",
+        routing_time=0.02,
+        metadata=metadata,
+    )
+
+
+def test_serialize_routing_decision_preserves_metadata_values() -> None:
+    decision = _routing_decision(
+        metadata={
+            "total_candidates": 7,
+            "constraints_applied": ["max_cost"],
+            "constraints_unmet": ["preferred_provider"],
+            "filtered_candidates": 2,
+            "performance_weights": {"accuracy": 0.8},
+            "preference_matches": ["model_family"],
+            "thrift_feedback": {"source": "provider"},
+        }
+    )
+
+    assert _serialize_routing_decision(decision) == {
+        "selected_model": "selected-model",
+        "selection_reasoning": "Best overall fit",
+        "confidence": 0.88,
+        "alternative_models": [
+            {"model": "model-a", "score": 0.8},
+            {"model": "model-b", "score": 0.7},
+            {"model": "model-c", "score": 0.6},
+        ],
+        "routing_metrics": {
+            "expected_performance": {"quality": 0.91},
+            "strategy_used": "adaptive",
+            "total_candidates": 7,
+            "constraints_applied": ["max_cost"],
+            "constraints_unmet": ["preferred_provider"],
+            "filtered_candidates": 2,
+            "performance_weights": {"accuracy": 0.8},
+            "preference_matches": ["model_family"],
+            "thrift_feedback": {"source": "provider"},
+        },
+        "selection_time": 0.02,
+    }
+
+
+def test_serialize_routing_decision_uses_metadata_defaults() -> None:
+    decision = _routing_decision(metadata={})
+
+    assert _serialize_routing_decision(decision) == {
+        "selected_model": "selected-model",
+        "selection_reasoning": "Best overall fit",
+        "confidence": 0.88,
+        "alternative_models": [
+            {"model": "model-a", "score": 0.8},
+            {"model": "model-b", "score": 0.7},
+            {"model": "model-c", "score": 0.6},
+        ],
+        "routing_metrics": {
+            "expected_performance": {"quality": 0.91},
+            "strategy_used": "adaptive",
+            "total_candidates": 0,
+            "constraints_applied": [],
+            "constraints_unmet": [],
+            "filtered_candidates": 0,
+            "performance_weights": {},
+            "preference_matches": [],
+            "thrift_feedback": None,
+        },
+        "selection_time": 0.02,
+    }
 
 
 def test_serialize_consensus_result_preserves_independent_model_lists() -> None:
