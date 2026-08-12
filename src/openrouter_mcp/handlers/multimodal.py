@@ -444,10 +444,9 @@ async def chat_with_vision(
                 return await _stream_vision_chat_with_thrift_metadata(
                     client, request, vision_messages
                 )
-            else:
-                return await _complete_vision_chat_with_thrift_metadata(
-                    client, request, vision_messages
-                )
+            return await _complete_vision_chat_with_thrift_metadata(
+                client, request, vision_messages
+            )
 
         except Exception as e:
             logger.error(f"Vision chat completion failed: {e!s}")

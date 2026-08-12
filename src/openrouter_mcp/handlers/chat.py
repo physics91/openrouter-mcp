@@ -155,10 +155,7 @@ async def chat_with_model(
                 return await _stream_chat_with_thrift_metadata(
                     client, request, messages
                 )
-            else:
-                return await _complete_chat_with_thrift_metadata(
-                    client, request, messages
-                )
+            return await _complete_chat_with_thrift_metadata(client, request, messages)
 
         except Exception as e:
             logger.error(f"Chat completion failed: {e!s}")
