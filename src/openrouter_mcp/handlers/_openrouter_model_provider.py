@@ -134,7 +134,7 @@ class OpenRouterModelProvider:
             )
 
         except Exception as e:
-            logger.error(f"Task processing failed for model {model_id}: {str(e)}")
+            logger.error(f"Task processing failed for model {model_id}: {e!s}")
             raise
 
     def _build_model_info(self, raw_model: dict[str, Any]) -> ModelInfo:
@@ -169,7 +169,7 @@ class OpenRouterModelProvider:
             return models
 
         except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.error(f"Failed to fetch models: {str(e)}")
+            logger.error(f"Failed to fetch models: {e!s}")
             raise RuntimeError(
                 f"Unable to fetch available models from OpenRouter: {type(e).__name__}. "
                 "Check network connectivity and API key configuration."
