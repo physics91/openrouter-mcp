@@ -147,35 +147,21 @@ class FreeModelRouter:
         ]
         return matched
 
-    def _get_scored_candidates(
+    def _score_available_candidates(
         self,
-        task_type: Optional[FreeTaskType] = None,
-        required_capabilities: Optional[Dict[str, bool]] = None,
+        free_models: List[Dict[str, Any]],
+        task_type: Optional[FreeTaskType],
     ) -> List[tuple]:
-        """Score and sort available free models by effective score descending.
-
-        Returns list of ``(model_dict, effective_score)`` tuples.
-        Raises :class:`RuntimeError` if no models are available.
-        """
-        free_models = self._cache.filter_models(free_only=True)
-
-        if required_capabilities:
-            free_models = self._filter_by_capabilities(free_models, required_capabilities)
-            if not free_models:
-                raise RuntimeError("요청에 필요한 capability를 지원하는 free 모델이 없습니다.")
-
-        if not free_models:
-            raise RuntimeError("사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요.")
-
-        # Decay usage counts when all current candidates have been used at least once
+        """Apply usage rotation, availability, and scoring to candidate models."""
         active_ids = {m["id"] for m in free_models}
         if self._usage_counts and len(active_ids) > 0:
             min_count = min(self._usage_counts.get(mid, 0) for mid in active_ids)
             if min_count > 0:
                 for mid in active_ids:
-                    self._usage_counts[mid] = max(0, self._usage_counts.get(mid, 0) - min_count)
+                    self._usage_counts[mid] = max(
+                        0, self._usage_counts.get(mid, 0) - min_count
+                    )
 
-        # Filter available models and score with usage-based rotation penalty
         usage_penalty = FreeChatConfig.USAGE_PENALTY_FACTOR
         candidates = [
             (
@@ -191,11 +177,43 @@ class FreeModelRouter:
         ]
 
         if not candidates:
-            soonest = min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
-            raise RuntimeError(f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요.")
+            soonest = (
+                min(self._cooldowns.values()) - time.time() if self._cooldowns else 0
+            )
+            raise RuntimeError(
+                f"사용 가능한 free 모델이 없습니다. {max(0, soonest):.0f}초 후 재시도해주세요."
+            )
 
         candidates.sort(key=lambda x: -x[1])
         return candidates
+
+    def _get_scored_candidates(
+        self,
+        task_type: Optional[FreeTaskType] = None,
+        required_capabilities: Optional[Dict[str, bool]] = None,
+    ) -> List[tuple]:
+        """Score and sort available free models by effective score descending.
+
+        Returns list of ``(model_dict, effective_score)`` tuples.
+        Raises :class:`RuntimeError` if no models are available.
+        """
+        free_models = self._cache.filter_models(free_only=True)
+
+        if required_capabilities:
+            free_models = self._filter_by_capabilities(
+                free_models, required_capabilities
+            )
+            if not free_models:
+                raise RuntimeError(
+                    "요청에 필요한 capability를 지원하는 free 모델이 없습니다."
+                )
+
+        if not free_models:
+            raise RuntimeError(
+                "사용 가능한 free 모델이 없습니다. 캐시를 새로고침해주세요."
+            )
+
+        return self._score_available_candidates(free_models, task_type)
 
     async def select_model(
         self,
