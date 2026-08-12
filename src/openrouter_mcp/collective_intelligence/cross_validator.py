@@ -104,7 +104,9 @@ class ValidationConfig:
     consensus_threshold: float = 0.6
     include_self_validation: bool = False
     timeout_seconds: float = 30.0
-    specialized_validators: Dict[ValidationCriteria, List[str]] = field(default_factory=dict)
+    specialized_validators: Dict[ValidationCriteria, List[str]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -213,7 +215,9 @@ class SpecializedValidator:
                 error=str(exc),
             )
             self._last_failure = failure
-            logger.warning(f"{failure_label} failed with model {validator_model_id}: {exc!s}")
+            logger.warning(
+                f"{failure_label} failed with model {validator_model_id}: {exc!s}"
+            )
             return [], failure
 
         self._last_failure = None
@@ -249,7 +253,9 @@ class FactCheckValidator(SpecializedValidator):
         validator_model_id: str,
     ) -> List[ValidationIssue]:
         """Validate factual accuracy of the result."""
-        issues, _ = await self.validate_with_metadata(result, task_context, validator_model_id)
+        issues, _ = await self.validate_with_metadata(
+            result, task_context, validator_model_id
+        )
         return issues
 
     async def validate_with_metadata(
@@ -296,12 +302,16 @@ class FactCheckValidator(SpecializedValidator):
             if not normalized_sentence:
                 continue
             if not any(
-                pattern.search(normalized_sentence) for pattern in self._FACT_CHECK_ISSUE_PATTERNS
+                pattern.search(normalized_sentence)
+                for pattern in self._FACT_CHECK_ISSUE_PATTERNS
             ):
                 continue
-            residual_sentence = self._FACT_CHECK_NEGATION_PATTERN.sub(" ", normalized_sentence)
+            residual_sentence = self._FACT_CHECK_NEGATION_PATTERN.sub(
+                " ", normalized_sentence
+            )
             if any(
-                pattern.search(residual_sentence) for pattern in self._FACT_CHECK_ISSUE_PATTERNS
+                pattern.search(residual_sentence)
+                for pattern in self._FACT_CHECK_ISSUE_PATTERNS
             ):
                 return True
         return False
@@ -374,7 +384,9 @@ class BiasDetectionValidator(SpecializedValidator):
             return issues
 
         except Exception as e:
-            logger.warning(f"Bias detection failed with model {validator_model_id}: {e!s}")
+            logger.warning(
+                f"Bias detection failed with model {validator_model_id}: {e!s}"
+            )
             return []
 
     def _parse_bias_result(
@@ -451,7 +463,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
     ) -> Dict[str, Any]:
         """Normalize validator failures for reports and process results."""
         serialized_failures = [failure.to_metadata() for failure in failures]
-        return {"validator_failures": serialized_failures} if serialized_failures else {}
+        return (
+            {"validator_failures": serialized_failures} if serialized_failures else {}
+        )
 
     async def process(
         self, result: ProcessingResult, task_context: TaskContext, **kwargs: Any
@@ -479,10 +493,16 @@ class CrossValidator(CollectiveIntelligenceComponent):
             )
 
             # Calculate overall validation metrics
-            validation_confidence = self._calculate_validation_confidence(validation_report)
+            validation_confidence = self._calculate_validation_confidence(
+                validation_report
+            )
             is_valid = self._determine_validity(validation_report, task_context)
-            improvement_suggestions = self._generate_improvement_suggestions(validation_report)
-            quality_metrics = self._calculate_validation_quality_metrics(validation_report)
+            improvement_suggestions = self._generate_improvement_suggestions(
+                validation_report
+            )
+            quality_metrics = self._calculate_validation_quality_metrics(
+                validation_report
+            )
 
             # Create final validation result
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -498,7 +518,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 ),
             }
             if "validator_failures" in validation_report.metadata:
-                metadata["validator_failures"] = validation_report.metadata["validator_failures"]
+                metadata["validator_failures"] = validation_report.metadata[
+                    "validator_failures"
+                ]
 
             validation_result = ValidationResult(
                 task_id=task_context.task_id,
@@ -556,7 +578,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         # Add specialized models with high scores
         for model_id in specialized_models:
             if model_id not in [m[0] for m in scored_models]:
-                scored_models.append((model_id, 0.9))  # High score for specialized validators
+                scored_models.append(
+                    (model_id, 0.9)
+                )  # High score for specialized validators
 
         # Sort by score and select top validators
         scored_models.sort(key=lambda x: x[1], reverse=True)
@@ -595,7 +619,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
             perf = self.validator_performance[model.model_id]
             performance_bonus = perf.get("accuracy", 0.0) * 0.2
 
-        return min(1.0, base_score + accuracy_bonus + capability_bonus + performance_bonus)
+        return min(
+            1.0, base_score + accuracy_bonus + capability_bonus + performance_bonus
+        )
 
     async def _perform_validation(
         self,
@@ -613,7 +639,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
             ValidationStrategy.QUALITY_ASSURANCE: self._quality_assurance_validation,
             ValidationStrategy.BIAS_DETECTION: self._bias_detection_validation,
         }
-        handler = strategy_dispatch.get(self.config.strategy, self._peer_review_validation)
+        handler = strategy_dispatch.get(
+            self.config.strategy, self._peer_review_validation
+        )
         return await handler(result, task_context, validator_models)
 
     def _build_issue_validation_report(
@@ -659,12 +687,17 @@ class CrossValidator(CollectiveIntelligenceComponent):
         # Create validation tasks for each validator
         validation_tasks = []
         for validator_model_id in validator_models:
-            task = self._create_peer_review_task(result, task_context, validator_model_id)
+            task = self._create_peer_review_task(
+                result, task_context, validator_model_id
+            )
             validation_tasks.append((validator_model_id, task))
 
         # Execute validation tasks concurrently
         validation_results = await asyncio.gather(
-            *[self._execute_validation_task(model_id, task) for model_id, task in validation_tasks],
+            *[
+                self._execute_validation_task(model_id, task)
+                for model_id, task in validation_tasks
+            ],
             return_exceptions=True,
         )
         raise_first_fatal_result(validation_results)
@@ -842,11 +875,15 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 validation_result = await self._execute_validation_task(
                     validator_model_id, adversarial_task
                 )
-                issues = self._parse_adversarial_result(validation_result, validator_model_id)
+                issues = self._parse_adversarial_result(
+                    validation_result, validator_model_id
+                )
                 all_issues.extend(issues)
 
             except Exception as e:
-                logger.warning(f"Adversarial validation failed for {validator_model_id}: {e!s}")
+                logger.warning(
+                    f"Adversarial validation failed for {validator_model_id}: {e!s}"
+                )
                 validator_failures.append(
                     ValidatorFailureRecord(
                         validator_model_id=validator_model_id,
@@ -927,7 +964,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         # Calculate consensus metrics
         consensus_level = len(alternative_responses) / max(len(validator_models), 1)
 
-        criteria_scores = {criteria: 0.8 for criteria in self.config.criteria}  # Default scores
+        criteria_scores = {
+            criteria: 0.8 for criteria in self.config.criteria
+        }  # Default scores
         overall_score = consensus_level
 
         return ValidationReport(
@@ -999,13 +1038,17 @@ class CrossValidator(CollectiveIntelligenceComponent):
         """Perform specialized fact-checking validation."""
 
         if ValidationCriteria.FACTUAL_CORRECTNESS in self.specialized_validators:
-            fact_checker = self.specialized_validators[ValidationCriteria.FACTUAL_CORRECTNESS]
+            fact_checker = self.specialized_validators[
+                ValidationCriteria.FACTUAL_CORRECTNESS
+            ]
             all_issues: List[ValidationIssue] = []
             validator_failures: List[ValidatorFailureRecord] = []
 
             for validator_model_id in validator_models:
                 try:
-                    issues = await fact_checker.validate(result, task_context, validator_model_id)
+                    issues = await fact_checker.validate(
+                        result, task_context, validator_model_id
+                    )
                 except Exception as exc:
                     validator_failures.append(
                         ValidatorFailureRecord(
@@ -1022,7 +1065,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
                     validator_failures.append(failure)
 
             criteria_scores = {
-                ValidationCriteria.FACTUAL_CORRECTNESS: self._calculate_criteria_score(all_issues)
+                ValidationCriteria.FACTUAL_CORRECTNESS: self._calculate_criteria_score(
+                    all_issues
+                )
             }
             overall_score = criteria_scores[ValidationCriteria.FACTUAL_CORRECTNESS]
 
@@ -1040,7 +1085,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
             )
         else:
             # Fallback to peer review
-            return await self._peer_review_validation(result, task_context, validator_models)
+            return await self._peer_review_validation(
+                result, task_context, validator_models
+            )
 
     async def _quality_assurance_validation(
         self,
@@ -1051,7 +1098,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         """Perform comprehensive quality assurance validation."""
         # Similar to peer review but with more focus on quality metrics
         # Get the peer review result and override the strategy
-        report = await self._peer_review_validation(result, task_context, validator_models)
+        report = await self._peer_review_validation(
+            result, task_context, validator_models
+        )
         return _copy_validation_report_with_strategy(
             report,
             ValidationStrategy.QUALITY_ASSURANCE,
@@ -1066,18 +1115,26 @@ class CrossValidator(CollectiveIntelligenceComponent):
         """Perform bias detection validation."""
 
         if ValidationCriteria.BIAS_NEUTRALITY in self.specialized_validators:
-            bias_detector = self.specialized_validators[ValidationCriteria.BIAS_NEUTRALITY]
+            bias_detector = self.specialized_validators[
+                ValidationCriteria.BIAS_NEUTRALITY
+            ]
             all_issues = []
 
             for validator_model_id in validator_models:
                 try:
-                    issues = await bias_detector.validate(result, task_context, validator_model_id)
+                    issues = await bias_detector.validate(
+                        result, task_context, validator_model_id
+                    )
                     all_issues.extend(issues)
                 except Exception as e:
-                    logger.warning(f"Bias detection failed with {validator_model_id}: {e!s}")
+                    logger.warning(
+                        f"Bias detection failed with {validator_model_id}: {e!s}"
+                    )
 
             criteria_scores = {
-                ValidationCriteria.BIAS_NEUTRALITY: self._calculate_criteria_score(all_issues)
+                ValidationCriteria.BIAS_NEUTRALITY: self._calculate_criteria_score(
+                    all_issues
+                )
             }
             overall_score = criteria_scores[ValidationCriteria.BIAS_NEUTRALITY]
 
@@ -1094,13 +1151,17 @@ class CrossValidator(CollectiveIntelligenceComponent):
             )
         else:
             # Fallback to peer review with overridden strategy
-            report = await self._peer_review_validation(result, task_context, validator_models)
+            report = await self._peer_review_validation(
+                result, task_context, validator_models
+            )
             return _copy_validation_report_with_strategy(
                 report,
                 ValidationStrategy.BIAS_DETECTION,
             )
 
-    def _calculate_criteria_score(self, criteria_issues: List[ValidationIssue]) -> float:
+    def _calculate_criteria_score(
+        self, criteria_issues: List[ValidationIssue]
+    ) -> float:
         """Calculate score for a specific criteria based on issues found."""
         if not criteria_issues:
             return 1.0  # Perfect score if no issues
@@ -1114,12 +1175,16 @@ class CrossValidator(CollectiveIntelligenceComponent):
             ValidationSeverity.INFO: 0.0,
         }
 
-        total_deduction = sum(severity_weights[issue.severity] for issue in criteria_issues)
+        total_deduction = sum(
+            severity_weights[issue.severity] for issue in criteria_issues
+        )
         score = max(0.0, 1.0 + total_deduction)
 
         return score
 
-    def _calculate_overall_score(self, criteria_scores: Dict[ValidationCriteria, float]) -> float:
+    def _calculate_overall_score(
+        self, criteria_scores: Dict[ValidationCriteria, float]
+    ) -> float:
         """Calculate overall validation score from criteria scores."""
         if not criteria_scores:
             return 0.0
@@ -1137,7 +1202,11 @@ class CrossValidator(CollectiveIntelligenceComponent):
         validator_issue_counts = {}
         for validator_id in validator_models:
             validator_issue_counts[validator_id] = len(
-                [issue for issue in all_issues if issue.validator_model_id == validator_id]
+                [
+                    issue
+                    for issue in all_issues
+                    if issue.validator_model_id == validator_id
+                ]
             )
 
         if not validator_issue_counts:
@@ -1157,7 +1226,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         consensus = 1.0 - (statistics.stdev(issue_counts) / max(avg_issues, 1))
         return max(0.0, min(1.0, consensus))
 
-    def _calculate_validation_confidence(self, validation_report: ValidationReport) -> float:
+    def _calculate_validation_confidence(
+        self, validation_report: ValidationReport
+    ) -> float:
         """Calculate confidence in the validation result."""
         base_confidence = validation_report.overall_score
 
@@ -1190,7 +1261,10 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
         # Use task-level threshold if provided, otherwise fall back to config
         threshold = self.config.confidence_threshold
-        if task_context and task_context.requirements.get("validation_threshold") is not None:
+        if (
+            task_context
+            and task_context.requirements.get("validation_threshold") is not None
+        ):
             threshold = task_context.requirements["validation_threshold"]
 
         # Check overall score against threshold
@@ -1206,18 +1280,26 @@ class CrossValidator(CollectiveIntelligenceComponent):
 
         return True
 
-    def _generate_improvement_suggestions(self, validation_report: ValidationReport) -> List[str]:
+    def _generate_improvement_suggestions(
+        self, validation_report: ValidationReport
+    ) -> List[str]:
         """Generate improvement suggestions based on validation issues."""
         suggestions = []
 
         # Group issues by severity
         critical_issues = [
-            i for i in validation_report.issues if i.severity == ValidationSeverity.CRITICAL
+            i
+            for i in validation_report.issues
+            if i.severity == ValidationSeverity.CRITICAL
         ]
-        high_issues = [i for i in validation_report.issues if i.severity == ValidationSeverity.HIGH]
+        high_issues = [
+            i for i in validation_report.issues if i.severity == ValidationSeverity.HIGH
+        ]
 
         if critical_issues:
-            suggestions.append("Address critical issues immediately before using this result")
+            suggestions.append(
+                "Address critical issues immediately before using this result"
+            )
             for issue in critical_issues[:3]:  # Top 3 critical issues
                 suggestions.append(f"Critical: {issue.suggestion}")
 
@@ -1227,10 +1309,14 @@ class CrossValidator(CollectiveIntelligenceComponent):
                 suggestions.append(f"High: {issue.suggestion}")
 
         if validation_report.overall_score < 0.8:
-            suggestions.append("Consider regenerating the response with different parameters")
+            suggestions.append(
+                "Consider regenerating the response with different parameters"
+            )
 
         if validation_report.consensus_level < 0.7:
-            suggestions.append("Seek additional validation due to low consensus among validators")
+            suggestions.append(
+                "Seek additional validation due to low consensus among validators"
+            )
 
         return suggestions
 
@@ -1258,12 +1344,22 @@ class CrossValidator(CollectiveIntelligenceComponent):
     ) -> QualityMetrics:
         """Calculate quality metrics based on validation results."""
 
-        accuracy = validation_report.criteria_scores.get(ValidationCriteria.ACCURACY, 0.5)
-        consistency = validation_report.criteria_scores.get(ValidationCriteria.CONSISTENCY, 0.5)
-        completeness = validation_report.criteria_scores.get(ValidationCriteria.COMPLETENESS, 0.5)
-        relevance = validation_report.criteria_scores.get(ValidationCriteria.RELEVANCE, 0.5)
+        accuracy = validation_report.criteria_scores.get(
+            ValidationCriteria.ACCURACY, 0.5
+        )
+        consistency = validation_report.criteria_scores.get(
+            ValidationCriteria.CONSISTENCY, 0.5
+        )
+        completeness = validation_report.criteria_scores.get(
+            ValidationCriteria.COMPLETENESS, 0.5
+        )
+        relevance = validation_report.criteria_scores.get(
+            ValidationCriteria.RELEVANCE, 0.5
+        )
         confidence = validation_report.overall_score
-        coherence = validation_report.criteria_scores.get(ValidationCriteria.COHERENCE, 0.5)
+        coherence = validation_report.criteria_scores.get(
+            ValidationCriteria.COHERENCE, 0.5
+        )
 
         metric_pairs = (
             ("accuracy", accuracy),
@@ -1275,7 +1371,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
         )
         return build_quality_metrics(**dict(metric_pairs))
 
-    def _update_validator_performance(self, validation_report: ValidationReport) -> None:
+    def _update_validator_performance(
+        self, validation_report: ValidationReport
+    ) -> None:
         """Update performance tracking for validator models."""
         for validator_id in validation_report.validator_models:
             if validator_id not in self.validator_performance:
@@ -1293,7 +1391,9 @@ class CrossValidator(CollectiveIntelligenceComponent):
             count = perf["validation_count"]
             perf["accuracy"] = (perf["accuracy"] * (count - 1) + new_accuracy) / count
 
-    def get_validation_history(self, limit: Optional[int] = None) -> List[ValidationResult]:
+    def get_validation_history(
+        self, limit: Optional[int] = None
+    ) -> List[ValidationResult]:
         """Get historical validation results."""
         if limit:
             return list(self._validation_history)[-limit:]
