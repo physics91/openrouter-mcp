@@ -482,26 +482,29 @@ class ThriftMetricsCollector:
                 _merge_metrics_into(aggregate, metrics)
             return _snapshot_from_metrics(aggregate)
 
+    def _record_on_aggregate_and_current_day(
+        self,
+        recorder: Callable[..., None],
+        *args: Any,
+    ) -> None:
+        """Apply one metric mutation to aggregate and current-day counters."""
+        with self._lock:
+            recorder(self._metrics, *args)
+            recorder(self._get_current_day_metrics(), *args)
+            self._maybe_auto_save()
+
     def record_coalesced_savings(
         self,
         prompt_tokens: int,
         completion_tokens: int,
         estimated_cost_usd: float | None = None,
     ) -> None:
-        with self._lock:
-            _record_coalesced_savings_on_metrics(
-                self._metrics,
-                prompt_tokens,
-                completion_tokens,
-                estimated_cost_usd,
-            )
-            _record_coalesced_savings_on_metrics(
-                self._get_current_day_metrics(),
-                prompt_tokens,
-                completion_tokens,
-                estimated_cost_usd,
-            )
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_coalesced_savings_on_metrics,
+            prompt_tokens,
+            completion_tokens,
+            estimated_cost_usd,
+        )
 
     def record_recent_reuse_savings(
         self,
@@ -509,38 +512,30 @@ class ThriftMetricsCollector:
         completion_tokens: int,
         estimated_cost_usd: float | None = None,
     ) -> None:
-        with self._lock:
-            _record_recent_reuse_savings_on_metrics(
-                self._metrics,
-                prompt_tokens,
-                completion_tokens,
-                estimated_cost_usd,
-            )
-            _record_recent_reuse_savings_on_metrics(
-                self._get_current_day_metrics(),
-                prompt_tokens,
-                completion_tokens,
-                estimated_cost_usd,
-            )
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_recent_reuse_savings_on_metrics,
+            prompt_tokens,
+            completion_tokens,
+            estimated_cost_usd,
+        )
 
     def record_compaction_savings(self, tokens_saved: int) -> None:
-        with self._lock:
-            _record_compaction_savings_on_metrics(self._metrics, tokens_saved)
-            _record_compaction_savings_on_metrics(self._get_current_day_metrics(), tokens_saved)
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_compaction_savings_on_metrics,
+            tokens_saved,
+        )
 
     def record_deferred_requests(self, request_count: int) -> None:
-        with self._lock:
-            _record_deferred_requests_on_metrics(self._metrics, request_count)
-            _record_deferred_requests_on_metrics(self._get_current_day_metrics(), request_count)
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_deferred_requests_on_metrics,
+            request_count,
+        )
 
     def record_model_request(self, model: str) -> None:
-        with self._lock:
-            _record_model_request_on_metrics(self._metrics, model)
-            _record_model_request_on_metrics(self._get_current_day_metrics(), model)
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_model_request_on_metrics,
+            model,
+        )
 
     def record_prompt_cache_activity(
         self,
@@ -549,22 +544,13 @@ class ThriftMetricsCollector:
         estimated_saved_cost_usd: float | None = None,
         model: str | None = None,
     ) -> None:
-        with self._lock:
-            _record_prompt_cache_activity_on_metrics(
-                self._metrics,
-                cached_prompt_tokens,
-                cache_write_prompt_tokens,
-                estimated_saved_cost_usd,
-                model,
-            )
-            _record_prompt_cache_activity_on_metrics(
-                self._get_current_day_metrics(),
-                cached_prompt_tokens,
-                cache_write_prompt_tokens,
-                estimated_saved_cost_usd,
-                model,
-            )
-            self._maybe_auto_save()
+        self._record_on_aggregate_and_current_day(
+            _record_prompt_cache_activity_on_metrics,
+            cached_prompt_tokens,
+            cache_write_prompt_tokens,
+            estimated_saved_cost_usd,
+            model,
+        )
 
 
 _collector = ThriftMetricsCollector(
