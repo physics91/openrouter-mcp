@@ -16,10 +16,26 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, TypedDict, Union
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+    Union,
+)
 
 from ..client.openrouter import OpenRouterClient
-from ..config.constants import BenchmarkDefaults, EnvVars, ModelDefaults, PricingDefaults
+from ..config.constants import (
+    BenchmarkDefaults,
+    EnvVars,
+    ModelDefaults,
+    PricingDefaults,
+)
 from ..models.cache import ModelCache
 from ..runtime_thrift import DeferredBatchLane, DeferredBatchRequest
 from ..utils.env import get_env_value
@@ -805,32 +821,30 @@ class BenchmarkHandler:
         logger.info(f"Saved benchmark comparison to {output_path}")
         return str(output_path)
 
-    async def export_benchmark_batch(
+    def _build_deferred_benchmark_requests(
         self,
+        *,
         model_ids: List[str],
         prompt: str,
-        runs: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
-        temperature: float = ModelDefaults.TEMPERATURE,
-        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
-        delay_between_requests: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
-        sla_window_hours: int = 24,
-        target_spend_usd: Optional[float] = None,
-    ) -> Dict[str, Any]:
-        """Export offline-ready benchmark requests as grouped JSONL artifacts."""
-        if not model_ids:
-            raise ValueError("At least one model ID is required")
-        if runs < 1:
-            raise ValueError("runs must be at least 1")
-
+        runs: int,
+        temperature: float,
+        max_tokens: int,
+        delay_between_requests: float,
+    ) -> Tuple[str, List[DeferredBatchRequest]]:
+        """Build ordered deferred benchmark requests and their prompt hash."""
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
         requests: List[DeferredBatchRequest] = []
 
         for model_id in model_ids:
-            model_slug = re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-") or "model"
+            model_slug = (
+                re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-") or "model"
+            )
             for run_index in range(1, runs + 1):
                 requests.append(
                     DeferredBatchRequest(
-                        custom_id=(f"benchmark-{model_slug}-run-{run_index:03d}-{prompt_hash}"),
+                        custom_id=(
+                            f"benchmark-{model_slug}-run-{run_index:03d}-{prompt_hash}"
+                        ),
                         endpoint="/chat/completions",
                         model_id=model_id,
                         body={
@@ -848,6 +862,34 @@ class BenchmarkHandler:
                         },
                     )
                 )
+
+        return prompt_hash, requests
+
+    async def export_benchmark_batch(
+        self,
+        model_ids: List[str],
+        prompt: str,
+        runs: int = BenchmarkDefaults.DEFAULT_RUNS_PER_MODEL,
+        temperature: float = ModelDefaults.TEMPERATURE,
+        max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
+        delay_between_requests: float = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
+        sla_window_hours: int = 24,
+        target_spend_usd: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Export offline-ready benchmark requests as grouped JSONL artifacts."""
+        if not model_ids:
+            raise ValueError("At least one model ID is required")
+        if runs < 1:
+            raise ValueError("runs must be at least 1")
+
+        prompt_hash, requests = self._build_deferred_benchmark_requests(
+            model_ids=model_ids,
+            prompt=prompt,
+            runs=runs,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            delay_between_requests=delay_between_requests,
+        )
 
         lane = DeferredBatchLane(self.cache_dir / "deferred_batches")
         export = lane.export_requests(

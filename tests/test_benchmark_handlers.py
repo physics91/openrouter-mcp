@@ -19,7 +19,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -590,6 +590,62 @@ This computes the factorial recursively."""
         assert manifest["sla_window_hours"] == 12
         assert manifest["target_spend_usd"] == 1.5
         assert len(manifest["groups"]) == 2
+
+    def test_build_deferred_benchmark_requests_preserves_order_and_payloads(
+        self, handler
+    ):
+        model_ids = ["!!!", "OpenAI/GPT-4"]
+        original_model_ids = list(model_ids)
+        prompt = "Prompt with ünicode"
+        message_payloads = [
+            [{"role": "user", "content": f"sentinel-{index}"}] for index in range(4)
+        ]
+
+        with patch.object(
+            handler,
+            "_build_prompt_messages",
+            side_effect=message_payloads,
+        ) as build_messages:
+            prompt_hash, requests = handler._build_deferred_benchmark_requests(
+                model_ids=model_ids,
+                prompt=prompt,
+                runs=2,
+                temperature=0.25,
+                max_tokens=17,
+                delay_between_requests=0.75,
+            )
+
+        assert prompt_hash == "77c127adb25a"
+        assert [request.custom_id for request in requests] == [
+            "benchmark-model-run-001-77c127adb25a",
+            "benchmark-model-run-002-77c127adb25a",
+            "benchmark-openai-gpt-4-run-001-77c127adb25a",
+            "benchmark-openai-gpt-4-run-002-77c127adb25a",
+        ]
+        assert [request.model_id for request in requests] == [
+            "!!!",
+            "!!!",
+            "OpenAI/GPT-4",
+            "OpenAI/GPT-4",
+        ]
+        assert [request.endpoint for request in requests] == ["/chat/completions"] * 4
+        for index, request in enumerate(requests):
+            assert request.body == {
+                "model": request.model_id,
+                "messages": message_payloads[index],
+                "temperature": 0.25,
+                "max_tokens": 17,
+                "stream": False,
+            }
+            assert request.body["messages"] is message_payloads[index]
+            assert request.metadata == {
+                "workload": "benchmark",
+                "run_index": (index % 2) + 1,
+                "prompt_hash": prompt_hash,
+                "delay_between_requests": 0.75,
+            }
+        assert build_messages.call_args_list == [call(prompt)] * 4
+        assert model_ids == original_model_ids
 
 
 class TestBenchmarkReportExporter:
