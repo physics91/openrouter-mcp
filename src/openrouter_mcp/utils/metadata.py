@@ -646,6 +646,32 @@ def determine_cost_tier(model_data: Dict[str, Any]) -> str:
         return "high"
 
 
+def _build_model_tags(
+    enhanced: Dict[str, Any], capabilities: ModelCapabilities
+) -> List[str]:
+    """Build deduplicated search tags for enhanced model metadata."""
+    tags = set()
+    tags.add(enhanced["provider"])
+    tags.add(enhanced["category"])
+
+    if capabilities.supports_vision:
+        tags.add("vision")
+    if capabilities.supports_function_calling:
+        tags.add("functions")
+    if capabilities.supports_tool_use:
+        tags.add("tools")
+    if capabilities.max_tokens > 100000:
+        tags.add("long-context")
+
+    tags.add(enhanced["performance_tier"])
+    tags.add(enhanced["cost_tier"])
+
+    if enhanced["version_info"]["is_latest"]:
+        tags.add("latest")
+
+    return list(tags)
+
+
 def enhance_model_metadata(model_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Enhance model data with comprehensive metadata.
@@ -684,33 +710,7 @@ def enhance_model_metadata(model_data: Dict[str, Any]) -> Dict[str, Any]:
     enhanced["quality_score"] = calculate_quality_score(model_data)
 
     # Add search tags for easier filtering
-    tags = set()
-
-    # Provider tags
-    tags.add(enhanced["provider"])
-
-    # Category tags
-    tags.add(enhanced["category"])
-
-    # Capability tags
-    if capabilities.supports_vision:
-        tags.add("vision")
-    if capabilities.supports_function_calling:
-        tags.add("functions")
-    if capabilities.supports_tool_use:
-        tags.add("tools")
-    if capabilities.max_tokens > 100000:
-        tags.add("long-context")
-
-    # Performance tags
-    tags.add(enhanced["performance_tier"])
-    tags.add(enhanced["cost_tier"])
-
-    # Version tags
-    if enhanced["version_info"]["is_latest"]:
-        tags.add("latest")
-
-    enhanced["tags"] = list(tags)
+    enhanced["tags"] = _build_model_tags(enhanced, capabilities)
 
     return enhanced
 

@@ -13,8 +13,10 @@ import pytest
 # Import the components we'll be testing
 from src.openrouter_mcp.models.cache import ModelCache
 from src.openrouter_mcp.utils.metadata import (
+    ModelCapabilities,
     ModelCategory,
     ModelProvider,
+    _build_model_tags,
     _extract_function_and_tool_support,
     determine_model_category,
     enhance_model_metadata,
@@ -145,6 +147,55 @@ class TestModelMetadataExtraction:
             False,
         ]  # Can be either based on model analysis
         assert version_info["family"] == "gpt-4"
+
+    def test_build_model_tags_includes_all_optional_tags_without_mutation(self):
+        enhanced = {
+            "provider": "anthropic",
+            "category": "multimodal",
+            "performance_tier": "premium",
+            "cost_tier": "high",
+            "version_info": {"is_latest": True},
+        }
+        capabilities = ModelCapabilities(
+            supports_vision=True,
+            supports_function_calling=True,
+            supports_tool_use=True,
+            max_tokens=100001,
+        )
+        original_enhanced = json.loads(json.dumps(enhanced))
+        original_capabilities = capabilities.to_dict()
+
+        tags = _build_model_tags(enhanced, capabilities)
+
+        assert set(tags) == {
+            "anthropic",
+            "multimodal",
+            "premium",
+            "high",
+            "vision",
+            "functions",
+            "tools",
+            "long-context",
+            "latest",
+        }
+        assert enhanced == original_enhanced
+        assert capabilities.to_dict() == original_capabilities
+
+    def test_build_model_tags_deduplicates_and_preserves_long_context_boundary(self):
+        enhanced = {
+            "provider": "shared",
+            "category": "shared",
+            "performance_tier": "shared",
+            "cost_tier": "shared",
+            "version_info": {"is_latest": False},
+        }
+        capabilities = ModelCapabilities(max_tokens=100000)
+
+        tags = _build_model_tags(enhanced, capabilities)
+
+        assert tags == ["shared"]
+        assert "long-context" not in tags
+        assert "latest" not in tags
 
     def test_enhance_model_metadata_complete(self):
         """Test complete metadata enhancement for a model."""
