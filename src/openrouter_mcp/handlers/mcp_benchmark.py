@@ -239,6 +239,13 @@ def _serialize_benchmark_ranking(
     ]
 
 
+def _select_successful_benchmark_results(
+    results: Dict[str, EnhancedBenchmarkResult],
+) -> Dict[str, EnhancedBenchmarkResult]:
+    """Select successful benchmark results in source order."""
+    return {key: value for key, value in results.items() if value.success}
+
+
 def _build_benchmark_data(
     results: Dict[str, EnhancedBenchmarkResult],
     *,
@@ -265,7 +272,7 @@ def _build_benchmark_data(
         },
     }
 
-    successful_results = {key: value for key, value in results.items() if value.success}
+    successful_results = _select_successful_benchmark_results(results)
     if successful_results:
         analyzer = ModelPerformanceAnalyzer()
         ranking = analyzer.rank_models(list(successful_results.values()))
@@ -682,7 +689,7 @@ async def compare_model_categories(
         )
 
         # 결과 분석
-        successful_results = {k: v for k, v in results.items() if v.success}
+        successful_results = _select_successful_benchmark_results(results)
 
         comparison_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
@@ -869,7 +876,7 @@ async def compare_model_performance(
             )
         )
 
-        successful_results = {k: v for k, v in results.items() if v.success}
+        successful_results = _select_successful_benchmark_results(results)
 
         if not successful_results:
             return {"error": "성공한 벤치마크 결과가 없습니다.", "models": models}
