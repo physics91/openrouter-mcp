@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, cast
 
+from ..utils.async_utils import raise_first_fatal_result
 from .adaptive_router import AdaptiveRouter
 from .base import (
     CollectiveIntelligenceComponent,
@@ -320,6 +321,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             self.consensus_engine.process(task),
             return_exceptions=True,
         )
+        raise_first_fatal_result(results)
 
         ensemble_result: Optional[EnsembleResult]
         consensus_result: Optional[ConsensusResult]
