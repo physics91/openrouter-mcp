@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 from ..collective_intelligence import (
     CollectiveIntelligenceLifecycleManager,
     ConsensusConfig,
+    ConsensusResult,
     ConsensusStrategy,
     EnsembleResult,
     ModelInfo,
@@ -445,6 +446,32 @@ def create_task_context(
     )
 
 
+def _serialize_consensus_result(result: ConsensusResult) -> Dict[str, Any]:
+    """Serialize a consensus result to the MCP response contract."""
+    return {
+        "consensus_response": result.consensus_content,
+        "agreement_level": result.agreement_level.value,
+        "confidence_score": result.confidence_score,
+        "participating_models": result.participating_models,
+        "individual_responses": [
+            {
+                "model": response.model_id,
+                "content": response.result.content,
+                "confidence": response.result.confidence,
+            }
+            for response in result.model_responses
+        ],
+        "strategy_used": result.strategy_used.value,
+        "processing_time": result.processing_time,
+        "quality_metrics": {
+            "accuracy": result.quality_metrics.accuracy,
+            "consistency": result.quality_metrics.consistency,
+            "completeness": result.quality_metrics.completeness,
+            "overall_score": result.quality_metrics.overall_score(),
+        },
+    }
+
+
 def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, Any]:
     """Serialize a cross-validation result to the MCP response contract."""
     report = result.validation_report
@@ -605,29 +632,7 @@ async def _collective_chat_completion_impl(
 
         # Process with consensus - NO async with client (client is singleton managed by lifecycle)
         result = await consensus_engine.process(task)
-
-        return {
-            "consensus_response": result.consensus_content,
-            "agreement_level": result.agreement_level.value,
-            "confidence_score": result.confidence_score,
-            "participating_models": result.participating_models,
-            "individual_responses": [
-                {
-                    "model": resp.model_id,
-                    "content": resp.result.content,
-                    "confidence": resp.result.confidence,
-                }
-                for resp in result.model_responses
-            ],
-            "strategy_used": result.strategy_used.value,
-            "processing_time": result.processing_time,
-            "quality_metrics": {
-                "accuracy": result.quality_metrics.accuracy,
-                "consistency": result.quality_metrics.consistency,
-                "completeness": result.quality_metrics.completeness,
-                "overall_score": result.quality_metrics.overall_score(),
-            },
-        }
+        return _serialize_consensus_result(result)
 
     except Exception as e:
         logger.error(f"Collective chat completion failed: {str(e)}")

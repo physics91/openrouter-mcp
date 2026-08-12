@@ -7,6 +7,12 @@ from openrouter_mcp.collective_intelligence.base import (
     TaskContext,
     TaskType,
 )
+from openrouter_mcp.collective_intelligence.consensus_engine import (
+    AgreementLevel,
+    ConsensusResult,
+    ConsensusStrategy,
+    ModelResponse,
+)
 from openrouter_mcp.collective_intelligence.cross_validator import (
     ValidationCriteria,
     ValidationIssue,
@@ -23,6 +29,7 @@ from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     SubTaskResult,
 )
 from openrouter_mcp.handlers.collective_intelligence import (
+    _serialize_consensus_result,
     _serialize_cross_validation_result,
     _serialize_ensemble_result,
 )
@@ -85,6 +92,65 @@ def _issue(
         evidence=f"Evidence {issue_id}",
         validator_model_id=validator_model_id,
     )
+
+
+def test_serialize_consensus_result_preserves_independent_model_lists() -> None:
+    result = ConsensusResult(
+        task_id="consensus-task",
+        consensus_content="Agreed response",
+        agreement_level=AgreementLevel.HIGH_CONSENSUS,
+        confidence_score=0.82,
+        participating_models=["participant-only", "model-b"],
+        model_responses=[
+            ModelResponse(
+                model_id="model-a",
+                result=ProcessingResult(
+                    task_id="consensus-task",
+                    model_id="model-a",
+                    content="Response A",
+                    confidence=0.7,
+                ),
+            ),
+            ModelResponse(
+                model_id="model-b",
+                result=ProcessingResult(
+                    task_id="consensus-task",
+                    model_id="model-b",
+                    content="Response B",
+                    confidence=0.9,
+                ),
+            ),
+        ],
+        strategy_used=ConsensusStrategy.WEIGHTED_AVERAGE,
+        processing_time=0.9,
+        quality_metrics=QualityMetrics(
+            accuracy=0.75,
+            consistency=0.75,
+            completeness=0.75,
+            relevance=0.75,
+            confidence=0.75,
+            coherence=0.75,
+        ),
+    )
+
+    assert _serialize_consensus_result(result) == {
+        "consensus_response": "Agreed response",
+        "agreement_level": "high_consensus",
+        "confidence_score": 0.82,
+        "participating_models": ["participant-only", "model-b"],
+        "individual_responses": [
+            {"model": "model-a", "content": "Response A", "confidence": 0.7},
+            {"model": "model-b", "content": "Response B", "confidence": 0.9},
+        ],
+        "strategy_used": "weighted_average",
+        "processing_time": 0.9,
+        "quality_metrics": {
+            "accuracy": 0.75,
+            "consistency": 0.75,
+            "completeness": 0.75,
+            "overall_score": 0.75,
+        },
+    }
 
 
 def test_serialize_cross_validation_result_with_explicit_validators() -> None:
