@@ -484,7 +484,34 @@ class ResponseGrouper:
 
         return groups
 
-    def get_group_representatives(self, texts: List[str], groups: List[List[int]]) -> List[int]:
+    def _select_group_representative(self, texts: List[str], group: List[int]) -> int:
+        """Select the index with the highest average similarity in one group."""
+        if len(group) == 1:
+            return group[0]
+
+        best_idx = group[0]
+        best_avg_sim = 0.0
+
+        for idx in group:
+            similarities = [
+                self.calculator.calculate_similarity(
+                    texts[idx], texts[other_idx]
+                ).hybrid
+                for other_idx in group
+                if other_idx != idx
+            ]
+
+            avg_sim = sum(similarities) / len(similarities) if similarities else 0.0
+
+            if avg_sim > best_avg_sim:
+                best_avg_sim = avg_sim
+                best_idx = idx
+
+        return best_idx
+
+    def get_group_representatives(
+        self, texts: List[str], groups: List[List[int]]
+    ) -> List[int]:
         """
         Get the most representative text from each group.
 
@@ -501,29 +528,7 @@ class ResponseGrouper:
         representatives = []
 
         for group in groups:
-            if len(group) == 1:
-                representatives.append(group[0])
-                continue
-
-            # Calculate average similarity for each text in group
-            best_idx = group[0]
-            best_avg_sim = 0.0
-
-            for idx in group:
-                # Calculate average similarity to all other texts in group
-                similarities = [
-                    self.calculator.calculate_similarity(texts[idx], texts[other_idx]).hybrid
-                    for other_idx in group
-                    if other_idx != idx
-                ]
-
-                avg_sim = sum(similarities) / len(similarities) if similarities else 0.0
-
-                if avg_sim > best_avg_sim:
-                    best_avg_sim = avg_sim
-                    best_idx = idx
-
-            representatives.append(best_idx)
+            representatives.append(self._select_group_representative(texts, group))
 
         return representatives
 
