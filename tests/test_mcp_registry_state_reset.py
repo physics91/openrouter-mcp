@@ -68,10 +68,39 @@ async def test_shutdown_cleanup_failure_uses_shared_state_reset(monkeypatch):
         registry,
         "_reset_shared_client_state",
         wraps=registry._reset_shared_client_state,
-    ) as reset:
+    ) as reset, patch.object(registry.logger, "error") as log:
         await registry.cleanup_shared_client()
 
     reset.assert_called_once_with()
+    log.assert_called_once_with("Error during client cleanup: cleanup failed")
+    assert registry._client_instance is None
+    assert registry._client_initialized is False
+    assert registry._client_loop is None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cleanup_cancellation_uses_shared_state_reset(monkeypatch):
+    current_loop = asyncio.get_running_loop()
+    error = asyncio.CancelledError("stop cleanup")
+    client = MagicMock()
+    client._client.is_closed = False
+    cleanup = AsyncMock(side_effect=error)
+    monkeypatch.setattr(registry, "_client_instance", client)
+    monkeypatch.setattr(registry, "_client_initialized", True)
+    monkeypatch.setattr(registry, "_client_loop", current_loop)
+
+    with patch.object(registry, "_cleanup_stale_shared_client", cleanup):
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await registry.cleanup_shared_client()
+
+    assert raised.value is error
+    cleanup.assert_awaited_once_with(
+        client,
+        loop_closed=False,
+        client_closed=False,
+        owner_loop=current_loop,
+        failure_context="client cleanup",
+    )
     assert registry._client_instance is None
     assert registry._client_initialized is False
     assert registry._client_loop is None

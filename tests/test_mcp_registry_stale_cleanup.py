@@ -117,6 +117,70 @@ async def test_get_shared_client_preserves_state_when_owner_loop_is_stopped(
 
 
 @pytest.mark.asyncio
+async def test_cleanup_shared_client_runs_on_foreign_owner_loop(monkeypatch):
+    owner_loop = asyncio.new_event_loop()
+    owner_started = threading.Event()
+    cleanup_done = threading.Event()
+    cleanup_threads = []
+
+    class LoopBoundClient:
+        api_key = "test-key"
+        _client = SimpleNamespace(is_closed=False)
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            assert asyncio.get_running_loop() is owner_loop
+            cleanup_threads.append(threading.get_ident())
+            cleanup_done.set()
+
+    def run_owner_loop():
+        asyncio.set_event_loop(owner_loop)
+        owner_started.set()
+        owner_loop.run_forever()
+        owner_loop.close()
+
+    owner_thread = threading.Thread(target=run_owner_loop)
+    owner_thread.start()
+    client = LoopBoundClient()
+    monkeypatch.setattr(registry, "_client_instance", client)
+    monkeypatch.setattr(registry, "_client_initialized", True)
+    monkeypatch.setattr(registry, "_client_loop", owner_loop)
+
+    try:
+        assert await asyncio.to_thread(owner_started.wait, 1)
+        await registry.cleanup_shared_client()
+
+        assert await asyncio.to_thread(cleanup_done.wait, 1)
+        assert cleanup_threads == [owner_thread.ident]
+        assert registry._client_instance is None
+    finally:
+        owner_loop.call_soon_threadsafe(owner_loop.stop)
+        await asyncio.to_thread(owner_thread.join, 1)
+        assert not owner_thread.is_alive()
+
+
+@pytest.mark.asyncio
+async def test_cleanup_shared_client_preserves_stopped_owner_state(monkeypatch):
+    owner_loop = asyncio.new_event_loop()
+    client = MagicMock()
+    client._client.is_closed = False
+    client.__aexit__ = AsyncMock()
+    monkeypatch.setattr(registry, "_client_instance", client)
+    monkeypatch.setattr(registry, "_client_initialized", True)
+    monkeypatch.setattr(registry, "_client_loop", owner_loop)
+
+    try:
+        with pytest.raises(registry.StaleClientCleanupDeferred):
+            await registry.cleanup_shared_client()
+
+        assert registry._client_instance is client
+        assert registry._client_initialized is True
+        assert registry._client_loop is owner_loop
+        client.__aexit__.assert_not_awaited()
+    finally:
+        owner_loop.close()
+
+
+@pytest.mark.asyncio
 async def test_cleanup_stale_shared_client_closes_open_client():
     client = MagicMock()
     client.__aexit__ = AsyncMock(return_value=None)

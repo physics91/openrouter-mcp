@@ -98,6 +98,7 @@ async def _cleanup_stale_shared_client(
     loop_closed: bool,
     client_closed: bool,
     owner_loop: Optional[asyncio.AbstractEventLoop] = None,
+    failure_context: str = "client reinitialization cleanup",
 ) -> None:
     """Clean up a stale shared client when its owning resources are usable."""
     try:
@@ -127,7 +128,7 @@ async def _cleanup_stale_shared_client(
     except StaleClientCleanupDeferred:
         raise
     except Exception as e:
-        logger.error(f"Error during client reinitialization cleanup: {e}")
+        logger.error(f"Error during {failure_context}: {e}")
 
 
 async def _initialize_shared_client(
@@ -249,14 +250,26 @@ async def cleanup_shared_client() -> None:
     the HTTP client and release resources.
     """
     if _client_instance is not None:
+        client = _client_instance
+        owner_loop = _client_loop
         logger.info("Cleaning up shared OpenRouterClient")
+        preserve_stale_state = False
         try:
-            if not _shared_client_is_closed(_client_instance):
-                await _client_instance.__aexit__(None, None, None)
-        except Exception as e:
-            logger.error(f"Error during client cleanup: {e}")
+            await _cleanup_stale_shared_client(
+                client,
+                loop_closed=(
+                    owner_loop.is_closed() if owner_loop is not None else False
+                ),
+                client_closed=_shared_client_is_closed(client),
+                owner_loop=owner_loop,
+                failure_context="client cleanup",
+            )
+        except StaleClientCleanupDeferred:
+            preserve_stale_state = True
+            raise
         finally:
-            _reset_shared_client_state()
+            if not preserve_stale_state:
+                _reset_shared_client_state()
 
 
 __all__ = ["mcp", "get_shared_client", "get_openrouter_client", "cleanup_shared_client"]
