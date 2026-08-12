@@ -88,7 +88,7 @@ def encode_image_to_base64(image_bytes: bytes) -> str:
         return base64.b64encode(image_bytes).decode("utf-8")
 
     except Exception as e:
-        logger.error(f"Failed to encode image to base64: {str(e)}")
+        logger.error(f"Failed to encode image to base64: {e!s}")
         raise
 
 
@@ -232,7 +232,7 @@ def process_image(
         return _optimize_image_to_limit(image, original_format, max_size_bytes), True
 
     except Exception as e:
-        logger.error(f"Failed to process image: {str(e)}")
+        logger.error(f"Failed to process image: {e!s}")
         raise
 
 
@@ -450,7 +450,7 @@ async def chat_with_vision(
                 )
 
         except Exception as e:
-            logger.error(f"Vision chat completion failed: {str(e)}")
+            logger.error(f"Vision chat completion failed: {e!s}")
             raise
 
 
@@ -496,5 +496,5 @@ async def list_vision_models(request: VisionModelRequest) -> list[dict[str, Any]
         return vision_models
 
     except Exception as e:
-        logger.error(f"Failed to list vision models: {str(e)}")
+        logger.error(f"Failed to list vision models: {e!s}")
         raise
