@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..runtime_thrift.metrics import get_thrift_metrics_snapshot_for_dates
 from ..runtime_thrift.summary import _build_normalized_cache_bucket_summary
+from ..utils.async_utils import raise_first_fatal_result
 from ..utils.metadata import extract_provider_from_id
 from .base import (
     CollectiveIntelligenceComponent,
@@ -499,6 +500,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         ]
 
         results = await asyncio.gather(*evaluation_tasks, return_exceptions=True)
+        raise_first_fatal_result(results)
 
         for model, result in zip(available_models, results):
             if isinstance(result, BaseException):

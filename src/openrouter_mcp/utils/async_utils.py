@@ -24,6 +24,15 @@ async def collect_async_iterable(iterable: AsyncIterable[T]) -> List[T]:
     return items
 
 
+def raise_first_fatal_result(results: list[Any]) -> None:
+    """Propagate the first fatal fanout result while preserving isolated failures."""
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(
+            result, (Exception, asyncio.CancelledError)
+        ):
+            raise result
+
+
 async def await_cleanup_future(future: "asyncio.Future[T]") -> T:
     """Finish and reap cleanup work before preserving its first interruption."""
     first_failure: BaseException | None = None
@@ -50,4 +59,9 @@ async def await_cleanup_future(future: "asyncio.Future[T]") -> T:
     return result
 
 
-__all__ = ["await_cleanup_future", "collect_async_iterable", "maybe_await"]
+__all__ = [
+    "await_cleanup_future",
+    "collect_async_iterable",
+    "maybe_await",
+    "raise_first_fatal_result",
+]

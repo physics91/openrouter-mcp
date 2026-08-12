@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
 from ..config.constants import ConsensusDefaults, PricingDefaults
+from ..utils.async_utils import raise_first_fatal_result
 from ..utils.token_counter import count_tokens
 from .base import (
     CollectiveIntelligenceComponent,
@@ -76,15 +77,6 @@ class ModelResponse:
     result: ProcessingResult
     weight: float = 1.0
     reliability_score: float = 1.0
-
-
-def _raise_first_fatal_model_signal(responses: list[Any]) -> None:
-    """Propagate the first fatal model signal while preserving isolated failures."""
-    for response in responses:
-        if isinstance(response, BaseException) and not isinstance(
-            response, (Exception, asyncio.CancelledError)
-        ):
-            raise response
 
 
 @dataclass
@@ -401,7 +393,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         tasks = [get_single_response(model_id) for model_id in model_ids]
         responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-        _raise_first_fatal_model_signal(responses)
+        raise_first_fatal_result(responses)
 
         # Filter out failed responses
         valid_responses = [
