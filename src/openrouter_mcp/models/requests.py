@@ -111,10 +111,10 @@ class BaseConsensusRequest(BaseCollectiveRequest):
 
 
 __all__ = [
-    "ChatMessage",
-    "BaseCompletionParams",
-    "StreamableRequest",
     "BaseChatRequest",
     "BaseCollectiveRequest",
+    "BaseCompletionParams",
     "BaseConsensusRequest",
+    "ChatMessage",
+    "StreamableRequest",
 ]
