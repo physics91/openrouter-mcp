@@ -11,6 +11,7 @@ from ..collective_intelligence import (
     SolvingResult,
     ValidationResult,
 )
+from ..collective_intelligence.cross_validator import ValidationIssue, ValidationReport
 
 
 def _serialize_consensus_result(result: ConsensusResult) -> Dict[str, Any]:
@@ -39,10 +40,11 @@ def _serialize_consensus_result(result: ConsensusResult) -> Dict[str, Any]:
     }
 
 
-def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, Any]:
-    """Serialize a cross-validation result to the MCP response contract."""
-    report = result.validation_report
-    issues = report.issues
+def _build_model_validations(
+    report: ValidationReport,
+    issues: list[ValidationIssue],
+) -> list[Dict[str, Any]]:
+    """Summarize validation issues for each explicit or inferred validator."""
     validator_models = getattr(report, "validator_models", []) or []
     if not validator_models:
         seen_models = set()
@@ -79,6 +81,15 @@ def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, An
                 "issues_found": len(model_issues),
             }
         )
+
+    return model_validations
+
+
+def _serialize_cross_validation_result(result: ValidationResult) -> Dict[str, Any]:
+    """Serialize a cross-validation result to the MCP response contract."""
+    report = result.validation_report
+    issues = report.issues
+    model_validations = _build_model_validations(report, issues)
 
     return {
         "validation_result": "VALID" if result.is_valid else "INVALID",

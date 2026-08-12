@@ -41,6 +41,7 @@ from openrouter_mcp.collective_intelligence.ensemble_reasoning import (
 )
 from openrouter_mcp.config.constants import CollectiveDefaults, ModelDefaults
 from openrouter_mcp.handlers._collective_serialization import (
+    _build_model_validations,
     _serialize_consensus_result,
     _serialize_cross_validation_result,
     _serialize_ensemble_result,
@@ -175,6 +176,81 @@ def _routing_decision(*, metadata: dict[str, Any]) -> RoutingDecision:
         routing_time=0.02,
         metadata=metadata,
     )
+
+
+def test_model_validations_preserve_explicit_order_duplicates_and_inputs() -> None:
+    issues = [
+        _issue(
+            issue_id="issue-1",
+            validator_model_id="validator-b",
+            criteria=ValidationCriteria.ACCURACY,
+            severity=ValidationSeverity.HIGH,
+        ),
+        _issue(
+            issue_id="issue-2",
+            validator_model_id="validator-b",
+            criteria=ValidationCriteria.CONSISTENCY,
+            severity=ValidationSeverity.MEDIUM,
+        ),
+    ]
+    report = _build_validation_result(
+        validator_models=["validator-b", "validator-a", "validator-b"],
+        issues=issues,
+    ).validation_report
+    original_validator_models = list(report.validator_models)
+    original_issues = list(report.issues)
+
+    assert _build_model_validations(report, report.issues) == [
+        {"model": "validator-b", "criteria": "multiple", "issues_found": 2},
+        {"model": "validator-a", "criteria": "none", "issues_found": 0},
+        {"model": "validator-b", "criteria": "multiple", "issues_found": 2},
+    ]
+    assert report.validator_models == original_validator_models
+    assert report.issues == original_issues
+
+
+def test_build_model_validations_derives_truthy_models_in_first_seen_order() -> None:
+    custom_criteria_1 = _issue(
+        issue_id="issue-1",
+        validator_model_id="validator-z",
+        criteria=ValidationCriteria.ACCURACY,
+        severity=ValidationSeverity.HIGH,
+    )
+    custom_criteria_1.criteria = "custom"
+    custom_criteria_2 = _issue(
+        issue_id="issue-2",
+        validator_model_id="validator-z",
+        criteria=ValidationCriteria.CONSISTENCY,
+        severity=ValidationSeverity.MEDIUM,
+    )
+    custom_criteria_2.criteria = "custom"
+    issues = [
+        custom_criteria_1,
+        _issue(
+            issue_id="ignored",
+            validator_model_id="",
+            criteria=ValidationCriteria.RELEVANCE,
+            severity=ValidationSeverity.LOW,
+        ),
+        _issue(
+            issue_id="issue-3",
+            validator_model_id="validator-a",
+            criteria=ValidationCriteria.ACCURACY,
+            severity=ValidationSeverity.HIGH,
+        ),
+        custom_criteria_2,
+    ]
+    report = _build_validation_result(
+        validator_models=[],
+        issues=issues,
+    ).validation_report
+
+    assert _build_model_validations(report, report.issues) == [
+        {"model": "validator-z", "criteria": "custom", "issues_found": 2},
+        {"model": "validator-a", "criteria": "accuracy", "issues_found": 1},
+    ]
+    assert report.validator_models == []
+    assert report.issues == issues
 
 
 def test_serialize_solving_result_preserves_independent_fields() -> None:
