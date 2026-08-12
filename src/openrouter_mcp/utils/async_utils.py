@@ -19,10 +19,7 @@ async def maybe_await(value: Any) -> Any:
 
 async def collect_async_iterable(iterable: AsyncIterable[T]) -> list[T]:
     """Collect items from an async iterable into a list."""
-    items: list[T] = []
-    async for item in iterable:
-        items.append(item)
-    return items
+    return [item async for item in iterable]
 
 
 def raise_first_fatal_result(results: list[Any]) -> None:
