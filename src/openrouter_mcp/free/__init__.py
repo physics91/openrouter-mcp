@@ -7,10 +7,10 @@ from .router import FreeModelRouter
 
 __all__ = [
     "FreeModelRouter",
+    "FreeTaskType",
     "MetricsCollector",
     "ModelMetrics",
     "QuotaExceededError",
     "QuotaTracker",
     "TaskClassifier",
-    "FreeTaskType",
 ]
