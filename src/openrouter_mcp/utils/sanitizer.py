@@ -56,7 +56,7 @@ class SensitiveDataSanitizer:
         sanitized = headers.copy()
         sensitive_headers = ["authorization", "x-api-key", "api-key"]
 
-        for key in sanitized.keys():
+        for key in sanitized:
             if key.lower() in sensitive_headers:
                 if sanitized[key].lower().startswith("bearer "):
                     api_key = sanitized[key][7:]  # Remove "Bearer " prefix
