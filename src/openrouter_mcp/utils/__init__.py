@@ -27,32 +27,26 @@ from .pricing import (
 from .sanitizer import SensitiveDataSanitizer
 
 __all__ = [
-    # Metadata utilities
-    "ModelProvider",
-    "ModelCategory",
     "ModelCapabilities",
-    "extract_provider_from_id",
-    "determine_model_category",
-    "extract_model_capabilities",
-    "get_model_version_info",
-    "calculate_quality_score",
-    "determine_performance_tier",
-    "determine_cost_tier",
-    "enhance_model_metadata",
-    "batch_enhance_models",
-    # Sanitizer utilities
+    "ModelCategory",
+    "ModelProvider",
     "SensitiveDataSanitizer",
-    # HTTP utilities
+    "batch_enhance_models",
     "build_openrouter_headers",
-    # Pricing utilities
-    "parse_price",
-    "normalize_pricing",
-    "estimate_cost_from_usage",
-    "estimate_cost_from_tokens",
+    "calculate_quality_score",
     "cost_for_tokens",
-    # Async utilities
-    "maybe_await",
-    # Env utilities
+    "determine_cost_tier",
+    "determine_model_category",
+    "determine_performance_tier",
+    "enhance_model_metadata",
+    "estimate_cost_from_tokens",
+    "estimate_cost_from_usage",
+    "extract_model_capabilities",
+    "extract_provider_from_id",
     "get_env_value",
+    "get_model_version_info",
     "get_required_env",
+    "maybe_await",
+    "normalize_pricing",
+    "parse_price",
 ]
