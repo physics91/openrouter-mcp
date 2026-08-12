@@ -224,7 +224,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             raise
 
         except Exception as e:
-            logger.exception(f"Consensus building failed for {request_id}: {str(e)}")
+            logger.exception(f"Consensus building failed for {request_id}: {e!s}")
 
             # Record failure and check if we should cancel pending tasks
             should_cancel = await self.failure_controller.record_failure(
@@ -235,7 +235,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
             if should_cancel:
                 cancelled = await self.cancellation_manager.cancel_all_tasks(
-                    request_id, f"Cancelling due to failure: {str(e)}"
+                    request_id, f"Cancelling due to failure: {e!s}"
                 )
                 logger.info(f"Cancelled {cancelled} pending tasks for {request_id}")
 
@@ -392,7 +392,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                 return None
 
             except Exception as e:
-                logger.warning(f"Model {model_id} failed to respond: {str(e)}")
+                logger.warning(f"Model {model_id} failed to respond: {e!s}")
                 return None
 
             finally:
