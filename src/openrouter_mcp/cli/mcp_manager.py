@@ -163,9 +163,9 @@ class MCPManager:
             return config
 
         except json.JSONDecodeError as e:
-            raise MCPConfigError(f"Invalid configuration file: {e}")
+            raise MCPConfigError(f"Invalid configuration file: {e}") from e
         except Exception as e:
-            raise MCPConfigError(f"Failed to load configuration: {e}")
+            raise MCPConfigError(f"Failed to load configuration: {e}") from e
 
     def _save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
         """Save configuration to file."""
@@ -179,7 +179,7 @@ class MCPManager:
                 json.dump(config, f, indent=2, ensure_ascii=False)
 
         except Exception as e:
-            raise MCPConfigError(f"Failed to save configuration: {e}")
+            raise MCPConfigError(f"Failed to save configuration: {e}") from e
 
     def _ensure_config_dir(self) -> None:
         """Ensure the configuration directory exists."""
@@ -427,14 +427,16 @@ class MCPManager:
                 if current_backup.exists():
                     shutil.copy2(current_backup, self.config_path)
                     self.config = self._load_config()
-                raise MCPConfigError(f"Failed to restore, rolled back: {restore_error}")
+                raise MCPConfigError(
+                    f"Failed to restore, rolled back: {restore_error}"
+                ) from restore_error
 
-        except json.JSONDecodeError:
-            raise MCPConfigError("Invalid backup file: not valid JSON")
+        except json.JSONDecodeError as e:
+            raise MCPConfigError("Invalid backup file: not valid JSON") from e
         except MCPConfigError:
             raise
         except Exception as e:
-            raise MCPConfigError(f"Failed to restore configuration: {e}")
+            raise MCPConfigError(f"Failed to restore configuration: {e}") from e
 
     def add_server_from_preset(self, preset_name: str, **kwargs: Any) -> bool:
         """Add a server using a preset configuration.
