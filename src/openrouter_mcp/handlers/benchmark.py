@@ -910,29 +910,29 @@ class BenchmarkHandler:
             model_slug = (
                 re.sub(r"[^a-z0-9]+", "-", model_id.lower()).strip("-") or "model"
             )
-            for run_index in range(1, runs + 1):
-                requests.append(
-                    DeferredBatchRequest(
-                        custom_id=(
-                            f"benchmark-{model_slug}-run-{run_index:03d}-{prompt_hash}"
-                        ),
-                        endpoint="/chat/completions",
-                        model_id=model_id,
-                        body={
-                            "model": model_id,
-                            "messages": self._build_prompt_messages(prompt),
-                            "temperature": temperature,
-                            "max_tokens": max_tokens,
-                            "stream": False,
-                        },
-                        metadata={
-                            "workload": "benchmark",
-                            "run_index": run_index,
-                            "prompt_hash": prompt_hash,
-                            "delay_between_requests": delay_between_requests,
-                        },
-                    )
+            requests.extend(
+                DeferredBatchRequest(
+                    custom_id=(
+                        f"benchmark-{model_slug}-run-{run_index:03d}-{prompt_hash}"
+                    ),
+                    endpoint="/chat/completions",
+                    model_id=model_id,
+                    body={
+                        "model": model_id,
+                        "messages": self._build_prompt_messages(prompt),
+                        "temperature": temperature,
+                        "max_tokens": max_tokens,
+                        "stream": False,
+                    },
+                    metadata={
+                        "workload": "benchmark",
+                        "run_index": run_index,
+                        "prompt_hash": prompt_hash,
+                        "delay_between_requests": delay_between_requests,
+                    },
                 )
+                for run_index in range(1, runs + 1)
+            )
 
         return prompt_hash, requests
 
