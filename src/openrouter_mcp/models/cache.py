@@ -430,20 +430,18 @@ class ModelCache:
 
     def iter_models(self) -> Iterator[Dict[str, Any]]:
         """
-        Iterate over cached models without copying.
+        Iterate over a snapshot of cached model membership.
 
         Returns:
             Iterator over model dictionaries
 
         Note:
-            This is thread-safe for reading, but the cache should not be
-            modified during iteration.
+            The model list is shallow-copied when iteration starts, while each
+            model dictionary retains its original identity.
         """
         with self._cache_lock:
-            # Return iterator over a shallow copy to prevent modification
-            # but avoid deep copying all model data
-            for model in self._memory_cache:
-                yield model
+            models = list(self._memory_cache)
+        yield from models
 
     def get_models_slice(self, start: int = 0, end: Optional[int] = None) -> List[Dict[str, Any]]:
         """
