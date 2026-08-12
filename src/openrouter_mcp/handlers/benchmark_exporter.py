@@ -6,7 +6,7 @@ Benchmark report exporting utilities.
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 
 def _success_value(result: Any) -> Any:
@@ -21,7 +21,7 @@ def _is_successful(result: Any) -> bool:
     return bool(_success_value(result))
 
 
-def _render_basic_markdown_metrics(result: Any, success: bool) -> List[str]:
+def _render_basic_markdown_metrics(result: Any, success: bool) -> list[str]:
     """Render metrics exposed by the basic benchmark result."""
     lines = []
     if success and hasattr(result, "response_time_ms"):
@@ -33,7 +33,7 @@ def _render_basic_markdown_metrics(result: Any, success: bool) -> List[str]:
     return lines
 
 
-def _render_enhanced_markdown_metrics(result: Any) -> List[str]:
+def _render_enhanced_markdown_metrics(result: Any) -> list[str]:
     """Render metrics exposed by the enhanced benchmark result."""
     lines = []
     if hasattr(result, "metrics") and result.metrics:
@@ -50,7 +50,7 @@ def _render_enhanced_markdown_metrics(result: Any) -> List[str]:
     return lines
 
 
-def _render_response_preview(result: Any) -> List[str]:
+def _render_response_preview(result: Any) -> list[str]:
     """Render the optional response preview block."""
     if not (hasattr(result, "response") and result.response):
         return []
@@ -61,7 +61,7 @@ def _render_response_preview(result: Any) -> List[str]:
     return ["", "**Response Preview:**", "```", preview, "```"]
 
 
-def _render_markdown_result(model_id: str, result: Any) -> List[str]:
+def _render_markdown_result(model_id: str, result: Any) -> list[str]:
     """Render one benchmark result section."""
     success = _is_successful(result)
     lines = [
@@ -76,7 +76,7 @@ def _render_markdown_result(model_id: str, result: Any) -> List[str]:
     return lines
 
 
-def _serialize_json_result(model_id: str, result: Any) -> Dict[str, Any]:
+def _serialize_json_result(model_id: str, result: Any) -> dict[str, Any]:
     """Serialize one benchmark result for JSON export."""
     success = _success_value(result)
 
@@ -109,7 +109,7 @@ def _serialize_json_result(model_id: str, result: Any) -> Dict[str, Any]:
     return result_data
 
 
-def _serialize_csv_result(model_id: str, result: Any) -> Dict[str, Any]:
+def _serialize_csv_result(model_id: str, result: Any) -> dict[str, Any]:
     """Serialize one benchmark result as a CSV row."""
     return {
         "model_id": model_id,
@@ -135,7 +135,7 @@ class BenchmarkReportExporter:
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
 
-    async def export_markdown(self, results: Dict[str, Any], output_path: str) -> str:
+    async def export_markdown(self, results: dict[str, Any], output_path: str) -> str:
         """Export benchmark results to Markdown format."""
         lines = [
             "# Benchmark Report",
@@ -158,7 +158,7 @@ class BenchmarkReportExporter:
         self.logger.info(f"Markdown report exported to {output_path}")
         return output_path
 
-    async def export_csv(self, results: Dict[str, Any], output_path: str) -> str:
+    async def export_csv(self, results: dict[str, Any], output_path: str) -> str:
         """Export benchmark results to CSV format."""
         import csv
 
@@ -179,7 +179,7 @@ class BenchmarkReportExporter:
 
             for model_id, result_list in results.items():
                 # Handle both single results and lists of results
-                result_entries: List[Any]
+                result_entries: list[Any]
                 if isinstance(result_list, list):
                     result_entries = result_list
                 else:
@@ -191,14 +191,14 @@ class BenchmarkReportExporter:
         self.logger.info(f"CSV report exported to {output_path}")
         return output_path
 
-    async def export_json(self, results: Dict[str, Any], output_path: str) -> str:
+    async def export_json(self, results: dict[str, Any], output_path: str) -> str:
         """Export benchmark results to JSON format."""
-        results_payload: Dict[str, Dict[str, Any]] = {}
+        results_payload: dict[str, dict[str, Any]] = {}
 
         for model_id, result in results.items():
             results_payload[model_id] = _serialize_json_result(model_id, result)
 
-        export_data: Dict[str, Any] = {
+        export_data: dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "results": results_payload,
         }
