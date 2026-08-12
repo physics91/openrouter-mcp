@@ -378,6 +378,36 @@ async def _stream_vision_chat_with_thrift_metadata(
     return chunks
 
 
+async def _complete_vision_chat_with_thrift_metadata(
+    client: Any,
+    request: VisionChatRequest,
+    vision_messages: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Complete a vision request and enrich its response with thrift metadata."""
+    logger.info("Initiating non-streaming vision chat completion")
+    response = await client.chat_completion(
+        model=request.model,
+        messages=vision_messages,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
+    )
+    if not isinstance(response, dict):
+        raise ValueError("Invalid response format from vision chat completion")
+
+    thrift_metrics = get_request_thrift_metrics_snapshot()
+    response = await enrich_response_with_thrift_metadata(
+        client,
+        request.model,
+        response,
+        thrift_metrics,
+        logger=logger,
+        log_context="vision response",
+    )
+
+    logger.info("Vision chat completion successful")
+    return response
+
+
 @mcp.tool()
 async def chat_with_vision(
     request: VisionChatRequest,
@@ -424,28 +454,9 @@ async def chat_with_vision(
                     client, request, vision_messages
                 )
             else:
-                logger.info("Initiating non-streaming vision chat completion")
-                response = await client.chat_completion(
-                    model=request.model,
-                    messages=vision_messages,
-                    temperature=request.temperature,
-                    max_tokens=request.max_tokens,
+                return await _complete_vision_chat_with_thrift_metadata(
+                    client, request, vision_messages
                 )
-                if not isinstance(response, dict):
-                    raise ValueError("Invalid response format from vision chat completion")
-
-                thrift_metrics = get_request_thrift_metrics_snapshot()
-                response = await enrich_response_with_thrift_metadata(
-                    client,
-                    request.model,
-                    response,
-                    thrift_metrics,
-                    logger=logger,
-                    log_context="vision response",
-                )
-
-                logger.info("Vision chat completion successful")
-                return response
 
         except Exception as e:
             logger.error(f"Vision chat completion failed: {str(e)}")
