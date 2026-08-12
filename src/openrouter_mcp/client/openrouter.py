@@ -347,17 +347,17 @@ class OpenRouterClient:
     def _handle_request_error(self, e: Exception, context: str, url: str) -> NoReturn:
         """Handle non-HTTP request errors (connect, timeout, generic)."""
         if isinstance(e, httpx.ConnectError):
-            self.logger.error(f"Connection error for {context} {url}: {str(e)}")
+            self.logger.error(f"Connection error for {context} {url}: {e!s}")
             raise OpenRouterError(
                 "Network error: Failed to connect to OpenRouter API"
             ) from e
         if isinstance(e, httpx.TimeoutException):
-            self.logger.error(f"Timeout error for {context} {url}: {str(e)}")
+            self.logger.error(f"Timeout error for {context} {url}: {e!s}")
             raise OpenRouterError(
                 f"Request timeout after {self.timeout} seconds"
             ) from e
-        self.logger.error(f"Unexpected error for {context} {url}: {str(e)}")
-        raise OpenRouterError(f"Unexpected error: {str(e)}") from e
+        self.logger.error(f"Unexpected error for {context} {url}: {e!s}")
+        raise OpenRouterError(f"Unexpected error: {e!s}") from e
 
     def _build_coalescing_key(
         self, endpoint: str, payload: dict[str, Any]
@@ -503,7 +503,7 @@ class OpenRouterClient:
                 except json_lib.JSONDecodeError as e:
                     # Don't log the actual data content - could contain sensitive info
                     self.logger.warning(
-                        f"Failed to parse stream chunk (length: {len(data)}): {str(e)}"
+                        f"Failed to parse stream chunk (length: {len(data)}): {e!s}"
                     )
                     continue
 
