@@ -293,11 +293,12 @@ def _extract_function_and_tool_support(
     supports_functions = False
     supports_tools = False
 
-    if provider == ModelProvider.OPENAI:
+    if provider == ModelProvider.OPENAI and (
+        "gpt-4" in model_id or "gpt-3.5-turbo" in model_id
+    ):
         # Most modern OpenAI models support functions
-        if "gpt-4" in model_id or "gpt-3.5-turbo" in model_id:
-            supports_functions = True
-            supports_tools = True
+        supports_functions = True
+        supports_tools = True
     elif provider == ModelProvider.ANTHROPIC:
         # Claude 3 models support tool use
         if "claude-3" in model_id:

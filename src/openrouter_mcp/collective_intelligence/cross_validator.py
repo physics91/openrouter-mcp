@@ -1198,9 +1198,11 @@ class CrossValidator(CollectiveIntelligenceComponent):
             return False
 
         # Check consensus requirement
-        if self.config.require_consensus:
-            if validation_report.consensus_level < self.config.consensus_threshold:
-                return False
+        if (
+            self.config.require_consensus
+            and validation_report.consensus_level < self.config.consensus_threshold
+        ):
+            return False
 
         return True
 
