@@ -1,7 +1,7 @@
 """Focused regressions for the collective OpenRouter model provider."""
 
 from copy import deepcopy
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -97,6 +97,113 @@ async def test_process_task_delegates_exact_chat_completion_parameters() -> None
         stream=False,
     )
     assert client.chat_completion.await_args.kwargs["messages"] is prepared_messages
+
+
+def test_build_model_info_preserves_raw_access_and_helper_order() -> None:
+    accesses = []
+
+    class RecordingDict(dict):
+        def __getitem__(self, key):
+            accesses.append(("item", key))
+            return super().__getitem__(key)
+
+        def get(self, key, default=None):
+            accesses.append(("get", key))
+            return super().get(key, default)
+
+    provider = OpenRouterModelProvider(AsyncMock())
+    pricing = {"prompt": "0.1"}
+    raw_model = RecordingDict(
+        {
+            "id": "provider/model",
+            "name": None,
+            "pricing": pricing,
+        }
+    )
+    original_raw_model = deepcopy(dict(raw_model))
+    capabilities = {"capability": 0.9}
+    helper_order = []
+
+    with patch.object(
+        provider,
+        "_extract_cost",
+        side_effect=lambda value: helper_order.append(("cost", value)) or 0.25,
+    ) as extract_cost, patch.object(
+        provider,
+        "_estimate_capabilities",
+        side_effect=lambda value: helper_order.append(("capabilities", value))
+        or capabilities,
+    ) as estimate_capabilities:
+        model_info = provider._build_model_info(raw_model)
+
+    assert accesses == [
+        ("item", "id"),
+        ("item", "id"),
+        ("get", "name"),
+        ("get", "provider"),
+        ("get", "context_length"),
+        ("get", "pricing"),
+    ]
+    assert helper_order[0][0] == "cost"
+    assert helper_order[0][1] is pricing
+    assert helper_order[1][0] == "capabilities"
+    assert helper_order[1][1] is raw_model
+    extract_cost.assert_called_once_with(pricing)
+    estimate_capabilities.assert_called_once_with(raw_model)
+    assert model_info.model_id == "provider/model"
+    assert model_info.name is None
+    assert model_info.provider == "unknown"
+    assert model_info.context_length == 4096
+    assert model_info.cost_per_token == 0.25
+    assert model_info.metadata is raw_model
+    assert model_info.capabilities is capabilities
+    assert raw_model == original_raw_model
+
+
+def test_build_model_info_preserves_missing_id_failure_boundary() -> None:
+    accesses = []
+
+    class RecordingDict(dict):
+        def __getitem__(self, key):
+            accesses.append(("item", key))
+            return super().__getitem__(key)
+
+    provider = OpenRouterModelProvider(AsyncMock())
+    raw_model = RecordingDict({"name": "missing id"})
+
+    with patch.object(provider, "_extract_cost") as extract_cost, patch.object(
+        provider, "_estimate_capabilities"
+    ) as estimate_capabilities:
+        with pytest.raises(KeyError, match="id"):
+            provider._build_model_info(raw_model)
+
+    assert accesses == [("item", "id")]
+    extract_cost.assert_not_called()
+    estimate_capabilities.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_available_models_delegates_ordered_raw_models() -> None:
+    client = AsyncMock()
+    first_raw = {"id": "first"}
+    second_raw = {"id": "second"}
+    client.list_models.return_value = [first_raw, second_raw]
+    provider = OpenRouterModelProvider(client)
+    first_info = MagicMock()
+    second_info = MagicMock()
+
+    with patch.object(
+        provider,
+        "_build_model_info",
+        side_effect=[first_info, second_info],
+    ) as build_model_info:
+        models = await provider.get_available_models()
+
+    assert models == [first_info, second_info]
+    assert models[0] is first_info
+    assert models[1] is second_info
+    client.list_models.assert_awaited_once_with(use_cache=True)
+    assert build_model_info.call_args_list == [call(first_raw), call(second_raw)]
 
 
 @pytest.mark.parametrize(

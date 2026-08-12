@@ -126,6 +126,19 @@ class OpenRouterModelProvider:
             logger.error(f"Task processing failed for model {model_id}: {str(e)}")
             raise
 
+    def _build_model_info(self, raw_model: Dict[str, Any]) -> ModelInfo:
+        """Convert one raw model payload into collective model metadata."""
+        model_info = ModelInfo(
+            model_id=raw_model["id"],
+            name=raw_model.get("name", raw_model["id"]),
+            provider=raw_model.get("provider", "unknown"),
+            context_length=raw_model.get("context_length", 4096),
+            cost_per_token=self._extract_cost(raw_model.get("pricing", {})),
+            metadata=raw_model,
+        )
+        model_info.capabilities = self._estimate_capabilities(raw_model)
+        return model_info
+
     async def get_available_models(self) -> List[ModelInfo]:
         """
         Get list of available models.
@@ -140,19 +153,7 @@ class OpenRouterModelProvider:
             # Convert to ModelInfo objects
             models = []
             for raw_model in raw_models:
-                model_info = ModelInfo(
-                    model_id=raw_model["id"],
-                    name=raw_model.get("name", raw_model["id"]),
-                    provider=raw_model.get("provider", "unknown"),
-                    context_length=raw_model.get("context_length", 4096),
-                    cost_per_token=self._extract_cost(raw_model.get("pricing", {})),
-                    metadata=raw_model,
-                )
-
-                # Add capability estimates based on model properties
-                model_info.capabilities = self._estimate_capabilities(raw_model)
-
-                models.append(model_info)
+                models.append(self._build_model_info(raw_model))
 
             return models
 
