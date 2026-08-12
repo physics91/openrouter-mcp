@@ -325,6 +325,83 @@ class TestModelCache:
         assert mock_save.call_count == 1
         assert all(len(models) == 5 for models in results)
 
+    @pytest.mark.parametrize("cancel_creator", [True, False])
+    @pytest.mark.asyncio
+    async def test_get_models_caller_cancellation_does_not_cancel_shared_refresh(
+        self, mock_openrouter_models, cache_config, cancel_creator
+    ):
+        """Cancelling any waiter should leave the cache-owned refresh running."""
+        from src.openrouter_mcp.models.cache import ModelCache
+
+        cache = ModelCache(**cache_config)
+        cache._memory_cache = []
+        cache._last_update = None
+        expected_models = mock_openrouter_models["data"]
+        fetch_started = asyncio.Event()
+        release_fetch = asyncio.Event()
+        both_joined = asyncio.Event()
+        fetch_count = 0
+        joined_count = 0
+        original_get_or_create = cache._get_or_create_refresh_task
+
+        async def tracked_get_or_create(*, force_refresh):
+            nonlocal joined_count
+            task = await original_get_or_create(force_refresh=force_refresh)
+            joined_count += 1
+            if joined_count == 2:
+                both_joined.set()
+            return task
+
+        async def gated_fetch():
+            nonlocal fetch_count
+            fetch_count += 1
+            fetch_started.set()
+            await release_fetch.wait()
+            return expected_models
+
+        with patch.object(
+            cache,
+            "_get_or_create_refresh_task",
+            side_effect=tracked_get_or_create,
+        ):
+            with patch.object(cache, "_fetch_models_from_api", side_effect=gated_fetch):
+                with patch.object(cache, "_save_to_file_cache") as mock_save:
+                    creator = asyncio.create_task(cache.get_models())
+                    await fetch_started.wait()
+                    follower = asyncio.create_task(cache.get_models())
+                    await both_joined.wait()
+                    shared_refresh = cache._inflight_refresh
+                    cancelled = creator if cancel_creator else follower
+                    survivor = follower if cancel_creator else creator
+
+                    try:
+                        cancelled.cancel()
+                        with pytest.raises(asyncio.CancelledError):
+                            await cancelled
+
+                        assert shared_refresh is not None
+                        assert not shared_refresh.cancelled()
+                        assert not shared_refresh.done()
+                        assert not survivor.done()
+
+                        release_fetch.set()
+                        result = await survivor
+
+                        assert result == expected_models
+                        assert result is not expected_models
+                        assert cache._memory_cache is expected_models
+                        assert fetch_count == 1
+                        assert mock_save.call_count == 1
+                        assert cache._inflight_refresh is None
+                    finally:
+                        release_fetch.set()
+                        await asyncio.gather(
+                            creator,
+                            follower,
+                            return_exceptions=True,
+                        )
+                        cache.shutdown()
+
     @pytest.mark.asyncio
     async def test_file_fallback_hydrates_memory_with_explicit_timestamp(
         self, cache_config

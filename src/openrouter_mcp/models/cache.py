@@ -489,8 +489,10 @@ class ModelCache:
                     # Return copy or reference based on parameter
                     return list(self._memory_cache) if copy else self._memory_cache
 
-        refresh_task = await self._get_or_create_refresh_task(force_refresh=force_refresh)
-        models = await refresh_task
+        refresh_task = await self._get_or_create_refresh_task(
+            force_refresh=force_refresh
+        )
+        models = await asyncio.shield(refresh_task)
         return list(models) if copy else models
 
     async def _get_or_create_refresh_task(
