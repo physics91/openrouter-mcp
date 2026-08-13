@@ -94,6 +94,33 @@ _LATEST_MODEL_MARKERS = (
     "mistral-large",
     "deepseek-v3",
 )
+_VERSION_PART_PATTERNS = (
+    re.compile(r"(turbo|preview|beta|alpha|stable)", re.IGNORECASE),
+    re.compile(r"(opus|sonnet|haiku)", re.IGNORECASE),
+    re.compile(r"(\d{4}-\d{2}-\d{2})|(\d{8})"),
+    re.compile(r"v(\d+(?:\.\d+)*)", re.IGNORECASE),
+    re.compile(r"(\d+k)", re.IGNORECASE),
+)
+_MODEL_FAMILY_PATTERNS = (
+    ("gpt-4", re.compile(r"gpt-?4", re.IGNORECASE)),
+    ("gpt-3.5", re.compile(r"gpt-?3\.5", re.IGNORECASE)),
+    ("claude-3", re.compile(r"claude-?3", re.IGNORECASE)),
+    ("claude-2", re.compile(r"claude-?2", re.IGNORECASE)),
+    ("gemini", re.compile(r"gemini", re.IGNORECASE)),
+    ("llama-3", re.compile(r"llama-?3", re.IGNORECASE)),
+    ("llama-2", re.compile(r"llama-?2", re.IGNORECASE)),
+    ("mistral", re.compile(r"mistral", re.IGNORECASE)),
+    ("deepseek", re.compile(r"deepseek", re.IGNORECASE)),
+    ("o1", re.compile(r"o1", re.IGNORECASE)),
+)
+_RELEASE_DATE_PATTERN = re.compile(r"(\d{4})-?(\d{2})-?(\d{2})")
+_CANONICAL_VERSION_REGEX_STATE = (
+    re.search,
+    re.IGNORECASE,
+    _VERSION_PART_PATTERNS,
+    _MODEL_FAMILY_PATTERNS,
+    _RELEASE_DATE_PATTERN,
+)
 
 
 class ModelCapabilities:
@@ -408,28 +435,54 @@ def _extract_version_parts(model_id: str) -> List[str]:
     """Extract ordered version fragments from a model identifier."""
     version_parts = []
 
-    stage_match = re.search(
-        r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE
+    use_precompiled_patterns = (
+        type(model_id) is str
+        and re.search is _CANONICAL_VERSION_REGEX_STATE[0]
+        and re.IGNORECASE is _CANONICAL_VERSION_REGEX_STATE[1]
+        and _VERSION_PART_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[2]
+        and _MODEL_FAMILY_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[3]
+        and _RELEASE_DATE_PATTERN is _CANONICAL_VERSION_REGEX_STATE[4]
+    )
+    stage_match = (
+        _VERSION_PART_PATTERNS[0].search(model_id)
+        if use_precompiled_patterns
+        else re.search(r"(turbo|preview|beta|alpha|stable)", model_id, re.IGNORECASE)
     )
     if stage_match:
         version_parts.append(stage_match.group(1).lower())
 
-    claude_match = re.search(r"(opus|sonnet|haiku)", model_id, re.IGNORECASE)
+    claude_match = (
+        _VERSION_PART_PATTERNS[1].search(model_id)
+        if use_precompiled_patterns
+        else re.search(r"(opus|sonnet|haiku)", model_id, re.IGNORECASE)
+    )
     if claude_match:
         version_parts.append(claude_match.group(1).lower())
 
-    date_match = re.search(r"(\d{4}-\d{2}-\d{2})|(\d{8})", model_id)
+    date_match = (
+        _VERSION_PART_PATTERNS[2].search(model_id)
+        if use_precompiled_patterns
+        else re.search(r"(\d{4}-\d{2}-\d{2})|(\d{8})", model_id)
+    )
     if date_match:
         date_str = date_match.group(1) or date_match.group(2)
         if len(date_str) == 8:
             date_str = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
         version_parts.append(date_str)
 
-    version_match = re.search(r"v(\d+(?:\.\d+)*)", model_id, re.IGNORECASE)
+    version_match = (
+        _VERSION_PART_PATTERNS[3].search(model_id)
+        if use_precompiled_patterns
+        else re.search(r"v(\d+(?:\.\d+)*)", model_id, re.IGNORECASE)
+    )
     if version_match:
         version_parts.append(f"v{version_match.group(1)}")
 
-    context_match = re.search(r"(\d+k)", model_id, re.IGNORECASE)
+    context_match = (
+        _VERSION_PART_PATTERNS[4].search(model_id)
+        if use_precompiled_patterns
+        else re.search(r"(\d+k)", model_id, re.IGNORECASE)
+    )
     if context_match:
         version_parts.append(context_match.group(1))
 
@@ -438,22 +491,35 @@ def _extract_version_parts(model_id: str) -> List[str]:
 
 def _extract_model_family(model_id: str) -> str:
     """Extract the first matching known model family."""
-    family_patterns = {
-        "gpt-4": r"gpt-?4",
-        "gpt-3.5": r"gpt-?3\.5",
-        "claude-3": r"claude-?3",
-        "claude-2": r"claude-?2",
-        "gemini": r"gemini",
-        "llama-3": r"llama-?3",
-        "llama-2": r"llama-?2",
-        "mistral": r"mistral",
-        "deepseek": r"deepseek",
-        "o1": r"o1",
-    }
+    use_precompiled_patterns = (
+        type(model_id) is str
+        and re.search is _CANONICAL_VERSION_REGEX_STATE[0]
+        and re.IGNORECASE is _CANONICAL_VERSION_REGEX_STATE[1]
+        and _VERSION_PART_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[2]
+        and _MODEL_FAMILY_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[3]
+        and _RELEASE_DATE_PATTERN is _CANONICAL_VERSION_REGEX_STATE[4]
+    )
+    if use_precompiled_patterns:
+        for family_name, pattern in _MODEL_FAMILY_PATTERNS:
+            if pattern.search(model_id):
+                return family_name
+    else:
+        family_patterns = {
+            "gpt-4": r"gpt-?4",
+            "gpt-3.5": r"gpt-?3\.5",
+            "claude-3": r"claude-?3",
+            "claude-2": r"claude-?2",
+            "gemini": r"gemini",
+            "llama-3": r"llama-?3",
+            "llama-2": r"llama-?2",
+            "mistral": r"mistral",
+            "deepseek": r"deepseek",
+            "o1": r"o1",
+        }
 
-    for family_name, pattern in family_patterns.items():
-        if re.search(pattern, model_id, re.IGNORECASE):
-            return family_name
+        for family_name, pattern in family_patterns.items():
+            if re.search(pattern, model_id, re.IGNORECASE):
+                return family_name
 
     return "unknown"
 
@@ -469,7 +535,19 @@ def _extract_release_date(model_id: str, created_timestamp: Any) -> Optional[str
         except (ValueError, OSError, OverflowError):
             pass
 
-    date_match = re.search(r"(\d{4})-?(\d{2})-?(\d{2})", model_id)
+    use_precompiled_pattern = (
+        type(model_id) is str
+        and re.search is _CANONICAL_VERSION_REGEX_STATE[0]
+        and re.IGNORECASE is _CANONICAL_VERSION_REGEX_STATE[1]
+        and _VERSION_PART_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[2]
+        and _MODEL_FAMILY_PATTERNS is _CANONICAL_VERSION_REGEX_STATE[3]
+        and _RELEASE_DATE_PATTERN is _CANONICAL_VERSION_REGEX_STATE[4]
+    )
+    date_match = (
+        _RELEASE_DATE_PATTERN.search(model_id)
+        if use_precompiled_pattern
+        else re.search(r"(\d{4})-?(\d{2})-?(\d{2})", model_id)
+    )
     if date_match:
         release_date = (
             f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"

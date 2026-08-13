@@ -1,9 +1,87 @@
 """Exact regressions for model version metadata extraction."""
 
+import re
+from unittest.mock import Mock, call
+
 import pytest
 
 from openrouter_mcp.utils import metadata
 from openrouter_mcp.utils.metadata import get_model_version_info
+
+
+def test_precompiled_version_patterns_preserve_specs_and_order() -> None:
+    assert [pattern.pattern for pattern in metadata._VERSION_PART_PATTERNS] == [
+        r"(turbo|preview|beta|alpha|stable)",
+        r"(opus|sonnet|haiku)",
+        r"(\d{4}-\d{2}-\d{2})|(\d{8})",
+        r"v(\d+(?:\.\d+)*)",
+        r"(\d+k)",
+    ]
+    assert [name for name, _ in metadata._MODEL_FAMILY_PATTERNS] == [
+        "gpt-4",
+        "gpt-3.5",
+        "claude-3",
+        "claude-2",
+        "gemini",
+        "llama-3",
+        "llama-2",
+        "mistral",
+        "deepseek",
+        "o1",
+    ]
+    assert metadata._RELEASE_DATE_PATTERN.pattern == r"(\d{4})-?(\d{2})-?(\d{2})"
+    ignorecase_flags = re.compile("", re.IGNORECASE).flags
+    default_flags = re.compile("").flags
+    assert [pattern.flags for pattern in metadata._VERSION_PART_PATTERNS] == [
+        ignorecase_flags,
+        ignorecase_flags,
+        default_flags,
+        ignorecase_flags,
+        ignorecase_flags,
+    ]
+    assert [pattern.flags for _, pattern in metadata._MODEL_FAMILY_PATTERNS] == [
+        ignorecase_flags
+    ] * 10
+    assert metadata._RELEASE_DATE_PATTERN.flags == default_flags
+
+
+def test_version_regex_fallback_preserves_search_order(monkeypatch) -> None:
+    search = Mock(return_value=None)
+    monkeypatch.setattr(metadata.re, "search", search)
+
+    assert metadata._extract_version_parts("source") == []
+    assert metadata._extract_model_family("source") == "unknown"
+    assert metadata._extract_release_date("source", 0) is None
+    assert search.call_args_list == [
+        call(r"(turbo|preview|beta|alpha|stable)", "source", re.IGNORECASE),
+        call(r"(opus|sonnet|haiku)", "source", re.IGNORECASE),
+        call(r"(\d{4}-\d{2}-\d{2})|(\d{8})", "source"),
+        call(r"v(\d+(?:\.\d+)*)", "source", re.IGNORECASE),
+        call(r"(\d+k)", "source", re.IGNORECASE),
+        call(r"gpt-?4", "source", re.IGNORECASE),
+        call(r"gpt-?3\.5", "source", re.IGNORECASE),
+        call(r"claude-?3", "source", re.IGNORECASE),
+        call(r"claude-?2", "source", re.IGNORECASE),
+        call(r"gemini", "source", re.IGNORECASE),
+        call(r"llama-?3", "source", re.IGNORECASE),
+        call(r"llama-?2", "source", re.IGNORECASE),
+        call(r"mistral", "source", re.IGNORECASE),
+        call(r"deepseek", "source", re.IGNORECASE),
+        call(r"o1", "source", re.IGNORECASE),
+        call(r"(\d{4})-?(\d{2})-?(\d{2})", "source"),
+    ]
+
+
+def test_rebound_ignorecase_uses_current_legacy_flag(monkeypatch) -> None:
+    monkeypatch.setattr(metadata.re, "IGNORECASE", re.NOFLAG)
+
+    assert metadata._extract_model_family("GPT-4") == "unknown"
+
+
+def test_rebound_compiled_pattern_container_uses_legacy_patterns(monkeypatch) -> None:
+    monkeypatch.setattr(metadata, "_MODEL_FAMILY_PATTERNS", ())
+
+    assert metadata._extract_model_family("gpt-4") == "gpt-4"
 
 
 @pytest.mark.parametrize("marker", metadata._LATEST_MODEL_MARKERS)
