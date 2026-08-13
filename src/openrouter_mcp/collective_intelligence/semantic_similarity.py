@@ -240,10 +240,10 @@ class SemanticSimilarityCalculator:
         if not tokens1 or not tokens2:
             return 0.0  # One empty = no similarity
 
-        intersection = tokens1 & tokens2
-        union = tokens1 | tokens2
+        intersection_size = len(tokens1 & tokens2)
+        union_size = len(tokens1) + len(tokens2) - intersection_size
 
-        return len(intersection) / len(union)
+        return intersection_size / union_size
 
     def _normalized_levenshtein(self, text1: str, text2: str) -> float:
         """

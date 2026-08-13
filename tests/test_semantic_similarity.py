@@ -72,6 +72,20 @@ def _reference_cosine_similarity(
     return dot_product / (magnitude1 * magnitude2)
 
 
+def _reference_jaccard_similarity(
+    calculator: SemanticSimilarityCalculator, text1: str, text2: str
+) -> float:
+    """Return token Jaccard similarity using the previous union-set calculation."""
+    tokens1 = set(calculator._tokenize(text1))
+    tokens2 = set(calculator._tokenize(text2))
+    if not tokens1 and not tokens2:
+        return 1.0
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    return len(tokens1 & tokens2) / len(tokens1 | tokens2)
+
+
 def _reference_ngram_similarity(
     calculator: SemanticSimilarityCalculator, text1: str, text2: str
 ) -> float:
@@ -228,6 +242,27 @@ class TestSemanticSimilarityCalculator:
         assert calculator._cosine_similarity(
             text1, text2
         ) == _reference_cosine_similarity(calculator, text1, text2)
+
+    @pytest.mark.parametrize(
+        ("text1", "text2"),
+        [
+            ("", ""),
+            ("the a x", "the a y"),
+            ("alpha", ""),
+            ("identical token set", "identical token set"),
+            ("alpha beta gamma", "delta epsilon zeta"),
+            ("alpha beta gamma", "beta gamma delta"),
+            ("한글 café", "한글 차"),
+            ("alpha alpha beta", "alpha beta beta"),
+        ],
+    )
+    def test_jaccard_similarity_matches_union_set_reference(
+        self, calculator, text1, text2
+    ):
+        """Set-cardinality math must preserve token Jaccard results."""
+        assert calculator._jaccard_similarity(
+            text1, text2
+        ) == _reference_jaccard_similarity(calculator, text1, text2)
 
     @pytest.mark.parametrize(
         ("text1", "text2"),
