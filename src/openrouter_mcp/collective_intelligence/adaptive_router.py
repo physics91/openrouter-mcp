@@ -44,6 +44,16 @@ _TASK_TYPE_COMPLEXITY_FACTORS = MappingProxyType(
         TaskType.FACTUAL: 1.0,
     }
 )
+_TASK_TYPE_REQUIRED_CAPABILITIES = MappingProxyType(
+    {
+        TaskType.REASONING: (ModelCapability.REASONING,),
+        TaskType.CREATIVE: (ModelCapability.CREATIVITY,),
+        TaskType.CODE_GENERATION: (ModelCapability.CODE,),
+        TaskType.ANALYSIS: (ModelCapability.REASONING, ModelCapability.ACCURACY),
+        TaskType.MATH: (ModelCapability.MATH,),
+        TaskType.FACTUAL: (ModelCapability.ACCURACY,),
+    }
+)
 
 
 class RoutingStrategy(Enum):
@@ -331,14 +341,7 @@ class PerformancePredictor:
         base_match = 0.7
 
         # Map task types to required capabilities
-        required_capabilities = {
-            TaskType.REASONING: [ModelCapability.REASONING],
-            TaskType.CREATIVE: [ModelCapability.CREATIVITY],
-            TaskType.CODE_GENERATION: [ModelCapability.CODE],
-            TaskType.ANALYSIS: [ModelCapability.REASONING, ModelCapability.ACCURACY],
-            TaskType.MATH: [ModelCapability.MATH],
-            TaskType.FACTUAL: [ModelCapability.ACCURACY],
-        }.get(task.task_type, [])
+        required_capabilities = _TASK_TYPE_REQUIRED_CAPABILITIES.get(task.task_type, ())
 
         if not required_capabilities:
             return base_match
