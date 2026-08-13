@@ -105,6 +105,35 @@ def test_latest_model_markers_preserve_order_and_immutability() -> None:
         "mistral-large",
         "deepseek-v3",
     )
+    assert metadata._LATEST_MODEL_PATTERN.pattern == "|".join(
+        re.escape(marker) for marker in metadata._LATEST_MODEL_MARKERS
+    )
+    assert metadata._LATEST_MODEL_PATTERN.flags == re.compile("").flags
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "vendor/gptx4o",
+        "vendor/ordinary.preview",
+        "vendor/claude_3_opus",
+        "vendor/deepseekxv3",
+    ],
+)
+def test_latest_model_pattern_keeps_literal_substring_semantics(model_id: str) -> None:
+    assert metadata._is_latest_model(model_id) is False
+
+
+def test_rebound_latest_markers_use_legacy_membership(monkeypatch) -> None:
+    monkeypatch.setattr(metadata, "_LATEST_MODEL_MARKERS", ("custom-marker",))
+
+    assert metadata._is_latest_model("vendor/custom-marker") is True
+
+
+def test_rebound_latest_pattern_uses_legacy_membership(monkeypatch) -> None:
+    monkeypatch.setattr(metadata, "_LATEST_MODEL_PATTERN", re.compile("ordinary"))
+
+    assert metadata._is_latest_model("vendor/ordinary") is False
 
 
 def test_latest_model_custom_string_preserves_repeated_normalization() -> None:

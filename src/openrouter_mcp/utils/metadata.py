@@ -94,6 +94,10 @@ _LATEST_MODEL_MARKERS = (
     "mistral-large",
     "deepseek-v3",
 )
+_LATEST_MODEL_PATTERN = re.compile(
+    "|".join(re.escape(marker) for marker in _LATEST_MODEL_MARKERS)
+)
+_CANONICAL_LATEST_MODEL_STATE = (_LATEST_MODEL_MARKERS, _LATEST_MODEL_PATTERN)
 _VERSION_PART_PATTERNS = (
     re.compile(r"(turbo|preview|beta|alpha|stable)", re.IGNORECASE),
     re.compile(r"(opus|sonnet|haiku)", re.IGNORECASE),
@@ -637,9 +641,13 @@ def _extract_release_date(model_id: str, created_timestamp: Any) -> Optional[str
 
 def _is_latest_model(model_id: str) -> bool:
     """Return whether a model ID matches a known latest-model heuristic."""
-    if type(model_id) is str:
+    if (
+        type(model_id) is str
+        and _LATEST_MODEL_MARKERS is _CANONICAL_LATEST_MODEL_STATE[0]
+        and _LATEST_MODEL_PATTERN is _CANONICAL_LATEST_MODEL_STATE[1]
+    ):
         model_id_lower = model_id.lower()
-        return any(latest in model_id_lower for latest in _LATEST_MODEL_MARKERS)
+        return _LATEST_MODEL_PATTERN.search(model_id_lower) is not None
 
     return any(latest in model_id.lower() for latest in _LATEST_MODEL_MARKERS)
 
