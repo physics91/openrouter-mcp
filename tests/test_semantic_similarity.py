@@ -10,6 +10,7 @@ These tests verify that the semantic similarity implementation correctly:
 5. Performs efficiently on realistic data
 """
 
+from itertools import product
 from unittest.mock import Mock
 
 import pytest
@@ -19,6 +20,30 @@ from openrouter_mcp.collective_intelligence.semantic_similarity import (
     SemanticSimilarityCalculator,
     calculate_response_similarity,
 )
+
+
+def _reference_normalized_levenshtein(text1: str, text2: str) -> float:
+    """Return normalized Levenshtein similarity using a simple DP oracle."""
+    if not text1 and not text2:
+        return 1.0
+    if not text1 or not text2:
+        return 0.0
+
+    previous_row = list(range(len(text2) + 1))
+    for row_index, left_character in enumerate(text1, 1):
+        current_row = [row_index]
+        for column_index, right_character in enumerate(text2, 1):
+            current_row.append(
+                min(
+                    previous_row[column_index] + 1,
+                    current_row[column_index - 1] + 1,
+                    previous_row[column_index - 1]
+                    + (left_character != right_character),
+                )
+            )
+        previous_row = current_row
+
+    return 1.0 - (previous_row[-1] / max(len(text1), len(text2)))
 
 
 class TestSemanticSimilarityCalculator:
@@ -152,6 +177,43 @@ class TestSemanticSimilarityCalculator:
         score2 = calculator.calculate_similarity("a", "b")
         # Expecting high similarity for single-char comparison (both are very short)
         assert 0.0 <= score2.hybrid <= 1.0  # Just ensure valid range
+
+    def test_levenshtein_matches_reference_for_exhaustive_short_strings(
+        self, calculator
+    ):
+        """The bit-vector implementation should match the DP oracle exactly."""
+        strings = [""]
+        for length in range(1, 6):
+            strings.extend(
+                "".join(characters) for characters in product("ab", repeat=length)
+            )
+
+        for text1 in strings:
+            for text2 in strings:
+                assert calculator._normalized_levenshtein(
+                    text1, text2
+                ) == _reference_normalized_levenshtein(text1, text2)
+
+    @pytest.mark.parametrize("length", [30, 31, 32, 60, 61, 62])
+    def test_levenshtein_matches_reference_at_integer_limb_boundaries(
+        self, calculator, length
+    ):
+        """Carry propagation across Python integer limbs must preserve distance."""
+        text = ("a🙂한b" * ((length + 3) // 4))[:length]
+        midpoint = length // 2
+        variants = [
+            text[:midpoint] + "Ω" + text[midpoint + 1 :],
+            text[:midpoint] + "Z" + text[midpoint:],
+            text[:midpoint] + text[midpoint + 1 :],
+            "나" * length,
+            text + "끝" * 3,
+        ]
+
+        for variant in variants:
+            for text1, text2 in ((text, variant), (variant, text)):
+                assert calculator._normalized_levenshtein(
+                    text1, text2
+                ) == _reference_normalized_levenshtein(text1, text2)
 
     def test_are_similar_method(self, calculator):
         """Test the boolean similarity check method."""

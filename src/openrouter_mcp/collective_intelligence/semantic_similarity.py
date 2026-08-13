@@ -241,7 +241,7 @@ class SemanticSimilarityCalculator:
         Calculate normalized Levenshtein distance (edit distance).
 
         Normalized to 0-1 range where 1 = identical, 0 = completely different.
-        Uses dynamic programming for O(m*n) complexity.
+        Uses Myers' bit-vector algorithm for exact unit-cost edit distance.
 
         Args:
             text1: First text
@@ -258,31 +258,43 @@ class SemanticSimilarityCalculator:
         if len1 == 0 or len2 == 0:
             return 0.0
 
-        # Create distance matrix
-        # Only keep current and previous row to save memory
-        prev_row = list(range(len2 + 1))
+        # Myers' bit-vector recurrence computes the same unit-cost edit distance
+        # while moving the character loop into Python's optimized integer operations.
+        # Use the shorter text as the bit pattern to minimize the integer width.
+        if len1 < len2:
+            text1, text2 = text2, text1
 
-        for i in range(1, len1 + 1):
-            curr_row = [i]
-            for j in range(1, len2 + 1):
-                # Cost of substitution
-                cost = 0 if text1[i - 1] == text2[j - 1] else 1
+        pattern_length = len(text2)
+        character_masks: dict[str, int] = {}
+        for index, character in enumerate(text2):
+            character_masks[character] = character_masks.get(character, 0) | (
+                1 << index
+            )
 
-                # Minimum of: deletion, insertion, substitution
-                curr_row.append(
-                    min(
-                        prev_row[j] + 1,  # deletion
-                        curr_row[j - 1] + 1,  # insertion
-                        prev_row[j - 1] + cost,  # substitution
-                    )
-                )
-            prev_row = curr_row
+        pattern_mask = (1 << pattern_length) - 1
+        highest_bit = 1 << (pattern_length - 1)
+        positive = pattern_mask
+        negative = 0
+        distance = pattern_length
 
-        # Normalize to 0-1 range
-        max_len = max(len1, len2)
-        distance = prev_row[-1]
+        for character in text1:
+            matches = character_masks.get(character, 0)
+            combined = matches | negative
+            horizontal = (((combined & positive) + positive) ^ positive) | combined
+            positive_gap = negative | ~(horizontal | positive)
+            negative_gap = positive & horizontal
 
-        return 1.0 - (distance / max_len)
+            if positive_gap & highest_bit:
+                distance += 1
+            elif negative_gap & highest_bit:
+                distance -= 1
+
+            positive_gap = ((positive_gap << 1) | 1) & pattern_mask
+            negative_gap = (negative_gap << 1) & pattern_mask
+            positive = (negative_gap | ~(horizontal | positive_gap)) & pattern_mask
+            negative = positive_gap & horizontal
+
+        return 1.0 - (distance / max(len1, len2))
 
     def _cosine_similarity(self, text1: str, text2: str) -> float:
         """
