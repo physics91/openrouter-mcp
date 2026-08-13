@@ -72,6 +72,20 @@ def _reference_cosine_similarity(
     return dot_product / (magnitude1 * magnitude2)
 
 
+def _reference_ngram_similarity(
+    calculator: SemanticSimilarityCalculator, text1: str, text2: str
+) -> float:
+    """Return n-gram similarity using the previous union-set calculation."""
+    ngrams1 = calculator._generate_ngrams(text1, calculator.ngram_size)
+    ngrams2 = calculator._generate_ngrams(text2, calculator.ngram_size)
+    if not ngrams1 and not ngrams2:
+        return 1.0
+    if not ngrams1 or not ngrams2:
+        return 0.0
+
+    return len(ngrams1 & ngrams2) / len(ngrams1 | ngrams2)
+
+
 class TestSemanticSimilarityCalculator:
     """Test the core semantic similarity calculator."""
 
@@ -214,6 +228,26 @@ class TestSemanticSimilarityCalculator:
         assert calculator._cosine_similarity(
             text1, text2
         ) == _reference_cosine_similarity(calculator, text1, text2)
+
+    @pytest.mark.parametrize(
+        ("text1", "text2"),
+        [
+            ("", ""),
+            ("alpha", ""),
+            ("identical n-grams", "identical n-grams"),
+            ("abcdefgh", "ijklmnop"),
+            ("abcdefghi", "defghijkl"),
+            ("한글 café", "한글 차"),
+            ("aaaaaa", "aaaaba"),
+        ],
+    )
+    def test_ngram_similarity_matches_union_set_reference(
+        self, calculator, text1, text2
+    ):
+        """Set-cardinality math must preserve the union-set result."""
+        assert calculator._ngram_similarity(
+            text1, text2
+        ) == _reference_ngram_similarity(calculator, text1, text2)
 
     def test_identical_after_normalization_short_circuits_expensive_metrics(self):
         """Identical normalized texts should skip the expensive metric pipeline."""

@@ -411,10 +411,10 @@ class SemanticSimilarityCalculator:
         if not ngrams1 or not ngrams2:
             return 0.0
 
-        intersection = ngrams1 & ngrams2
-        union = ngrams1 | ngrams2
+        intersection_size = len(ngrams1 & ngrams2)
+        union_size = len(ngrams1) + len(ngrams2) - intersection_size
 
-        return len(intersection) / len(union)
+        return intersection_size / union_size
 
 
 _SYMMETRIC_METHOD_NAMES = (
