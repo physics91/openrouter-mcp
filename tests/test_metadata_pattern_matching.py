@@ -66,6 +66,87 @@ def test_find_first_pattern_match_propagates_search_error_in_order(monkeypatch):
     assert events == [("miss", "source"), ("broken", "source")]
 
 
+def test_compiled_pattern_maps_preserve_specs_order_and_flags():
+    assert metadata._PROVIDER_PATTERN_SPEC == tuple(
+        (key, tuple(patterns)) for key, patterns in metadata.PROVIDER_PATTERNS.items()
+    )
+    assert metadata._CATEGORY_PATTERN_SPEC == tuple(
+        (key, tuple(patterns)) for key, patterns in metadata.CATEGORY_PATTERNS.items()
+    )
+    assert [
+        (key, tuple(pattern.pattern for pattern in patterns))
+        for key, patterns in metadata._COMPILED_PROVIDER_PATTERNS
+    ] == list(metadata._PROVIDER_PATTERN_SPEC)
+    assert [
+        (key, tuple(pattern.pattern for pattern in patterns))
+        for key, patterns in metadata._COMPILED_CATEGORY_PATTERNS
+    ] == list(metadata._CATEGORY_PATTERN_SPEC)
+    assert all(
+        pattern.flags == metadata.re.compile("").flags
+        for compiled_map in (
+            metadata._COMPILED_PROVIDER_PATTERNS,
+            metadata._COMPILED_CATEGORY_PATTERNS,
+        )
+        for _, patterns in compiled_map
+        for pattern in patterns
+    )
+
+
+@pytest.mark.parametrize(
+    "pattern_map,compiled_map",
+    [
+        (metadata.PROVIDER_PATTERNS, metadata._COMPILED_PROVIDER_PATTERNS),
+        (metadata.CATEGORY_PATTERNS, metadata._COMPILED_CATEGORY_PATTERNS),
+    ],
+)
+def test_compiled_pattern_maps_match_every_canonical_pattern(pattern_map, compiled_map):
+    for expected_key, patterns in compiled_map:
+        for pattern in patterns:
+            match_text = pattern.pattern.replace("^", "").replace(r"\d", "3")
+            if any(character in match_text for character in "?+*[](){}|"):
+                continue
+            assert (
+                metadata._find_first_pattern_match(match_text, pattern_map)
+                is expected_key
+            )
+
+
+def test_in_place_pattern_mutation_uses_legacy_search(monkeypatch):
+    patterns = [r"^custom-provider/"]
+    monkeypatch.setitem(
+        metadata.PROVIDER_PATTERNS, metadata.ModelProvider.OPENAI, patterns
+    )
+
+    assert (
+        metadata._find_first_pattern_match(
+            "custom-provider/model", metadata.PROVIDER_PATTERNS
+        )
+        is metadata.ModelProvider.OPENAI
+    )
+
+
+def test_rebound_compiled_pattern_map_uses_legacy_search(monkeypatch):
+    monkeypatch.setattr(metadata, "_COMPILED_CATEGORY_PATTERNS", ())
+
+    assert (
+        metadata._find_first_pattern_match("dall-e", metadata.CATEGORY_PATTERNS)
+        is metadata.ModelCategory.IMAGE
+    )
+
+
+def test_canonical_pattern_map_preserves_search_monkeypatch(monkeypatch):
+    search = Mock(
+        side_effect=lambda pattern, text: object() if pattern == r"dall-?e" else None
+    )
+    monkeypatch.setattr(metadata.re, "search", search)
+
+    assert (
+        metadata._find_first_pattern_match("source", metadata.CATEGORY_PATTERNS)
+        is metadata.ModelCategory.IMAGE
+    )
+    search.assert_called_once_with(r"dall-?e", "source")
+
+
 def test_extract_provider_prefix_precedence_skips_pattern_helper(monkeypatch):
     find_match = Mock(side_effect=AssertionError("pattern helper must not run"))
     monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)

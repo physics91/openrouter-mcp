@@ -233,12 +233,91 @@ CATEGORY_PATTERNS = {
     ],
 }
 
+_PROVIDER_PATTERN_SPEC = tuple(
+    (key, tuple(patterns)) for key, patterns in PROVIDER_PATTERNS.items()
+)
+_CATEGORY_PATTERN_SPEC = tuple(
+    (key, tuple(patterns)) for key, patterns in CATEGORY_PATTERNS.items()
+)
+_COMPILED_PROVIDER_PATTERNS = tuple(
+    (key, tuple(re.compile(pattern) for pattern in patterns))
+    for key, patterns in _PROVIDER_PATTERN_SPEC
+)
+_COMPILED_CATEGORY_PATTERNS = tuple(
+    (key, tuple(re.compile(pattern) for pattern in patterns))
+    for key, patterns in _CATEGORY_PATTERN_SPEC
+)
+_CANONICAL_PATTERN_MAP_STATE = (
+    PROVIDER_PATTERNS,
+    CATEGORY_PATTERNS,
+    _PROVIDER_PATTERN_SPEC,
+    _CATEGORY_PATTERN_SPEC,
+    _COMPILED_PROVIDER_PATTERNS,
+    _COMPILED_CATEGORY_PATTERNS,
+)
+
+
+def _matches_pattern_spec(
+    pattern_map: Dict[_PatternKey, List[str]],
+    expected_spec: tuple[tuple[_PatternKey, tuple[str, ...]], ...],
+) -> bool:
+    """Check canonical pattern contents without invoking custom values."""
+    if type(pattern_map) is not dict or len(pattern_map) != len(expected_spec):
+        return False
+
+    for (key, patterns), (expected_key, expected_patterns) in zip(
+        pattern_map.items(), expected_spec
+    ):
+        if (
+            key is not expected_key
+            or type(patterns) is not list
+            or len(patterns) != len(expected_patterns)
+        ):
+            return False
+        if any(
+            type(pattern) is not str or pattern != expected
+            for pattern, expected in zip(patterns, expected_patterns)
+        ):
+            return False
+
+    return True
+
 
 def _find_first_pattern_match(
     text: str,
     pattern_map: Dict[_PatternKey, List[str]],
 ) -> Optional[_PatternKey]:
     """Return the first mapping key with a regex matching the supplied text."""
+    compiled_patterns = None
+    expected_spec = None
+    if (
+        type(text) is str
+        and re.search is _CANONICAL_VERSION_REGEX_STATE[0]
+        and PROVIDER_PATTERNS is _CANONICAL_PATTERN_MAP_STATE[0]
+        and CATEGORY_PATTERNS is _CANONICAL_PATTERN_MAP_STATE[1]
+        and _PROVIDER_PATTERN_SPEC is _CANONICAL_PATTERN_MAP_STATE[2]
+        and _CATEGORY_PATTERN_SPEC is _CANONICAL_PATTERN_MAP_STATE[3]
+        and _COMPILED_PROVIDER_PATTERNS is _CANONICAL_PATTERN_MAP_STATE[4]
+        and _COMPILED_CATEGORY_PATTERNS is _CANONICAL_PATTERN_MAP_STATE[5]
+    ):
+        if pattern_map is PROVIDER_PATTERNS:
+            expected_spec = _PROVIDER_PATTERN_SPEC
+            compiled_patterns = _COMPILED_PROVIDER_PATTERNS
+        elif pattern_map is CATEGORY_PATTERNS:
+            expected_spec = _CATEGORY_PATTERN_SPEC
+            compiled_patterns = _COMPILED_CATEGORY_PATTERNS
+
+    if (
+        compiled_patterns is not None
+        and expected_spec is not None
+        and _matches_pattern_spec(pattern_map, expected_spec)
+    ):
+        for key, patterns in compiled_patterns:
+            for pattern in patterns:
+                if pattern.search(text):
+                    return key
+        return None
+
     for key, patterns in pattern_map.items():
         for pattern in patterns:
             if re.search(pattern, text):
