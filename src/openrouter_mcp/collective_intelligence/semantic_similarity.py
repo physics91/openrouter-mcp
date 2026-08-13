@@ -32,11 +32,66 @@ _ABBREVIATION_PATTERN = re.compile(r"\b(?:ml|ai|nlp|llms|llm)\b")
 _NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\b")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 _TOKEN_PATTERN = re.compile(r"\b\w+\b")
+_AFFIRMATIVE_TOKENS = frozenset(
+    {"yes", "yeah", "yep", "correct", "true", "affirmative", "agree"}
+)
+_NEGATIVE_TOKENS = frozenset({"no", "nope", "incorrect", "false", "negative"})
 
 
 def _expand_abbreviation(match: re.Match[str]) -> str:
     """Expand one abbreviation matched by ``_ABBREVIATION_PATTERN``."""
     return _ABBREVIATIONS[match.group(0)]
+
+
+def _jaccard_from_token_sets(tokens1: set[str], tokens2: set[str]) -> float:
+    """Calculate token Jaccard similarity from materialized token sets."""
+    if not tokens1 and not tokens2:
+        return 1.0
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    intersection_size = len(tokens1 & tokens2)
+    union_size = len(tokens1) + len(tokens2) - intersection_size
+    return intersection_size / union_size
+
+
+def _cosine_from_tokens(tokens1: list[str], tokens2: list[str]) -> float:
+    """Calculate term-frequency cosine similarity from token lists."""
+    if not tokens1 and not tokens2:
+        return 1.0
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    tf1 = Counter(tokens1)
+    tf2 = Counter(tokens2)
+    dot_product = sum(frequency * tf2.get(term, 0) for term, frequency in tf1.items())
+    magnitude1 = math.sqrt(sum(value * value for value in tf1.values()))
+    magnitude2 = math.sqrt(sum(value * value for value in tf2.values()))
+    if magnitude1 == 0 or magnitude2 == 0:
+        return 0.0
+    return dot_product / (magnitude1 * magnitude2)
+
+
+def _boost_short_affirmations_from_tokens(
+    tokens1: list[str],
+    tokens2: list[str],
+    token_set1: set[str],
+    token_set2: set[str],
+    score: float,
+) -> float:
+    """Boost short-response similarity from precomputed tokens and sets."""
+    if not tokens1 or not tokens2:
+        return score
+
+    if len(tokens1) <= 3 or len(tokens2) <= 3:
+        if token_set1.issubset(token_set2) or token_set2.issubset(token_set1):
+            return max(score, 0.85)
+        if token_set1 & _AFFIRMATIVE_TOKENS and token_set2 & _AFFIRMATIVE_TOKENS:
+            return max(score, 0.8)
+        if token_set1 & _NEGATIVE_TOKENS and token_set2 & _NEGATIVE_TOKENS:
+            return max(score, 0.8)
+
+    return score
 
 
 @dataclass
@@ -98,10 +153,24 @@ class SemanticSimilarityCalculator:
                 hybrid=1.0,
             )
 
-        # Calculate individual metrics
-        jaccard = self._jaccard_similarity(norm1, norm2)
+        shared_token_data = None
+        if _uses_canonical_similarity_pipeline(self):
+            tokens1 = self._tokenize(norm1)
+            tokens2 = self._tokenize(norm2)
+            token_set1 = set(tokens1)
+            token_set2 = set(tokens2)
+            shared_token_data = (tokens1, tokens2, token_set1, token_set2)
+            jaccard = _jaccard_from_token_sets(token_set1, token_set2)
+        else:
+            jaccard = self._jaccard_similarity(norm1, norm2)
+
+        # Calculate remaining individual metrics
         levenshtein = self._normalized_levenshtein(norm1, norm2)
-        cosine = self._cosine_similarity(norm1, norm2)
+        if shared_token_data is None:
+            cosine = self._cosine_similarity(norm1, norm2)
+        else:
+            tokens1, tokens2, _, _ = shared_token_data
+            cosine = _cosine_from_tokens(tokens1, tokens2)
         ngram = self._ngram_similarity(norm1, norm2)
 
         # Hybrid score: weighted combination of metrics
@@ -113,7 +182,13 @@ class SemanticSimilarityCalculator:
             + 0.15 * ngram  # Character n-grams catch similar phrasing
         )
 
-        hybrid = self._boost_short_affirmations(norm1, norm2, hybrid)
+        if shared_token_data is None:
+            hybrid = self._boost_short_affirmations(norm1, norm2, hybrid)
+        else:
+            tokens1, tokens2, token_set1, token_set2 = shared_token_data
+            hybrid = _boost_short_affirmations_from_tokens(
+                tokens1, tokens2, token_set1, token_set2, hybrid
+            )
         hybrid = self._boost_high_overlap(jaccard, cosine, hybrid)
 
         return SimilarityScore(
@@ -128,35 +203,9 @@ class SemanticSimilarityCalculator:
         """Boost similarity for short affirmations or subset responses."""
         tokens1 = self._tokenize(text1)
         tokens2 = self._tokenize(text2)
-
-        if not tokens1 or not tokens2:
-            return score
-
-        set1 = set(tokens1)
-        set2 = set(tokens2)
-        short_limit = 3
-
-        if len(tokens1) <= short_limit or len(tokens2) <= short_limit:
-            if set1.issubset(set2) or set2.issubset(set1):
-                return max(score, 0.85)
-
-            affirmatives = {
-                "yes",
-                "yeah",
-                "yep",
-                "correct",
-                "true",
-                "affirmative",
-                "agree",
-            }
-            negatives = {"no", "nope", "incorrect", "false", "negative"}
-
-            if set1 & affirmatives and set2 & affirmatives:
-                return max(score, 0.8)
-            if set1 & negatives and set2 & negatives:
-                return max(score, 0.8)
-
-        return score
+        return _boost_short_affirmations_from_tokens(
+            tokens1, tokens2, set(tokens1), set(tokens2), score
+        )
 
     def _boost_high_overlap(self, jaccard: float, cosine: float, score: float) -> float:
         """Boost similarity when lexical overlap is already strong."""
@@ -233,17 +282,7 @@ class SemanticSimilarityCalculator:
         """
         tokens1 = set(self._tokenize(text1))
         tokens2 = set(self._tokenize(text2))
-
-        if not tokens1 and not tokens2:
-            return 1.0  # Both empty = identical
-
-        if not tokens1 or not tokens2:
-            return 0.0  # One empty = no similarity
-
-        intersection_size = len(tokens1 & tokens2)
-        union_size = len(tokens1) + len(tokens2) - intersection_size
-
-        return intersection_size / union_size
+        return _jaccard_from_token_sets(tokens1, tokens2)
 
     def _normalized_levenshtein(self, text1: str, text2: str) -> float:
         """
@@ -350,27 +389,7 @@ class SemanticSimilarityCalculator:
         tokens1 = self._tokenize(text1)
         tokens2 = self._tokenize(text2)
 
-        if not tokens1 and not tokens2:
-            return 1.0
-
-        if not tokens1 or not tokens2:
-            return 0.0
-
-        # Calculate term frequencies
-        tf1 = Counter(tokens1)
-        tf2 = Counter(tokens2)
-
-        # Calculate the sparse dot product without materializing dense vectors.
-        dot_product = sum(
-            frequency * tf2.get(term, 0) for term, frequency in tf1.items()
-        )
-        magnitude1 = math.sqrt(sum(value * value for value in tf1.values()))
-        magnitude2 = math.sqrt(sum(value * value for value in tf2.values()))
-
-        if magnitude1 == 0 or magnitude2 == 0:
-            return 0.0
-
-        return dot_product / (magnitude1 * magnitude2)
+        return _cosine_from_tokens(tokens1, tokens2)
 
     def _generate_ngrams(self, text: str, n: int) -> set[str]:
         """
@@ -433,6 +452,26 @@ _CANONICAL_SYMMETRIC_METHODS = tuple(
     (name, getattr(SemanticSimilarityCalculator, name))
     for name in _SYMMETRIC_METHOD_NAMES
 )
+_SYMMETRIC_METHOD_NAME_SET = frozenset(_SYMMETRIC_METHOD_NAMES)
+_CANONICAL_SYMMETRIC_METHOD_VALUES = tuple(
+    method for _, method in _CANONICAL_SYMMETRIC_METHODS
+)
+
+
+def _uses_canonical_similarity_pipeline(
+    calculator: SemanticSimilarityCalculator,
+) -> bool:
+    """Return whether all observable calculator methods retain canonical behavior."""
+    if type(calculator) is not SemanticSimilarityCalculator:
+        return False
+    if not vars(calculator).keys().isdisjoint(_SYMMETRIC_METHOD_NAME_SET):
+        return False
+
+    calculator_namespace = type(calculator).__dict__
+    current_methods = tuple(
+        calculator_namespace.get(name) for name in _SYMMETRIC_METHOD_NAMES
+    )
+    return current_methods == _CANONICAL_SYMMETRIC_METHOD_VALUES
 
 
 class ResponseGrouper:

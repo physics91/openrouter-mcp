@@ -20,6 +20,7 @@ import pytest
 from openrouter_mcp.collective_intelligence.semantic_similarity import (
     ResponseGrouper,
     SemanticSimilarityCalculator,
+    SimilarityScore,
     calculate_response_similarity,
 )
 
@@ -98,6 +99,25 @@ def _reference_ngram_similarity(
         return 0.0
 
     return len(ngrams1 & ngrams2) / len(ngrams1 | ngrams2)
+
+
+def _reference_calculate_similarity(
+    calculator: SemanticSimilarityCalculator, text1: str, text2: str
+) -> SimilarityScore:
+    """Return the score using the previous metric orchestration path."""
+    norm1 = calculator._normalize_text(text1)
+    norm2 = calculator._normalize_text(text2)
+    if norm1 == norm2:
+        return SimilarityScore(1.0, 1.0, 1.0, 1.0, 1.0)
+
+    jaccard = calculator._jaccard_similarity(norm1, norm2)
+    levenshtein = calculator._normalized_levenshtein(norm1, norm2)
+    cosine = calculator._cosine_similarity(norm1, norm2)
+    ngram = calculator._ngram_similarity(norm1, norm2)
+    hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
+    hybrid = calculator._boost_short_affirmations(norm1, norm2, hybrid)
+    hybrid = calculator._boost_high_overlap(jaccard, cosine, hybrid)
+    return SimilarityScore(jaccard, levenshtein, cosine, ngram, hybrid)
 
 
 class TestSemanticSimilarityCalculator:
@@ -283,6 +303,74 @@ class TestSemanticSimilarityCalculator:
         assert calculator._ngram_similarity(
             text1, text2
         ) == _reference_ngram_similarity(calculator, text1, text2)
+
+    @pytest.mark.parametrize(
+        ("text1", "text2"),
+        [
+            ("", "alpha"),
+            ("yes", "yes correct"),
+            ("no", "no incorrect"),
+            ("alpha beta gamma", "beta gamma delta"),
+            ("AI model 12", "ML model 13"),
+            ("한글 café", "한글 차"),
+        ],
+    )
+    def test_shared_token_pipeline_matches_legacy_orchestration(
+        self, calculator, text1, text2
+    ):
+        """Canonical token reuse must preserve the full legacy score."""
+        assert calculator.calculate_similarity(
+            text1, text2
+        ) == _reference_calculate_similarity(calculator, text1, text2)
+
+    def test_instance_shadowed_calculator_uses_legacy_pipeline(self):
+        """Instance method overrides must retain the observable call path."""
+        calculator = SemanticSimilarityCalculator()
+        calculator._jaccard_similarity = Mock(return_value=0.11)
+        calculator._normalized_levenshtein = Mock(return_value=0.22)
+        calculator._cosine_similarity = Mock(return_value=0.33)
+        calculator._ngram_similarity = Mock(return_value=0.44)
+        calculator._boost_short_affirmations = Mock(return_value=0.55)
+        calculator._boost_high_overlap = Mock(return_value=0.66)
+
+        score = calculator.calculate_similarity("alpha", "beta")
+
+        assert score == SimilarityScore(0.11, 0.22, 0.33, 0.44, 0.66)
+        calculator._jaccard_similarity.assert_called_once_with("alpha", "beta")
+        calculator._normalized_levenshtein.assert_called_once_with("alpha", "beta")
+        calculator._cosine_similarity.assert_called_once_with("alpha", "beta")
+        calculator._ngram_similarity.assert_called_once_with("alpha", "beta")
+        calculator._boost_short_affirmations.assert_called_once()
+        calculator._boost_high_overlap.assert_called_once_with(0.11, 0.33, 0.55)
+
+    def test_class_monkeypatch_uses_legacy_pipeline(self, monkeypatch):
+        """Class descriptor changes must disable canonical token reuse."""
+        calls = []
+
+        def custom_jaccard(calculator, text1, text2):
+            calls.append((calculator, text1, text2))
+            return 0.125
+
+        monkeypatch.setattr(
+            SemanticSimilarityCalculator, "_jaccard_similarity", custom_jaccard
+        )
+        calculator = SemanticSimilarityCalculator()
+
+        score = calculator.calculate_similarity("alpha", "beta")
+
+        assert score.jaccard == 0.125
+        assert calls == [(calculator, "alpha", "beta")]
+
+    def test_subclass_calculator_uses_legacy_pipeline(self):
+        """Subclass overrides must stay on the legacy method path."""
+
+        class CustomCalculator(SemanticSimilarityCalculator):
+            def _jaccard_similarity(self, text1, text2):
+                return 0.125
+
+        calculator = CustomCalculator()
+
+        assert calculator.calculate_similarity("alpha", "beta").jaccard == 0.125
 
     def test_identical_after_normalization_short_circuits_expensive_metrics(self):
         """Identical normalized texts should skip the expensive metric pipeline."""
