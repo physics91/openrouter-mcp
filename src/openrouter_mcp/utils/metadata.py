@@ -79,6 +79,21 @@ _PROVIDER_PREFIX_MAP = MappingProxyType(
         "nvidia": ModelProvider.NVIDIA,
     }
 )
+_LATEST_MODEL_MARKERS = (
+    "gpt-4-turbo",
+    "gpt-4o",
+    "o1-preview",
+    "o1-mini",
+    "claude-3-opus",
+    "claude-3-sonnet",
+    "claude-3-haiku",
+    "gemini-2",
+    "gemini-pro",
+    "gemini-ultra",
+    "llama-3",
+    "mistral-large",
+    "deepseek-v3",
+)
 
 
 class ModelCapabilities:
@@ -465,23 +480,11 @@ def _extract_release_date(model_id: str, created_timestamp: Any) -> Optional[str
 
 def _is_latest_model(model_id: str) -> bool:
     """Return whether a model ID matches a known latest-model heuristic."""
-    latest_models = [
-        "gpt-4-turbo",
-        "gpt-4o",
-        "o1-preview",
-        "o1-mini",
-        "claude-3-opus",
-        "claude-3-sonnet",
-        "claude-3-haiku",
-        "gemini-2",
-        "gemini-pro",
-        "gemini-ultra",
-        "llama-3",
-        "mistral-large",
-        "deepseek-v3",
-    ]
+    if type(model_id) is str:
+        model_id_lower = model_id.lower()
+        return any(latest in model_id_lower for latest in _LATEST_MODEL_MARKERS)
 
-    return any(latest in model_id.lower() for latest in latest_models)
+    return any(latest in model_id.lower() for latest in _LATEST_MODEL_MARKERS)
 
 
 def get_model_version_info(model_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,6 +1,46 @@
 """Exact regressions for model version metadata extraction."""
 
+import pytest
+
+from openrouter_mcp.utils import metadata
 from openrouter_mcp.utils.metadata import get_model_version_info
+
+
+@pytest.mark.parametrize("marker", metadata._LATEST_MODEL_MARKERS)
+def test_latest_model_markers_preserve_case_insensitive_matches(marker: str) -> None:
+    assert metadata._is_latest_model(f"vendor/{marker.upper()}-suffix") is True
+
+
+def test_latest_model_markers_preserve_order_and_immutability() -> None:
+    assert metadata._LATEST_MODEL_MARKERS == (
+        "gpt-4-turbo",
+        "gpt-4o",
+        "o1-preview",
+        "o1-mini",
+        "claude-3-opus",
+        "claude-3-sonnet",
+        "claude-3-haiku",
+        "gemini-2",
+        "gemini-pro",
+        "gemini-ultra",
+        "llama-3",
+        "mistral-large",
+        "deepseek-v3",
+    )
+
+
+def test_latest_model_custom_string_preserves_repeated_normalization() -> None:
+    class TrackingString(str):
+        lower_calls = 0
+
+        def lower(self) -> str:
+            type(self).lower_calls += 1
+            return super().lower()
+
+    model_id = TrackingString("vendor/ordinary-model")
+
+    assert metadata._is_latest_model(model_id) is False
+    assert TrackingString.lower_calls == len(metadata._LATEST_MODEL_MARKERS)
 
 
 def test_composite_claude_version_info_preserves_part_order() -> None:
