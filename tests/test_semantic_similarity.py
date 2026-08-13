@@ -10,6 +10,8 @@ These tests verify that the semantic similarity implementation correctly:
 5. Performs efficiently on realistic data
 """
 
+import math
+from collections import Counter
 from itertools import product
 from unittest.mock import Mock
 
@@ -44,6 +46,30 @@ def _reference_normalized_levenshtein(text1: str, text2: str) -> float:
         previous_row = current_row
 
     return 1.0 - (previous_row[-1] / max(len(text1), len(text2)))
+
+
+def _reference_cosine_similarity(
+    calculator: SemanticSimilarityCalculator, text1: str, text2: str
+) -> float:
+    """Return cosine similarity using the previous dense-vector calculation."""
+    tokens1 = calculator._tokenize(text1)
+    tokens2 = calculator._tokenize(text2)
+    if not tokens1 and not tokens2:
+        return 1.0
+    if not tokens1 or not tokens2:
+        return 0.0
+
+    frequencies1 = Counter(tokens1)
+    frequencies2 = Counter(tokens2)
+    terms = set(frequencies1) | set(frequencies2)
+    vector1 = [frequencies1.get(term, 0) for term in terms]
+    vector2 = [frequencies2.get(term, 0) for term in terms]
+    dot_product = sum(left * right for left, right in zip(vector1, vector2))
+    magnitude1 = math.sqrt(sum(value * value for value in vector1))
+    magnitude2 = math.sqrt(sum(value * value for value in vector2))
+    if magnitude1 == 0 or magnitude2 == 0:
+        return 0.0
+    return dot_product / (magnitude1 * magnitude2)
 
 
 class TestSemanticSimilarityCalculator:
@@ -169,6 +195,25 @@ class TestSemanticSimilarityCalculator:
             "한글",
             "café_2",
         ]
+
+    @pytest.mark.parametrize(
+        ("text1", "text2"),
+        [
+            ("", ""),
+            ("alpha", ""),
+            ("alpha alpha beta", "alpha beta beta"),
+            ("left unique tokens", "right disjoint words"),
+            ("한글 café café", "한글 차"),
+            ("the a x", "the a y"),
+        ],
+    )
+    def test_cosine_similarity_matches_dense_vector_reference(
+        self, calculator, text1, text2
+    ):
+        """Sparse cosine calculation must preserve the dense-vector result."""
+        assert calculator._cosine_similarity(
+            text1, text2
+        ) == _reference_cosine_similarity(calculator, text1, text2)
 
     def test_identical_after_normalization_short_circuits_expensive_metrics(self):
         """Identical normalized texts should skip the expensive metric pipeline."""

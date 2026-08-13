@@ -360,18 +360,12 @@ class SemanticSimilarityCalculator:
         tf1 = Counter(tokens1)
         tf2 = Counter(tokens2)
 
-        # Get all unique terms
-        all_terms = set(tf1.keys()) | set(tf2.keys())
-
-        # Create frequency vectors
-        vector1 = [tf1.get(term, 0) for term in all_terms]
-        vector2 = [tf2.get(term, 0) for term in all_terms]
-
-        # Calculate cosine similarity
-        dot_product = sum(v1 * v2 for v1, v2 in zip(vector1, vector2))
-
-        magnitude1 = math.sqrt(sum(v * v for v in vector1))
-        magnitude2 = math.sqrt(sum(v * v for v in vector2))
+        # Calculate the sparse dot product without materializing dense vectors.
+        dot_product = sum(
+            frequency * tf2.get(term, 0) for term, frequency in tf1.items()
+        )
+        magnitude1 = math.sqrt(sum(value * value for value in tf1.values()))
+        magnitude2 = math.sqrt(sum(value * value for value in tf2.values()))
 
         if magnitude1 == 0 or magnitude2 == 0:
             return 0.0
