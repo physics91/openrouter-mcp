@@ -486,12 +486,14 @@ class TestSemanticSimilarityCalculator:
             ("d" * 60, "head" + "d" * 60),
             ("🙂한" * 31, "🙂한" * 31 + "끝"),
             ("café" * 16, "시작" + "café" * 16),
+            ("e" * 61, "head" + "e" * 61 + "tail"),
+            ("🙂한글" * 21, "시작" + "🙂한글" * 21 + "끝"),
         ],
     )
-    def test_levenshtein_matches_reference_for_edge_containment(
+    def test_levenshtein_matches_reference_for_containment(
         self, calculator, shorter, longer
     ):
-        """Prefix and suffix containment must return the exact edit distance."""
+        """Contiguous containment must return the exact edit distance."""
         for text1, text2 in ((shorter, longer), (longer, shorter)):
             assert calculator._normalized_levenshtein(
                 text1, text2

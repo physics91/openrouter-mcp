@@ -311,7 +311,7 @@ class SemanticSimilarityCalculator:
             shorter, longer = text1, text2
         else:
             shorter, longer = text2, text1
-        if longer.startswith(shorter) or longer.endswith(shorter):
+        if longer.startswith(shorter) or longer.endswith(shorter) or shorter in longer:
             return 1.0 - ((len(longer) - len(shorter)) / max_length)
 
         shared_length = min(len1, len2)
