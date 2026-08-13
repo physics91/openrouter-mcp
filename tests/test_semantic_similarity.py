@@ -11,6 +11,7 @@ These tests verify that the semantic similarity implementation correctly:
 """
 
 import math
+import re
 from collections import Counter
 from itertools import product
 from unittest.mock import Mock
@@ -118,6 +119,11 @@ def _reference_calculate_similarity(
     hybrid = calculator._boost_short_affirmations(norm1, norm2, hybrid)
     hybrid = calculator._boost_high_overlap(jaccard, cosine, hybrid)
     return SimilarityScore(jaccard, levenshtein, cosine, ngram, hybrid)
+
+
+def _reference_whitespace_normalization(text: str) -> str:
+    """Return whitespace normalized by the previous regex implementation."""
+    return re.sub(r"\s+", " ", text.strip())
 
 
 class TestSemanticSimilarityCalculator:
@@ -243,6 +249,35 @@ class TestSemanticSimilarityCalculator:
             "한글",
             "café_2",
         ]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "no-whitespace",
+            "single spaces stay canonical",
+            "  repeated   spaces  ",
+            " \t mixed\n\r whitespace \u00a0 ",
+            "한글\u2003café\u2028emoji🙂",
+        ],
+    )
+    def test_whitespace_normalization_matches_regex_reference(self, calculator, text):
+        """Split/join normalization must preserve regex whitespace collapse."""
+        assert calculator._normalize_text(text) == _reference_whitespace_normalization(
+            text
+        )
+
+    def test_whitespace_normalization_matches_all_unicode_whitespace(self, calculator):
+        """Every Unicode whitespace character must collapse to one ASCII space."""
+        whitespace_characters = [
+            chr(codepoint) for codepoint in range(0x110000) if chr(codepoint).isspace()
+        ]
+
+        for character in whitespace_characters:
+            text = f"left{character}{character}right"
+            assert calculator._normalize_text(
+                text
+            ) == _reference_whitespace_normalization(text)
 
     @pytest.mark.parametrize(
         ("text1", "text2"),

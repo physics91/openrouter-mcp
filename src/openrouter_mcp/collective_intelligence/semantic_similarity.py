@@ -30,7 +30,6 @@ _ABBREVIATIONS = {
 }
 _ABBREVIATION_PATTERN = re.compile(r"\b(?:ml|ai|nlp|llms|llm)\b")
 _NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\b")
-_WHITESPACE_PATTERN = re.compile(r"\s+")
 _TOKEN_PATTERN = re.compile(r"\b\w+\b")
 _AFFIRMATIVE_TOKENS = frozenset(
     {"yes", "yeah", "yep", "correct", "true", "affirmative", "agree"}
@@ -241,8 +240,8 @@ class SemanticSimilarityCalculator:
         # Normalize numeric values to reduce penalties for numeric variations
         text = _NUMBER_PATTERN.sub("num", text)
 
-        # Remove extra whitespace
-        text = _WHITESPACE_PATTERN.sub(" ", text.strip())
+        # Collapse Unicode whitespace runs and remove leading/trailing whitespace.
+        text = " ".join(text.split())
 
         return text
 
