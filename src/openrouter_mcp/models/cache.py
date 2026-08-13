@@ -731,11 +731,70 @@ class ModelCache:
     def _filter_models_internal(self, filters: ModelFilter) -> List[Dict[str, Any]]:
         """Apply unified filter logic against in-memory cache."""
         with self._cache_lock:
-            return [
-                model
-                for model in self._memory_cache
-                if self._matches_filter(model, filters)
-            ]
+            models = self._memory_cache
+            if type(models) is list and not models:
+                return []
+
+            can_prepare_identity_filters = (
+                type(self) is ModelCache
+                and type(models) is list
+                and type(filters) is ModelFilter
+                and (
+                    filters.provider is None
+                    or type(filters.provider) in (str, ModelProvider)
+                )
+                and (
+                    filters.category is None
+                    or type(filters.category) in (str, ModelCategory)
+                )
+                and vars(self).keys().isdisjoint(_CANONICAL_FILTER_METHOD_NAMES)
+                and all(
+                    ModelCache.__dict__.get(name) is method
+                    for name, method in _CANONICAL_FILTER_METHODS
+                )
+            )
+            if can_prepare_identity_filters:
+                normalized_provider = (
+                    self._normalize_enum_or_str(filters.provider)
+                    if filters.provider is not None
+                    else None
+                )
+                normalized_category = (
+                    self._normalize_enum_or_str(filters.category)
+                    if filters.category is not None
+                    else None
+                )
+                matches: List[Dict[str, Any]] = []
+
+                for model in models:
+                    model_id = model.get("id", "")
+                    if normalized_provider is not None:
+                        model_provider = model.get("provider", "unknown")
+                        if (
+                            self._normalize_enum_or_str(model_provider)
+                            != normalized_provider
+                        ):
+                            continue
+
+                    if normalized_category is not None:
+                        model_category = model.get("category", "unknown")
+                        if (
+                            self._normalize_enum_or_str(model_category)
+                            != normalized_category
+                        ):
+                            continue
+
+                    if not self._matches_capability_filters(model, filters):
+                        continue
+                    if not self._matches_metadata_filters(model, filters):
+                        continue
+                    if not self._matches_trait_filters(model, filters, model_id):
+                        continue
+                    matches.append(model)
+
+                return matches
+
+            return [model for model in models if self._matches_filter(model, filters)]
 
     def filter_models_by_metadata(
         self,
@@ -1123,3 +1182,18 @@ class ModelCache:
 
 
 # Client access moved to _fetch_models_from_api to avoid circular imports
+
+
+_CANONICAL_FILTER_METHOD_NAMES = frozenset(
+    {
+        "_matches_filter",
+        "_matches_identity_filters",
+        "_matches_capability_filters",
+        "_matches_metadata_filters",
+        "_matches_trait_filters",
+        "_normalize_enum_or_str",
+    }
+)
+_CANONICAL_FILTER_METHODS = tuple(
+    (name, ModelCache.__dict__[name]) for name in _CANONICAL_FILTER_METHOD_NAMES
+)
