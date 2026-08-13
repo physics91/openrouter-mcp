@@ -844,10 +844,10 @@ class ResponseGrouper:
         elif not left_count or not right_count:
             cosine = 0.0
         else:
-            dot_product = sum(
-                frequency * right_frequencies.get(term, 0)
-                for term, frequency in left_frequencies.items()
-            )
+            dot_product = 0
+            right_frequency = right_frequencies.get
+            for term, frequency in left_frequencies.items():
+                dot_product += frequency * right_frequency(term, 0)
             if left_magnitude == 0 or right_magnitude == 0:
                 cosine = 0.0
             else:
