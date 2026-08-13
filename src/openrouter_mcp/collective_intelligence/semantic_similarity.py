@@ -958,6 +958,17 @@ class ResponseGrouper:
         if self._uses_canonical_symmetric_calculator() and len(group) == len(
             set(group)
         ):
+            if (
+                len(group) >= 3
+                and type(self) is ResponseGrouper
+                and "_can_use_prepared_representative_selection" not in vars(self)
+                and type(self).__dict__.get(
+                    "_can_use_prepared_representative_selection"
+                )
+                is _CANONICAL_CAN_USE_PREPARED_REPRESENTATIVE_SELECTION
+                and self._can_use_prepared_representative_selection(texts, group)
+            ):
+                return self._select_prepared_group_representative(texts, group)
             return self._select_symmetric_group_representative(texts, group)
 
         best_idx = group[0]
@@ -995,6 +1006,154 @@ class ResponseGrouper:
             getattr(calculator_type, name, None) is canonical_method
             for name, canonical_method in _CANONICAL_SYMMETRIC_METHODS
         )
+
+    def _can_use_prepared_representative_selection(
+        self, texts: list[str], group: list[int]
+    ) -> bool:
+        """Return whether representative scoring can safely reuse features."""
+        if type(group) is not list or len(group) < 3:
+            return False
+        if any(type(idx) is not int for idx in group):
+            return False
+        if len(group) != len(set(group)):
+            return False
+        if any(idx < -len(texts) or idx >= len(texts) for idx in group):
+            return False
+
+        grouper_namespace = vars(self)
+        if not grouper_namespace.keys().isdisjoint(
+            _CANONICAL_REPRESENTATIVE_METHOD_NAME_SET
+        ):
+            return False
+        grouper_type_namespace = type(self).__dict__
+        if any(
+            grouper_type_namespace.get(name) is not method
+            for name, method in _CANONICAL_REPRESENTATIVE_METHODS
+        ):
+            return False
+        if "_can_use_prepared_grouping" in grouper_namespace:
+            return False
+        if (
+            grouper_type_namespace.get("_can_use_prepared_grouping")
+            is not _CANONICAL_CAN_USE_PREPARED_GROUPING
+        ):
+            return False
+
+        return self._can_use_prepared_grouping(texts)
+
+    def _calculate_prepared_pair_similarity(
+        self,
+        normalized_left: str,
+        normalized_right: str,
+        left_prepared: tuple[int, Counter[str], float],
+        right_prepared: tuple[int, Counter[str], float],
+        left_ngrams: int,
+        right_ngrams: int,
+    ) -> float:
+        """Calculate one exact hybrid score from reusable response features."""
+        if normalized_left == normalized_right:
+            return 1.0
+
+        left_count, left_frequencies, left_magnitude = left_prepared
+        right_count, right_frequencies, right_magnitude = right_prepared
+        left_terms = left_frequencies.keys()
+        right_terms = right_frequencies.keys()
+
+        if not left_frequencies and not right_frequencies:
+            jaccard = 1.0
+        elif not left_frequencies or not right_frequencies:
+            jaccard = 0.0
+        else:
+            intersection_size = len(left_terms & right_terms)
+            union_size = (
+                len(left_frequencies) + len(right_frequencies) - intersection_size
+            )
+            jaccard = intersection_size / union_size
+
+        levenshtein = self.calculator._normalized_levenshtein(
+            normalized_left, normalized_right
+        )
+
+        if not left_count and not right_count:
+            cosine = 1.0
+        elif not left_count or not right_count:
+            cosine = 0.0
+        else:
+            dot_product = 0
+            right_frequency = right_frequencies.get
+            for term, frequency in left_frequencies.items():
+                dot_product += frequency * right_frequency(term, 0)
+            if left_magnitude == 0 or right_magnitude == 0:
+                cosine = 0.0
+            else:
+                cosine = dot_product / (left_magnitude * right_magnitude)
+
+        intersection_size = (left_ngrams & right_ngrams).bit_count()
+        union_size = (left_ngrams | right_ngrams).bit_count()
+        ngram = intersection_size / union_size
+        hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
+
+        if left_count and right_count and (left_count <= 3 or right_count <= 3):
+            if left_terms <= right_terms or right_terms <= left_terms:
+                hybrid = max(hybrid, 0.85)
+            elif (
+                left_terms & _AFFIRMATIVE_TOKENS and right_terms & _AFFIRMATIVE_TOKENS
+            ) or (left_terms & _NEGATIVE_TOKENS and right_terms & _NEGATIVE_TOKENS):
+                hybrid = max(hybrid, 0.8)
+
+        if jaccard >= 0.6 and cosine >= 0.6:
+            hybrid = max(hybrid, 0.72)
+        elif jaccard >= 0.5 and cosine >= 0.7:
+            hybrid = max(hybrid, 0.7)
+
+        return hybrid
+
+    def _select_prepared_group_representative(
+        self, texts: list[str], group: list[int]
+    ) -> int:
+        """Select a representative while reusing exact response features."""
+        normalized_texts = {
+            idx: self.calculator._normalize_text(texts[idx]) for idx in group
+        }
+        if not self._can_prepare_grouping_ngrams(
+            [normalized_texts[idx] for idx in group]
+        ):
+            return self._select_symmetric_group_representative(texts, group)
+
+        prepared_responses = {
+            idx: self._prepare_grouping_response(normalized_texts[idx]) for idx in group
+        }
+        ngram_bits: dict[str, int] = {}
+        prepared_ngrams = {
+            idx: self._prepare_grouping_ngram_mask(normalized_texts[idx], ngram_bits)
+            for idx in group
+        }
+        similarity_totals = [0.0] * len(group)
+
+        for position, idx in enumerate(group):
+            for other_position in range(position + 1, len(group)):
+                other_idx = group[other_position]
+                similarity = self._calculate_prepared_pair_similarity(
+                    normalized_texts[idx],
+                    normalized_texts[other_idx],
+                    prepared_responses[idx],
+                    prepared_responses[other_idx],
+                    prepared_ngrams[idx],
+                    prepared_ngrams[other_idx],
+                )
+                similarity_totals[position] += similarity
+                similarity_totals[other_position] += similarity
+
+        best_idx = group[0]
+        best_avg_sim = 0.0
+        comparison_count = len(group) - 1
+        for idx, total in zip(group, similarity_totals):
+            avg_sim = total / comparison_count
+            if avg_sim > best_avg_sim:
+                best_avg_sim = avg_sim
+                best_idx = idx
+
+        return best_idx
 
     def _select_symmetric_group_representative(
         self, texts: list[str], group: list[int]
@@ -1058,6 +1217,26 @@ _CANONICAL_GROUPER_METHODS = tuple(
 )
 _CANONICAL_GROUPER_METHOD_NAME_SET = frozenset(_CANONICAL_GROUPER_METHOD_NAMES)
 _CANONICAL_CAN_USE_PREPARED_GROUPING = ResponseGrouper._can_use_prepared_grouping
+_CANONICAL_REPRESENTATIVE_METHOD_NAMES = (
+    "_select_group_representative",
+    "_calculate_pair_similarity",
+    "_uses_canonical_symmetric_calculator",
+    "_can_use_prepared_representative_selection",
+    "_calculate_prepared_pair_similarity",
+    "_select_prepared_group_representative",
+    "_select_symmetric_group_representative",
+    "get_group_representatives",
+)
+_CANONICAL_REPRESENTATIVE_METHODS = tuple(
+    (name, getattr(ResponseGrouper, name))
+    for name in _CANONICAL_REPRESENTATIVE_METHOD_NAMES
+)
+_CANONICAL_REPRESENTATIVE_METHOD_NAME_SET = frozenset(
+    _CANONICAL_REPRESENTATIVE_METHOD_NAMES
+)
+_CANONICAL_CAN_USE_PREPARED_REPRESENTATIVE_SELECTION = (
+    ResponseGrouper._can_use_prepared_representative_selection
+)
 
 
 def calculate_response_similarity(response1: str, response2: str) -> float:

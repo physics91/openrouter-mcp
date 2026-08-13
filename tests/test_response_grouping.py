@@ -443,6 +443,82 @@ def test_select_group_representative_reuses_canonical_symmetric_scores() -> None
     ]
 
 
+def test_prepared_representative_matches_legacy_random_workloads() -> None:
+    """Prepared exact scores must preserve representative selection and ties."""
+
+    class LegacyGrouper(ResponseGrouper):
+        """Force canonical symmetric scoring without prepared selection."""
+
+    rng = random.Random(20260813)
+    vocabulary = [
+        "renewable",
+        "energy",
+        "model",
+        "evidence",
+        "conclusion",
+        "yes",
+        "no",
+        "한글",
+        "café",
+    ]
+
+    for size in (2, 5, 15, 40):
+        for _ in range(25):
+            texts = [
+                " ".join(rng.choices(vocabulary, k=rng.randrange(1, 12)))
+                for _ in range(size)
+            ]
+            group = list(range(size))
+            rng.shuffle(group)
+
+            assert ResponseGrouper()._select_group_representative(
+                texts, group
+            ) == LegacyGrouper()._select_group_representative(texts, group)
+
+
+def test_prepared_pair_score_matches_calculator_exactly() -> None:
+    """Prepared representative pair arithmetic must remain bit-for-bit exact."""
+    grouper = ResponseGrouper()
+    calculator = grouper.calculator
+    texts = ["alpha beta gamma", "alpha delta epsilon"]
+    normalized = [calculator._normalize_text(text) for text in texts]
+    prepared = [grouper._prepare_grouping_response(text) for text in normalized]
+    ngram_bits: dict[str, int] = {}
+    ngrams = [
+        grouper._prepare_grouping_ngram_mask(text, ngram_bits) for text in normalized
+    ]
+
+    assert (
+        grouper._calculate_prepared_pair_similarity(
+            normalized[0],
+            normalized[1],
+            prepared[0],
+            prepared[1],
+            ngrams[0],
+            ngrams[1],
+        )
+        == calculator.calculate_similarity(*texts).hybrid
+    )
+
+
+def test_prepared_representative_guard_rejects_unsafe_groups() -> None:
+    """Custom indices and invalid positions must retain legacy behavior."""
+
+    class Index(int):
+        pass
+
+    grouper = ResponseGrouper()
+    texts = ["a", "b", "c"]
+
+    assert not grouper._can_use_prepared_representative_selection(texts, [0, 1])
+    assert grouper._can_use_prepared_representative_selection(texts, [0, 1, 2])
+    assert grouper._can_use_prepared_representative_selection(texts, [-1, 0, 1])
+    assert not grouper._can_use_prepared_representative_selection(
+        texts, [Index(0), 1, 2]
+    )
+    assert not grouper._can_use_prepared_representative_selection(texts, [0, 3, 1])
+
+
 def test_select_group_representative_preserves_shadowed_asymmetric_calculator() -> None:
     calculator = SemanticSimilarityCalculator()
     scores = {
