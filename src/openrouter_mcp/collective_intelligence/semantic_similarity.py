@@ -698,7 +698,8 @@ class ResponseGrouper:
                 continue
             duplicate_members[representative_idx].append(idx)
 
-        prepared_responses: dict[int, tuple[int, Counter[str], float, int | None]] = {}
+        prepared_responses: dict[int, tuple[int, Counter[str], float]] = {}
+        prepared_ngrams: dict[int, int] = {}
         ngram_bits = {} if self._can_prepare_grouping_ngrams(normalized_texts) else None
         groups: list[list[int]] = []
         assigned_representatives: set[int] = set()
@@ -722,6 +723,7 @@ class ResponseGrouper:
                     if self._prepared_responses_are_similar(
                         normalized_texts,
                         prepared_responses,
+                        prepared_ngrams,
                         ngram_bits,
                         group_idx,
                         candidate_idx,
@@ -769,40 +771,43 @@ class ResponseGrouper:
         return True
 
     def _prepare_grouping_response(
-        self,
-        normalized_text: str,
-        ngram_bits: dict[str, int] | None,
-    ) -> tuple[int, Counter[str], float, int | None]:
-        """Prepare reusable lexical and optional n-gram features."""
+        self, normalized_text: str
+    ) -> tuple[int, Counter[str], float]:
+        """Prepare reusable lexical features."""
         tokens = self.calculator._tokenize(normalized_text)
         frequencies = Counter(tokens)
         magnitude = math.sqrt(sum(value * value for value in frequencies.values()))
+        return len(tokens), frequencies, magnitude
 
-        ngram_mask = None
-        if ngram_bits is not None:
-            ngram_mask = 0
-            ngram_size = self.calculator.ngram_size
-            if len(normalized_text) < ngram_size:
-                ngrams = (normalized_text,)
-            else:
-                ngrams = (
-                    normalized_text[index : index + ngram_size]
-                    for index in range(len(normalized_text) - ngram_size + 1)
-                )
+    def _prepare_grouping_ngram_mask(
+        self, normalized_text: str, ngram_bits: dict[str, int]
+    ) -> int:
+        """Encode one response's reusable n-gram set as a bit mask."""
+        ngram_mask = 0
+        ngram_size = self.calculator.ngram_size
+        if len(normalized_text) < ngram_size:
+            ngrams = (normalized_text,)
+        else:
+            ngrams = (
+                normalized_text[index : index + ngram_size]
+                for index in range(len(normalized_text) - ngram_size + 1)
+            )
 
-            for ngram in ngrams:
-                ngram_bit = ngram_bits.get(ngram)
-                if ngram_bit is None:
-                    ngram_bit = 1 << len(ngram_bits)
-                    ngram_bits[ngram] = ngram_bit
-                ngram_mask |= ngram_bit
+        ngram_bit_get = ngram_bits.get
+        for ngram in ngrams:
+            ngram_bit = ngram_bit_get(ngram)
+            if ngram_bit is None:
+                ngram_bit = 1 << len(ngram_bits)
+                ngram_bits[ngram] = ngram_bit
+            ngram_mask |= ngram_bit
 
-        return len(tokens), frequencies, magnitude, ngram_mask
+        return ngram_mask
 
     def _prepared_responses_are_similar(
         self,
         normalized_texts: list[str],
-        prepared_responses: dict[int, tuple[int, Counter[str], float, int | None]],
+        prepared_responses: dict[int, tuple[int, Counter[str], float]],
+        prepared_ngrams: dict[int, int],
         ngram_bits: dict[str, int] | None,
         left_idx: int,
         right_idx: int,
@@ -810,20 +815,18 @@ class ResponseGrouper:
         """Compare normalized responses using lazily cached lexical features."""
         left_prepared = prepared_responses.get(left_idx)
         if left_prepared is None:
-            left_prepared = self._prepare_grouping_response(
-                normalized_texts[left_idx], ngram_bits
-            )
+            left_prepared = self._prepare_grouping_response(normalized_texts[left_idx])
             prepared_responses[left_idx] = left_prepared
 
         right_prepared = prepared_responses.get(right_idx)
         if right_prepared is None:
             right_prepared = self._prepare_grouping_response(
-                normalized_texts[right_idx], ngram_bits
+                normalized_texts[right_idx]
             )
             prepared_responses[right_idx] = right_prepared
 
-        left_count, left_frequencies, left_magnitude, left_ngrams = left_prepared
-        right_count, right_frequencies, right_magnitude, right_ngrams = right_prepared
+        left_count, left_frequencies, left_magnitude = left_prepared
+        right_count, right_frequencies, right_magnitude = right_prepared
         left_terms = left_frequencies.keys()
         right_terms = right_frequencies.keys()
 
@@ -853,12 +856,6 @@ class ResponseGrouper:
             else:
                 cosine = dot_product / (left_magnitude * right_magnitude)
 
-        ngram = None
-        if left_ngrams is not None and right_ngrams is not None:
-            intersection_size = (left_ngrams & right_ngrams).bit_count()
-            union_size = (left_ngrams | right_ngrams).bit_count()
-            ngram = intersection_size / union_size
-
         boost_floor = 0.0
         if left_count and right_count and (left_count <= 3 or right_count <= 3):
             if left_terms <= right_terms or right_terms <= left_terms:
@@ -874,15 +871,10 @@ class ResponseGrouper:
             boost_floor = max(boost_floor, 0.7)
 
         threshold = self.similarity_threshold
+        ngram = None
         if type(threshold) is int or type(threshold) is float:
-            lower_ngram = 0.0 if ngram is None else ngram
-            upper_ngram = 1.0 if ngram is None else ngram
-            lower_hybrid = (
-                0.30 * jaccard + 0.20 * 0.0 + 0.35 * cosine + 0.15 * lower_ngram
-            )
-            upper_hybrid = (
-                0.30 * jaccard + 0.20 * 1.0 + 0.35 * cosine + 0.15 * upper_ngram
-            )
+            lower_hybrid = 0.30 * jaccard + 0.20 * 0.0 + 0.35 * cosine + 0.15 * 0.0
+            upper_hybrid = 0.30 * jaccard + 0.20 * 1.0 + 0.35 * cosine + 0.15 * 1.0
             if boost_floor:
                 lower_hybrid = max(lower_hybrid, boost_floor)
                 upper_hybrid = max(upper_hybrid, boost_floor)
@@ -892,13 +884,65 @@ class ResponseGrouper:
             if upper_hybrid < threshold:
                 return False
 
+            if ngram_bits is not None:
+                left_ngrams = prepared_ngrams.get(left_idx)
+                if left_ngrams is None:
+                    left_ngrams = self._prepare_grouping_ngram_mask(
+                        normalized_texts[left_idx], ngram_bits
+                    )
+                    prepared_ngrams[left_idx] = left_ngrams
+
+                right_ngrams = prepared_ngrams.get(right_idx)
+                if right_ngrams is None:
+                    right_ngrams = self._prepare_grouping_ngram_mask(
+                        normalized_texts[right_idx], ngram_bits
+                    )
+                    prepared_ngrams[right_idx] = right_ngrams
+
+                intersection_size = (left_ngrams & right_ngrams).bit_count()
+                union_size = (left_ngrams | right_ngrams).bit_count()
+                ngram = intersection_size / union_size
+                lower_hybrid = (
+                    0.30 * jaccard + 0.20 * 0.0 + 0.35 * cosine + 0.15 * ngram
+                )
+                upper_hybrid = (
+                    0.30 * jaccard + 0.20 * 1.0 + 0.35 * cosine + 0.15 * ngram
+                )
+                if boost_floor:
+                    lower_hybrid = max(lower_hybrid, boost_floor)
+                    upper_hybrid = max(upper_hybrid, boost_floor)
+
+                if lower_hybrid >= threshold:
+                    return True
+                if upper_hybrid < threshold:
+                    return False
+
         levenshtein = calculator._normalized_levenshtein(
             normalized_texts[left_idx], normalized_texts[right_idx]
         )
         if ngram is None:
-            ngram = calculator._ngram_similarity(
-                normalized_texts[left_idx], normalized_texts[right_idx]
-            )
+            if ngram_bits is None:
+                ngram = calculator._ngram_similarity(
+                    normalized_texts[left_idx], normalized_texts[right_idx]
+                )
+            else:
+                left_ngrams = prepared_ngrams.get(left_idx)
+                if left_ngrams is None:
+                    left_ngrams = self._prepare_grouping_ngram_mask(
+                        normalized_texts[left_idx], ngram_bits
+                    )
+                    prepared_ngrams[left_idx] = left_ngrams
+
+                right_ngrams = prepared_ngrams.get(right_idx)
+                if right_ngrams is None:
+                    right_ngrams = self._prepare_grouping_ngram_mask(
+                        normalized_texts[right_idx], ngram_bits
+                    )
+                    prepared_ngrams[right_idx] = right_ngrams
+
+                intersection_size = (left_ngrams & right_ngrams).bit_count()
+                union_size = (left_ngrams | right_ngrams).bit_count()
+                ngram = intersection_size / union_size
 
         hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
         if boost_floor:
@@ -1006,6 +1050,7 @@ _CANONICAL_GROUPER_METHOD_NAMES = (
     "_group_prepared_responses",
     "_can_prepare_grouping_ngrams",
     "_prepare_grouping_response",
+    "_prepare_grouping_ngram_mask",
     "_prepared_responses_are_similar",
 )
 _CANONICAL_GROUPER_METHODS = tuple(

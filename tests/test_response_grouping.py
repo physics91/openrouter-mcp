@@ -308,6 +308,49 @@ def test_custom_threshold_bypasses_similarity_bounds() -> None:
     assert Threshold.calls == 1
 
 
+def test_decisive_similarity_bound_skips_ngram_and_edit_preparation() -> None:
+    """A fixed upper bound must avoid all remaining pair features."""
+    grouper = ResponseGrouper(similarity_threshold=float("inf"))
+    grouper._prepare_grouping_ngram_mask = Mock(
+        side_effect=AssertionError("n-gram masks should be skipped")
+    )
+    grouper.calculator._normalized_levenshtein = Mock(
+        side_effect=AssertionError("edit distance should be skipped")
+    )
+
+    assert grouper._group_prepared_responses(["alpha response", "beta response"]) == [
+        [0],
+        [1],
+    ]
+
+
+def test_ambiguous_similarity_pair_reuses_lazy_ngram_masks() -> None:
+    """Ambiguous repeated pairs must prepare each response mask once."""
+    grouper = ResponseGrouper()
+    calculator = grouper.calculator
+    texts = ["alpha beta gamma", "alpha delta epsilon"]
+    normalized = [calculator._normalize_text(text) for text in texts]
+    prepared_responses: dict[int, tuple[int, Counter[str], float]] = {}
+    prepared_ngrams: dict[int, int] = {}
+    ngram_bits: dict[str, int] = {}
+    grouper._prepare_grouping_ngram_mask = Mock(
+        wraps=grouper._prepare_grouping_ngram_mask
+    )
+    grouper.similarity_threshold = calculator.calculate_similarity(*texts).hybrid
+
+    for _ in range(2):
+        assert grouper._prepared_responses_are_similar(
+            normalized,
+            prepared_responses,
+            prepared_ngrams,
+            ngram_bits,
+            0,
+            1,
+        )
+
+    assert grouper._prepare_grouping_ngram_mask.call_count == 2
+
+
 def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:
     """Cached pair arithmetic must match the canonical hybrid bit for bit."""
     grouper = ResponseGrouper()
@@ -327,7 +370,7 @@ def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:
     ):
         grouper.similarity_threshold = threshold
         assert grouper._prepared_responses_are_similar(
-            normalized, {}, ngram_bits, 0, 1
+            normalized, {}, {}, ngram_bits, 0, 1
         ) is (hybrid >= threshold)
 
 
