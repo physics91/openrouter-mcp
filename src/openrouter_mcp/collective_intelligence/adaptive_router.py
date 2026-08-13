@@ -15,6 +15,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..runtime_thrift.metrics import get_thrift_metrics_snapshot_for_dates
@@ -32,6 +33,17 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+_TASK_TYPE_COMPLEXITY_FACTORS = MappingProxyType(
+    {
+        TaskType.REASONING: 1.5,
+        TaskType.CREATIVE: 1.3,
+        TaskType.CODE_GENERATION: 1.4,
+        TaskType.ANALYSIS: 1.2,
+        TaskType.MATH: 1.3,
+        TaskType.FACTUAL: 1.0,
+    }
+)
 
 
 class RoutingStrategy(Enum):
@@ -304,16 +316,7 @@ class PerformancePredictor:
         content_factor = min(2.0, 1.0 + len(task.content) / 1000.0)
 
         # Adjust for task type complexity
-        type_factors = {
-            TaskType.REASONING: 1.5,
-            TaskType.CREATIVE: 1.3,
-            TaskType.CODE_GENERATION: 1.4,
-            TaskType.ANALYSIS: 1.2,
-            TaskType.MATH: 1.3,
-            TaskType.FACTUAL: 1.0,
-        }
-
-        type_factor = type_factors.get(task.task_type, 1.0)
+        type_factor = _TASK_TYPE_COMPLEXITY_FACTORS.get(task.task_type, 1.0)
 
         # Adjust for requirements complexity
         req_factor = 1.0 + len(task.requirements) * 0.1
