@@ -132,6 +132,44 @@ class TestSemanticSimilarityCalculator:
         # Should be identical after normalization
         assert score.hybrid == pytest.approx(1.0, abs=0.01)
 
+    @pytest.mark.parametrize(
+        ("case_sensitive", "text", "expected"),
+        [
+            (
+                False,
+                " AI\tML nlp llm llms 12 12.5 \n",
+                (
+                    "artificial intelligence machine learning natural language "
+                    "processing large language model large language models num num"
+                ),
+            ),
+            (
+                True,
+                "AI ai ML ml NLP nlp LLM llm LLMs llms 12.5",
+                (
+                    "AI artificial intelligence ML machine learning NLP natural "
+                    "language processing LLM large language model LLMs large "
+                    "language models num"
+                ),
+            ),
+        ],
+    )
+    def test_normalization_preserves_abbreviations_numbers_and_whitespace(
+        self, case_sensitive, text, expected
+    ):
+        """Compiled patterns must preserve normalization order and case rules."""
+        calculator = SemanticSimilarityCalculator(case_sensitive=case_sensitive)
+
+        assert calculator._normalize_text(text) == expected
+
+    def test_tokenize_preserves_unicode_word_boundaries(self, calculator):
+        """The compiled token pattern must keep Python's Unicode word behavior."""
+        assert calculator._tokenize("Alpha42, 한글; café_2! x") == [
+            "Alpha42",
+            "한글",
+            "café_2",
+        ]
+
     def test_identical_after_normalization_short_circuits_expensive_metrics(self):
         """Identical normalized texts should skip the expensive metric pipeline."""
         calculator = SemanticSimilarityCalculator()

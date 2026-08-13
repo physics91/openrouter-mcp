@@ -21,6 +21,23 @@ from typing import Optional
 
 from ..utils.text import EXTENDED_ENGLISH_STOPWORDS
 
+_ABBREVIATIONS = {
+    "ml": "machine learning",
+    "ai": "artificial intelligence",
+    "nlp": "natural language processing",
+    "llm": "large language model",
+    "llms": "large language models",
+}
+_ABBREVIATION_PATTERN = re.compile(r"\b(?:ml|ai|nlp|llms|llm)\b")
+_NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?\b")
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+_TOKEN_PATTERN = re.compile(r"\b\w+\b")
+
+
+def _expand_abbreviation(match: re.Match[str]) -> str:
+    """Expand one abbreviation matched by ``_ABBREVIATION_PATTERN``."""
+    return _ABBREVIATIONS[match.group(0)]
+
 
 @dataclass
 class SimilarityScore:
@@ -170,21 +187,13 @@ class SemanticSimilarityCalculator:
             text = text.lower()
 
         # Expand common abbreviations to improve similarity
-        abbreviations = {
-            "ml": "machine learning",
-            "ai": "artificial intelligence",
-            "nlp": "natural language processing",
-            "llm": "large language model",
-            "llms": "large language models",
-        }
-        for short, expanded in abbreviations.items():
-            text = re.sub(rf"\b{re.escape(short)}\b", expanded, text)
+        text = _ABBREVIATION_PATTERN.sub(_expand_abbreviation, text)
 
         # Normalize numeric values to reduce penalties for numeric variations
-        text = re.sub(r"\b\d+(?:\.\d+)?\b", "num", text)
+        text = _NUMBER_PATTERN.sub("num", text)
 
         # Remove extra whitespace
-        text = re.sub(r"\s+", " ", text.strip())
+        text = _WHITESPACE_PATTERN.sub(" ", text.strip())
 
         return text
 
@@ -199,7 +208,7 @@ class SemanticSimilarityCalculator:
             List of tokens
         """
         # Split on word boundaries and punctuation
-        tokens = re.findall(r"\b\w+\b", text)
+        tokens = _TOKEN_PATTERN.findall(text)
 
         # Filter by minimum length
         return [
