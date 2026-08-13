@@ -10,6 +10,7 @@ import logging
 import re
 from datetime import datetime
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Dict, List, Optional, TypeVar
 
 from .pricing import normalize_pricing, parse_price
@@ -55,6 +56,29 @@ class ModelCategory(str, Enum):
     TRANSLATION = "translation"
     SUMMARIZATION = "summarization"
     UNKNOWN = "unknown"
+
+
+_PROVIDER_PREFIX_MAP = MappingProxyType(
+    {
+        "openai": ModelProvider.OPENAI,
+        "anthropic": ModelProvider.ANTHROPIC,
+        "google": ModelProvider.GOOGLE,
+        "meta-llama": ModelProvider.META,
+        "meta": ModelProvider.META,
+        "mistralai": ModelProvider.MISTRAL,
+        "deepseek": ModelProvider.DEEPSEEK,
+        "xai": ModelProvider.XAI,
+        "cohere": ModelProvider.COHERE,
+        "perplexity": ModelProvider.PERPLEXITY,
+        "fireworks": ModelProvider.FIREWORKS,
+        "togethercomputer": ModelProvider.TOGETHER,
+        "together": ModelProvider.TOGETHER,
+        "huggingface": ModelProvider.HUGGINGFACE,
+        "ai21": ModelProvider.AI21,
+        "inflection": ModelProvider.INFLECTION,
+        "nvidia": ModelProvider.NVIDIA,
+    }
+)
 
 
 class ModelCapabilities:
@@ -209,29 +233,8 @@ def extract_provider_from_id(model_id: str) -> ModelProvider:
     if "/" in model_id:
         provider_prefix = model_id.split("/")[0].lower()
 
-        # Direct mapping
-        provider_map = {
-            "openai": ModelProvider.OPENAI,
-            "anthropic": ModelProvider.ANTHROPIC,
-            "google": ModelProvider.GOOGLE,
-            "meta-llama": ModelProvider.META,
-            "meta": ModelProvider.META,
-            "mistralai": ModelProvider.MISTRAL,
-            "deepseek": ModelProvider.DEEPSEEK,
-            "xai": ModelProvider.XAI,
-            "cohere": ModelProvider.COHERE,
-            "perplexity": ModelProvider.PERPLEXITY,
-            "fireworks": ModelProvider.FIREWORKS,
-            "togethercomputer": ModelProvider.TOGETHER,
-            "together": ModelProvider.TOGETHER,
-            "huggingface": ModelProvider.HUGGINGFACE,
-            "ai21": ModelProvider.AI21,
-            "inflection": ModelProvider.INFLECTION,
-            "nvidia": ModelProvider.NVIDIA,
-        }
-
-        if provider_prefix in provider_map:
-            return provider_map[provider_prefix]
+        if provider_prefix in _PROVIDER_PREFIX_MAP:
+            return _PROVIDER_PREFIX_MAP[provider_prefix]
 
     # Pattern-based matching
     provider = _find_first_pattern_match(model_id_lower, PROVIDER_PATTERNS)

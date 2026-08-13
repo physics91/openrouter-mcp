@@ -77,6 +77,37 @@ def test_extract_provider_prefix_precedence_skips_pattern_helper(monkeypatch):
     find_match.assert_not_called()
 
 
+def test_provider_prefix_map_preserves_all_direct_mappings():
+    expected = {
+        "openai": metadata.ModelProvider.OPENAI,
+        "anthropic": metadata.ModelProvider.ANTHROPIC,
+        "google": metadata.ModelProvider.GOOGLE,
+        "meta-llama": metadata.ModelProvider.META,
+        "meta": metadata.ModelProvider.META,
+        "mistralai": metadata.ModelProvider.MISTRAL,
+        "deepseek": metadata.ModelProvider.DEEPSEEK,
+        "xai": metadata.ModelProvider.XAI,
+        "cohere": metadata.ModelProvider.COHERE,
+        "perplexity": metadata.ModelProvider.PERPLEXITY,
+        "fireworks": metadata.ModelProvider.FIREWORKS,
+        "togethercomputer": metadata.ModelProvider.TOGETHER,
+        "together": metadata.ModelProvider.TOGETHER,
+        "huggingface": metadata.ModelProvider.HUGGINGFACE,
+        "ai21": metadata.ModelProvider.AI21,
+        "inflection": metadata.ModelProvider.INFLECTION,
+        "nvidia": metadata.ModelProvider.NVIDIA,
+    }
+
+    assert dict(metadata._PROVIDER_PREFIX_MAP) == expected
+    for prefix, provider in expected.items():
+        assert metadata.extract_provider_from_id(f"{prefix.upper()}/model") is provider
+
+
+def test_provider_prefix_map_is_immutable():
+    with pytest.raises(TypeError):
+        metadata._PROVIDER_PREFIX_MAP["new"] = metadata.ModelProvider.UNKNOWN
+
+
 def test_extract_provider_delegates_normalized_id_to_pattern_helper(monkeypatch):
     find_match = Mock(return_value=metadata.ModelProvider.XAI)
     monkeypatch.setattr(metadata, "_find_first_pattern_match", find_match)
