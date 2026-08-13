@@ -1112,34 +1112,32 @@ class ResponseGrouper:
         self, texts: list[str], group: list[int]
     ) -> int:
         """Select a representative while reusing exact response features."""
-        normalized_texts = {
-            idx: self.calculator._normalize_text(texts[idx]) for idx in group
-        }
-        if not self._can_prepare_grouping_ngrams(
-            [normalized_texts[idx] for idx in group]
-        ):
+        normalized_texts = [
+            self.calculator._normalize_text(texts[idx]) for idx in group
+        ]
+        if not self._can_prepare_grouping_ngrams(normalized_texts):
             return self._select_symmetric_group_representative(texts, group)
 
-        prepared_responses = {
-            idx: self._prepare_grouping_response(normalized_texts[idx]) for idx in group
-        }
+        prepared_responses = [
+            self._prepare_grouping_response(normalized_text)
+            for normalized_text in normalized_texts
+        ]
         ngram_bits: dict[str, int] = {}
-        prepared_ngrams = {
-            idx: self._prepare_grouping_ngram_mask(normalized_texts[idx], ngram_bits)
-            for idx in group
-        }
+        prepared_ngrams = [
+            self._prepare_grouping_ngram_mask(normalized_text, ngram_bits)
+            for normalized_text in normalized_texts
+        ]
         similarity_totals = [0.0] * len(group)
 
-        for position, idx in enumerate(group):
+        for position in range(len(group)):
             for other_position in range(position + 1, len(group)):
-                other_idx = group[other_position]
                 similarity = self._calculate_prepared_pair_similarity(
-                    normalized_texts[idx],
-                    normalized_texts[other_idx],
-                    prepared_responses[idx],
-                    prepared_responses[other_idx],
-                    prepared_ngrams[idx],
-                    prepared_ngrams[other_idx],
+                    normalized_texts[position],
+                    normalized_texts[other_position],
+                    prepared_responses[position],
+                    prepared_responses[other_position],
+                    prepared_ngrams[position],
+                    prepared_ngrams[other_position],
                 )
                 similarity_totals[position] += similarity
                 similarity_totals[other_position] += similarity
