@@ -258,10 +258,38 @@ class SemanticSimilarityCalculator:
         if len1 == 0 or len2 == 0:
             return 0.0
 
+        max_length = max(len1, len2)
+
+        shared_length = min(len1, len2)
+        prefix_length = 0
+        while (
+            prefix_length < shared_length
+            and text1[prefix_length] == text2[prefix_length]
+        ):
+            prefix_length += 1
+        if prefix_length:
+            text1 = text1[prefix_length:]
+            text2 = text2[prefix_length:]
+
+        shared_length = min(len(text1), len(text2))
+        suffix_length = 0
+        while (
+            suffix_length < shared_length
+            and text1[-suffix_length - 1] == text2[-suffix_length - 1]
+        ):
+            suffix_length += 1
+        if suffix_length:
+            text1 = text1[:-suffix_length]
+            text2 = text2[:-suffix_length]
+
+        if not text1 or not text2:
+            distance = max(len(text1), len(text2))
+            return 1.0 - (distance / max_length)
+
         # Myers' bit-vector recurrence computes the same unit-cost edit distance
         # while moving the character loop into Python's optimized integer operations.
         # Use the shorter text as the bit pattern to minimize the integer width.
-        if len1 < len2:
+        if len(text1) < len(text2):
             text1, text2 = text2, text1
 
         pattern_length = len(text2)
@@ -294,7 +322,7 @@ class SemanticSimilarityCalculator:
             positive = (negative_gap | ~(horizontal | positive_gap)) & pattern_mask
             negative = positive_gap & horizontal
 
-        return 1.0 - (distance / max(len1, len2))
+        return 1.0 - (distance / max_length)
 
     def _cosine_similarity(self, text1: str, text2: str) -> float:
         """

@@ -215,6 +215,28 @@ class TestSemanticSimilarityCalculator:
                     text1, text2
                 ) == _reference_normalized_levenshtein(text1, text2)
 
+    @pytest.mark.parametrize(
+        ("text1", "text2"),
+        [
+            ("shared prefix " * 30 + "A", "shared prefix " * 30 + "B"),
+            ("A" + " shared suffix" * 30, "B" + " shared suffix" * 30),
+            (
+                "header " * 20 + "old middle" + " footer" * 20,
+                "header " * 20 + "new middle" + " footer" * 20,
+            ),
+            ("🙂한" * 40 + "A끝", "🙂한" * 40 + "B끝"),
+            ("fully shared🙂" * 20, "fully shared🙂" * 20),
+            ("shared 한글" * 20, "shared 한글" * 20 + "tail"),
+        ],
+    )
+    def test_levenshtein_matches_reference_with_long_common_affixes(
+        self, calculator, text1, text2
+    ):
+        """Trimming shared affixes must retain distance and normalization."""
+        assert calculator._normalized_levenshtein(
+            text1, text2
+        ) == _reference_normalized_levenshtein(text1, text2)
+
     def test_are_similar_method(self, calculator):
         """Test the boolean similarity check method."""
         text1 = "Python is great for data science."
