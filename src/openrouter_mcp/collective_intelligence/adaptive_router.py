@@ -1169,6 +1169,9 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             "bucket_summary": None,
         }
 
+        if type(thrift_metrics) is dict and not thrift_metrics:
+            return feedback
+
         if not isinstance(thrift_metrics, dict):
             return feedback
 
