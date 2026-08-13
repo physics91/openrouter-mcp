@@ -477,6 +477,26 @@ class TestSemanticSimilarityCalculator:
             text1, text2
         ) == _reference_normalized_levenshtein(text1, text2)
 
+    @pytest.mark.parametrize(
+        ("shorter", "longer"),
+        [
+            ("a" * 30, "a" * 30 + "tail"),
+            ("b" * 31, "head" + "b" * 31),
+            ("c" * 32, "c" * 32 + "tail"),
+            ("d" * 60, "head" + "d" * 60),
+            ("🙂한" * 31, "🙂한" * 31 + "끝"),
+            ("café" * 16, "시작" + "café" * 16),
+        ],
+    )
+    def test_levenshtein_matches_reference_for_edge_containment(
+        self, calculator, shorter, longer
+    ):
+        """Prefix and suffix containment must return the exact edit distance."""
+        for text1, text2 in ((shorter, longer), (longer, shorter)):
+            assert calculator._normalized_levenshtein(
+                text1, text2
+            ) == _reference_normalized_levenshtein(text1, text2)
+
     def test_are_similar_method(self, calculator):
         """Test the boolean similarity check method."""
         text1 = "Python is great for data science."

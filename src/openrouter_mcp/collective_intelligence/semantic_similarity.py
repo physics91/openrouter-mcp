@@ -307,6 +307,12 @@ class SemanticSimilarityCalculator:
             return 0.0
 
         max_length = max(len1, len2)
+        if len1 <= len2:
+            shorter, longer = text1, text2
+        else:
+            shorter, longer = text2, text1
+        if longer.startswith(shorter) or longer.endswith(shorter):
+            return 1.0 - ((len(longer) - len(shorter)) / max_length)
 
         shared_length = min(len1, len2)
         prefix_length = 0
