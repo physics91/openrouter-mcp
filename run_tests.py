@@ -28,6 +28,21 @@ def run_command(cmd: list[str], env: dict = None) -> int:
     return result.returncode
 
 
+def prepare_node_dependencies(
+    pre_cmds: list[list[str]], *, suite_name: str, requirement: str
+) -> bool:
+    """Queue npm dependency installation before suites that execute Node.js."""
+    if shutil.which('npm') is None:
+        print(f"\nERROR: npm executable not found. {suite_name} suite requires {requirement}.")
+        return False
+
+    if not (Path.cwd() / 'node_modules').exists():
+        print(f"\nNode dependencies not found. Installing npm packages for {suite_name} suite.")
+        pre_cmds.append(['npm', 'install', '--no-audit', '--no-fund'])
+
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Test runner for OpenRouter MCP Server",
@@ -70,6 +85,7 @@ Examples:
 
     # Base pytest command (use current Python interpreter for portability)
     base_cmd = [sys.executable, '-m', 'pytest']
+    pre_cmds: list[list[str]] = []
     extra_cmds: list[list[str]] = []
 
     if args.verbose:
@@ -97,8 +113,15 @@ Examples:
 
     elif args.suite == 'all':
         print("Running ALL tests (except real API tests)")
+        if not prepare_node_dependencies(
+            pre_cmds,
+            suite_name='all',
+            requirement='Node-backed tests',
+        ):
+            return 1
         cmd = base_cmd + [
             '--ignore=tests/test_real_world_integration.py',
+            '-m', 'not real_api',
             'tests/'
         ]
 
@@ -121,12 +144,12 @@ Examples:
                 '--cov-report=term-missing',
                 '--cov-fail-under=70'
             ])
-        if shutil.which('npm') is None:
-            print("\nERROR: npm executable not found. Assurance suite requires Node security tests.")
+        if not prepare_node_dependencies(
+            pre_cmds,
+            suite_name='assurance',
+            requirement='Node security tests',
+        ):
             return 1
-        if not (Path.cwd() / 'node_modules').exists():
-            print("\nNode dependencies not found. Installing npm packages for assurance suite.")
-            extra_cmds.append(['npm', 'install', '--no-audit', '--no-fund'])
         extra_cmds.append(['npm', 'run', 'test:security'])
 
     elif args.suite == 'real':
@@ -187,7 +210,14 @@ Examples:
         return 1
 
     # Run the command(s)
-    exit_code = run_command(cmd)
+    exit_code = 0
+    for pre_cmd in pre_cmds:
+        exit_code = run_command(pre_cmd)
+        if exit_code != 0:
+            break
+
+    if exit_code == 0:
+        exit_code = run_command(cmd)
     if exit_code == 0:
         for extra_cmd in extra_cmds:
             exit_code = run_command(extra_cmd)

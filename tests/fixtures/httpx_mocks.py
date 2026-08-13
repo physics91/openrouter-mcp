@@ -2,28 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 
 def setup_async_client_mock(
     mock_httpx_client: Any,
-    json_payload: Dict[str, Any],
+    json_payload: dict[str, Any],
     *,
     capture_headers: bool = False,
-) -> Tuple[MagicMock, MagicMock, Dict[str, str]]:
+) -> tuple[MagicMock, MagicMock, dict[str, str]]:
     """Configure a patched ``httpx.AsyncClient`` with a JSON response payload."""
     client = MagicMock()
     mock_httpx_client.return_value = client
 
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=None)
+    client.aclose = AsyncMock(return_value=None)
 
     response = MagicMock()
     response.json.return_value = json_payload
     response.raise_for_status = MagicMock()
 
-    captured_headers: Dict[str, str] = {}
+    captured_headers: dict[str, str] = {}
 
     async def _mock_get(*args, **kwargs):
         if capture_headers:
