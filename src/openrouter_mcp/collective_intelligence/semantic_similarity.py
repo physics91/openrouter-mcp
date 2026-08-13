@@ -505,6 +505,9 @@ _CANONICAL_GROUPING_MODULE_DEPENDENCIES = tuple(
 _CANONICAL_GROUPING_SQRT = math.sqrt
 _MAX_PREPARED_GROUPING_RESPONSES = 128
 _MAX_PREPARED_GROUPING_CHARACTERS = 256 * 1024
+_MAX_PREPARED_NGRAM_CHARACTERS = 16 * 1024
+_MAX_PREPARED_NGRAM_WINDOWS = 32 * 1024
+_MAX_PREPARED_NGRAM_GENERATED_CHARACTERS = 1024 * 1024
 
 
 class ResponseGrouper:
@@ -695,7 +698,8 @@ class ResponseGrouper:
                 continue
             duplicate_members[representative_idx].append(idx)
 
-        prepared_responses: dict[int, tuple[int, Counter[str], float]] = {}
+        prepared_responses: dict[int, tuple[int, Counter[str], float, int | None]] = {}
+        ngram_bits = {} if self._can_prepare_grouping_ngrams(normalized_texts) else None
         groups: list[list[int]] = []
         assigned_representatives: set[int] = set()
 
@@ -718,6 +722,7 @@ class ResponseGrouper:
                     if self._prepared_responses_are_similar(
                         normalized_texts,
                         prepared_responses,
+                        ngram_bits,
                         group_idx,
                         candidate_idx,
                     ):
@@ -730,37 +735,95 @@ class ResponseGrouper:
 
         return groups
 
+    def _can_prepare_grouping_ngrams(self, normalized_texts: list[str]) -> bool:
+        """Bound the work and retained text used by prepared n-gram masks."""
+        if sum(len(text) for text in normalized_texts) > _MAX_PREPARED_NGRAM_CHARACTERS:
+            return False
+
+        ngram_size = self.calculator.ngram_size
+        total_windows = 0
+        total_generated_characters = 0
+
+        for text in normalized_texts:
+            text_length = len(text)
+            if text_length < ngram_size:
+                window_count = 1
+                generated_characters = text_length
+            else:
+                window_count = text_length - ngram_size + 1
+                if ngram_size > 0:
+                    generated_characters = window_count * ngram_size
+                elif ngram_size == 0:
+                    generated_characters = 0
+                else:
+                    generated_characters = window_count * text_length
+
+            total_windows += window_count
+            if total_windows > _MAX_PREPARED_NGRAM_WINDOWS:
+                return False
+
+            total_generated_characters += generated_characters
+            if total_generated_characters > _MAX_PREPARED_NGRAM_GENERATED_CHARACTERS:
+                return False
+
+        return True
+
     def _prepare_grouping_response(
-        self, normalized_text: str
-    ) -> tuple[int, Counter[str], float]:
-        """Prepare reusable lexical features for one normalized response."""
+        self,
+        normalized_text: str,
+        ngram_bits: dict[str, int] | None,
+    ) -> tuple[int, Counter[str], float, int | None]:
+        """Prepare reusable lexical and optional n-gram features."""
         tokens = self.calculator._tokenize(normalized_text)
         frequencies = Counter(tokens)
         magnitude = math.sqrt(sum(value * value for value in frequencies.values()))
-        return len(tokens), frequencies, magnitude
+
+        ngram_mask = None
+        if ngram_bits is not None:
+            ngram_mask = 0
+            ngram_size = self.calculator.ngram_size
+            if len(normalized_text) < ngram_size:
+                ngrams = (normalized_text,)
+            else:
+                ngrams = (
+                    normalized_text[index : index + ngram_size]
+                    for index in range(len(normalized_text) - ngram_size + 1)
+                )
+
+            for ngram in ngrams:
+                ngram_bit = ngram_bits.get(ngram)
+                if ngram_bit is None:
+                    ngram_bit = 1 << len(ngram_bits)
+                    ngram_bits[ngram] = ngram_bit
+                ngram_mask |= ngram_bit
+
+        return len(tokens), frequencies, magnitude, ngram_mask
 
     def _prepared_responses_are_similar(
         self,
         normalized_texts: list[str],
-        prepared_responses: dict[int, tuple[int, Counter[str], float]],
+        prepared_responses: dict[int, tuple[int, Counter[str], float, int | None]],
+        ngram_bits: dict[str, int] | None,
         left_idx: int,
         right_idx: int,
     ) -> bool:
         """Compare normalized responses using lazily cached lexical features."""
         left_prepared = prepared_responses.get(left_idx)
         if left_prepared is None:
-            left_prepared = self._prepare_grouping_response(normalized_texts[left_idx])
+            left_prepared = self._prepare_grouping_response(
+                normalized_texts[left_idx], ngram_bits
+            )
             prepared_responses[left_idx] = left_prepared
 
         right_prepared = prepared_responses.get(right_idx)
         if right_prepared is None:
             right_prepared = self._prepare_grouping_response(
-                normalized_texts[right_idx]
+                normalized_texts[right_idx], ngram_bits
             )
             prepared_responses[right_idx] = right_prepared
 
-        left_count, left_frequencies, left_magnitude = left_prepared
-        right_count, right_frequencies, right_magnitude = right_prepared
+        left_count, left_frequencies, left_magnitude, left_ngrams = left_prepared
+        right_count, right_frequencies, right_magnitude, right_ngrams = right_prepared
         left_terms = left_frequencies.keys()
         right_terms = right_frequencies.keys()
 
@@ -794,9 +857,18 @@ class ResponseGrouper:
             else:
                 cosine = dot_product / (left_magnitude * right_magnitude)
 
-        ngram = calculator._ngram_similarity(
-            normalized_texts[left_idx], normalized_texts[right_idx]
-        )
+        if left_ngrams is None or right_ngrams is None:
+            ngram = calculator._ngram_similarity(
+                normalized_texts[left_idx], normalized_texts[right_idx]
+            )
+        elif not left_ngrams and not right_ngrams:
+            ngram = 1.0
+        elif not left_ngrams or not right_ngrams:
+            ngram = 0.0
+        else:
+            intersection_size = (left_ngrams & right_ngrams).bit_count()
+            union_size = (left_ngrams | right_ngrams).bit_count()
+            ngram = intersection_size / union_size
         hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
 
         if left_count and right_count and (left_count <= 3 or right_count <= 3):
@@ -908,6 +980,7 @@ _CANONICAL_GROUPER_METHOD_NAMES = (
     "_build_similarity_group",
     "_can_use_prepared_grouping",
     "_group_prepared_responses",
+    "_can_prepare_grouping_ngrams",
     "_prepare_grouping_response",
     "_prepared_responses_are_similar",
 )

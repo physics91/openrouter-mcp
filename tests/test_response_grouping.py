@@ -74,6 +74,34 @@ def test_prepared_grouping_matches_forced_legacy_random_workloads() -> None:
             )
 
 
+@pytest.mark.parametrize("ngram_size", [-5, 0, 1, 3, 100])
+def test_prepared_ngram_masks_match_forced_legacy_random_workloads(
+    ngram_size: int,
+) -> None:
+    """Prepared n-gram masks must preserve grouping for all integer regimes."""
+
+    class TextList(list):
+        """Force the legacy path without changing list behavior."""
+
+    rng = random.Random(ngram_size)
+    vocabulary = ["renewable", "energy", "model", "evidence", "한글", "café"]
+    grouper = ResponseGrouper(
+        similarity_threshold=0.72,
+        calculator=SemanticSimilarityCalculator(ngram_size=ngram_size),
+    )
+
+    for size in (2, 5, 15):
+        for _ in range(20):
+            texts = [
+                " ".join(rng.choices(vocabulary, k=rng.randrange(1, 8)))
+                for _ in range(size)
+            ]
+
+            assert grouper.group_responses(texts) == grouper.group_responses(
+                TextList(texts)
+            )
+
+
 @pytest.mark.parametrize(
     "dependency_name",
     [
@@ -184,6 +212,35 @@ def test_prepared_grouping_rejects_subclassed_inputs_and_enforces_caps() -> None
     assert not grouper._can_use_prepared_grouping(["a" * (256 * 1024 + 1), ""])
 
 
+def test_prepared_ngram_masks_enforce_work_and_storage_caps() -> None:
+    """Pathological n-gram configurations must retain canonical pair generation."""
+    calculator = SemanticSimilarityCalculator()
+    grouper = ResponseGrouper(calculator=calculator)
+
+    assert grouper._can_prepare_grouping_ngrams(["a" * (16 * 1024)])
+    assert not grouper._can_prepare_grouping_ngrams(["a" * (16 * 1024), "b"])
+
+    calculator.ngram_size = -32766
+    assert grouper._can_prepare_grouping_ngrams(["a"])
+    calculator.ngram_size = -32767
+    assert not grouper._can_prepare_grouping_ngrams(["a"])
+
+    calculator.ngram_size = 8 * 1024
+    assert not grouper._can_prepare_grouping_ngrams(["a" * (16 * 1024)])
+
+
+def test_prepared_grouping_uses_canonical_ngrams_outside_mask_caps() -> None:
+    """Prepared grouping must retain pair generation when mask storage is unsafe."""
+    calculator = SemanticSimilarityCalculator(ngram_size=1024)
+    calculator._ngram_similarity = Mock(return_value=0.0)
+    grouper = ResponseGrouper(calculator=calculator)
+    texts = ["a" * 2048, "b" * 2048]
+
+    assert not grouper._can_prepare_grouping_ngrams(texts)
+    assert grouper._group_prepared_responses(texts) == [[0], [1]]
+    calculator._ngram_similarity.assert_called_once_with(*texts)
+
+
 def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:
     """Cached pair arithmetic must match the canonical hybrid bit for bit."""
     grouper = ResponseGrouper()
@@ -193,6 +250,7 @@ def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:
         "renewable power model with supporting evidence",
     ]
     normalized = [calculator._normalize_text(text) for text in texts]
+    ngram_bits: dict[str, int] = {}
     hybrid = calculator.calculate_similarity(*texts).hybrid
 
     for threshold in (
@@ -201,9 +259,9 @@ def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:
         math.nextafter(hybrid, math.inf),
     ):
         grouper.similarity_threshold = threshold
-        assert grouper._prepared_responses_are_similar(normalized, {}, 0, 1) is (
-            hybrid >= threshold
-        )
+        assert grouper._prepared_responses_are_similar(
+            normalized, {}, ngram_bits, 0, 1
+        ) is (hybrid >= threshold)
 
 
 def test_select_group_representative_returns_singleton_without_similarity_calls() -> (
