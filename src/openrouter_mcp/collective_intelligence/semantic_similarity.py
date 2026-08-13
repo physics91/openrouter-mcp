@@ -423,6 +423,24 @@ class SemanticSimilarityCalculator:
         return len(intersection) / len(union)
 
 
+_SYMMETRIC_METHOD_NAMES = (
+    "calculate_similarity",
+    "_normalize_text",
+    "_tokenize",
+    "_jaccard_similarity",
+    "_normalized_levenshtein",
+    "_cosine_similarity",
+    "_generate_ngrams",
+    "_ngram_similarity",
+    "_boost_short_affirmations",
+    "_boost_high_overlap",
+)
+_CANONICAL_SYMMETRIC_METHODS = tuple(
+    (name, getattr(SemanticSimilarityCalculator, name))
+    for name in _SYMMETRIC_METHOD_NAMES
+)
+
+
 class ResponseGrouper:
     """
     Groups similar responses together using semantic similarity.
@@ -541,20 +559,67 @@ class ResponseGrouper:
         if len(group) == 1:
             return group[0]
 
+        if self._uses_canonical_symmetric_calculator() and len(group) == len(
+            set(group)
+        ):
+            return self._select_symmetric_group_representative(texts, group)
+
         best_idx = group[0]
         best_avg_sim = 0.0
 
         for idx in group:
             similarities = [
-                self.calculator.calculate_similarity(
-                    texts[idx], texts[other_idx]
-                ).hybrid
+                self._calculate_pair_similarity(texts[idx], texts[other_idx])
                 for other_idx in group
                 if other_idx != idx
             ]
 
             avg_sim = sum(similarities) / len(similarities) if similarities else 0.0
 
+            if avg_sim > best_avg_sim:
+                best_avg_sim = avg_sim
+                best_idx = idx
+
+        return best_idx
+
+    def _calculate_pair_similarity(self, text1: str, text2: str) -> float:
+        """Calculate the hybrid score for one response pair."""
+        return self.calculator.calculate_similarity(text1, text2).hybrid
+
+    def _uses_canonical_symmetric_calculator(self) -> bool:
+        """Return whether the calculator retains the canonical symmetric methods."""
+        calculator = self.calculator
+        if type(calculator) is not SemanticSimilarityCalculator:
+            return False
+        if any(name in vars(calculator) for name in _SYMMETRIC_METHOD_NAMES):
+            return False
+
+        calculator_type = type(calculator)
+        return all(
+            getattr(calculator_type, name, None) is canonical_method
+            for name, canonical_method in _CANONICAL_SYMMETRIC_METHODS
+        )
+
+    def _select_symmetric_group_representative(
+        self, texts: list[str], group: list[int]
+    ) -> int:
+        """Select a representative while evaluating each symmetric pair once."""
+        similarity_totals = [0.0] * len(group)
+
+        for position, idx in enumerate(group):
+            for other_position in range(position + 1, len(group)):
+                other_idx = group[other_position]
+                similarity = self._calculate_pair_similarity(
+                    texts[idx], texts[other_idx]
+                )
+                similarity_totals[position] += similarity
+                similarity_totals[other_position] += similarity
+
+        best_idx = group[0]
+        best_avg_sim = 0.0
+        comparison_count = len(group) - 1
+        for idx, total in zip(group, similarity_totals):
+            avg_sim = total / comparison_count
             if avg_sim > best_avg_sim:
                 best_avg_sim = avg_sim
                 best_idx = idx

@@ -8,6 +8,7 @@ import pytest
 
 from openrouter_mcp.collective_intelligence.semantic_similarity import (
     ResponseGrouper,
+    SemanticSimilarityCalculator,
     SimilarityScore,
 )
 
@@ -63,6 +64,64 @@ def test_select_group_representative_uses_highest_average_similarity() -> None:
         cosine=0.0,
         ngram=0.0,
         hybrid=scores[(left, right)],
+    )
+    grouper = ResponseGrouper(calculator=calculator)
+
+    representative = grouper._select_group_representative(
+        ["a", "b", "c"],
+        [0, 1, 2],
+    )
+
+    assert representative == 2
+    assert Counter(
+        tuple(current.args)
+        for current in calculator.calculate_similarity.call_args_list
+    ) == Counter(scores.keys())
+
+
+def test_select_group_representative_reuses_canonical_symmetric_scores() -> None:
+    calculator = SemanticSimilarityCalculator()
+    grouper = ResponseGrouper(calculator=calculator)
+    scores = {
+        frozenset(("a", "b")): 0.1,
+        frozenset(("a", "c")): 0.2,
+        frozenset(("b", "c")): 0.9,
+    }
+    grouper._calculate_pair_similarity = Mock(
+        side_effect=lambda left, right: scores[frozenset((left, right))]
+    )
+
+    representative = grouper._select_group_representative(
+        ["a", "b", "c"],
+        [0, 1, 2],
+    )
+
+    assert representative == 2
+    assert grouper._calculate_pair_similarity.call_args_list == [
+        call("a", "b"),
+        call("a", "c"),
+        call("b", "c"),
+    ]
+
+
+def test_select_group_representative_preserves_shadowed_asymmetric_calculator() -> None:
+    calculator = SemanticSimilarityCalculator()
+    scores = {
+        ("a", "b"): 0.1,
+        ("a", "c"): 0.2,
+        ("b", "a"): 0.1,
+        ("b", "c"): 0.9,
+        ("c", "a"): 0.2,
+        ("c", "b"): 0.9,
+    }
+    calculator.calculate_similarity = Mock(
+        side_effect=lambda left, right: SimilarityScore(
+            jaccard=0.0,
+            levenshtein=0.0,
+            cosine=0.0,
+            ngram=0.0,
+            hybrid=scores[(left, right)],
+        )
     )
     grouper = ResponseGrouper(calculator=calculator)
 
