@@ -479,6 +479,34 @@ def _uses_canonical_similarity_pipeline(
     return current_methods == _CANONICAL_SYMMETRIC_METHOD_VALUES
 
 
+_GROUPING_MODULE_DEPENDENCY_NAMES = (
+    "Counter",
+    "SimilarityScore",
+    "EXTENDED_ENGLISH_STOPWORDS",
+    "_ABBREVIATIONS",
+    "_ABBREVIATION_PATTERN",
+    "_NUMBER_PATTERN",
+    "_TOKEN_PATTERN",
+    "_AFFIRMATIVE_TOKENS",
+    "_NEGATIVE_TOKENS",
+    "_expand_abbreviation",
+    "_jaccard_from_token_sets",
+    "_cosine_from_tokens",
+    "_boost_short_affirmations_from_tokens",
+    "_uses_canonical_similarity_pipeline",
+    "_SYMMETRIC_METHOD_NAMES",
+    "_SYMMETRIC_METHOD_NAME_SET",
+    "_CANONICAL_SYMMETRIC_METHODS",
+    "_CANONICAL_SYMMETRIC_METHOD_VALUES",
+)
+_CANONICAL_GROUPING_MODULE_DEPENDENCIES = tuple(
+    (name, globals()[name]) for name in _GROUPING_MODULE_DEPENDENCY_NAMES
+)
+_CANONICAL_GROUPING_SQRT = math.sqrt
+_MAX_PREPARED_GROUPING_RESPONSES = 128
+_MAX_PREPARED_GROUPING_CHARACTERS = 256 * 1024
+
+
 class ResponseGrouper:
     """
     Groups similar responses together using semantic similarity.
@@ -569,6 +597,15 @@ class ResponseGrouper:
         if len(texts) == 1:
             return [[0]]
 
+        if (
+            type(self) is ResponseGrouper
+            and "_can_use_prepared_grouping" not in vars(self)
+            and type(self).__dict__.get("_can_use_prepared_grouping")
+            is _CANONICAL_CAN_USE_PREPARED_GROUPING
+            and self._can_use_prepared_grouping(texts)
+        ):
+            return self._group_prepared_responses(texts)
+
         representative_indices, duplicate_members = self._collect_duplicate_members(
             texts
         )
@@ -591,6 +628,187 @@ class ResponseGrouper:
             )
 
         return groups
+
+    def _can_use_prepared_grouping(self, texts: list[str]) -> bool:
+        """Return whether grouping can safely reuse canonical response features."""
+        if type(self) is not ResponseGrouper or type(texts) is not list:
+            return False
+        if len(texts) > _MAX_PREPARED_GROUPING_RESPONSES:
+            return False
+        if any(type(text) is not str for text in texts):
+            return False
+        if sum(len(text) for text in texts) > _MAX_PREPARED_GROUPING_CHARACTERS:
+            return False
+
+        calculator = self.calculator
+        if type(calculator) is not SemanticSimilarityCalculator:
+            return False
+        if type(calculator.case_sensitive) is not bool:
+            return False
+        if type(calculator.min_token_length) is not int:
+            return False
+        if type(calculator.ngram_size) is not int:
+            return False
+
+        dependency_namespace = globals()
+        if math.sqrt is not _CANONICAL_GROUPING_SQRT:
+            return False
+        if any(
+            dependency_namespace.get(name) is not dependency
+            for name, dependency in _CANONICAL_GROUPING_MODULE_DEPENDENCIES
+        ):
+            return False
+        if not _uses_canonical_similarity_pipeline(calculator):
+            return False
+
+        calculator_namespace = vars(calculator)
+        if "are_similar" in calculator_namespace:
+            return False
+        if (
+            type(calculator).__dict__.get("are_similar")
+            is not _CANONICAL_CALCULATOR_ARE_SIMILAR
+        ):
+            return False
+
+        grouper_namespace = vars(self)
+        if not grouper_namespace.keys().isdisjoint(_CANONICAL_GROUPER_METHOD_NAME_SET):
+            return False
+        grouper_type_namespace = type(self).__dict__
+        return all(
+            grouper_type_namespace.get(name) is method
+            for name, method in _CANONICAL_GROUPER_METHODS
+        )
+
+    def _group_prepared_responses(self, texts: list[str]) -> list[list[int]]:
+        """Group canonical responses while reusing normalized lexical features."""
+        normalized_texts = [self.calculator._normalize_text(text) for text in texts]
+        normalized_to_representative: dict[str, int] = {}
+        representative_indices: list[int] = []
+        duplicate_members: dict[int, list[int]] = {}
+
+        for idx, normalized in enumerate(normalized_texts):
+            representative_idx = normalized_to_representative.get(normalized)
+            if representative_idx is None:
+                normalized_to_representative[normalized] = idx
+                representative_indices.append(idx)
+                duplicate_members[idx] = [idx]
+                continue
+            duplicate_members[representative_idx].append(idx)
+
+        prepared_responses: dict[int, tuple[int, Counter[str], float]] = {}
+        groups: list[list[int]] = []
+        assigned_representatives: set[int] = set()
+
+        for seed_idx in representative_indices:
+            if seed_idx in assigned_representatives:
+                continue
+
+            current_group = list(duplicate_members[seed_idx])
+            current_representatives = [seed_idx]
+            assigned_representatives.add(seed_idx)
+
+            for candidate_idx in representative_indices:
+                if (
+                    candidate_idx <= seed_idx
+                    or candidate_idx in assigned_representatives
+                ):
+                    continue
+
+                for group_idx in current_representatives:
+                    if self._prepared_responses_are_similar(
+                        normalized_texts,
+                        prepared_responses,
+                        group_idx,
+                        candidate_idx,
+                    ):
+                        current_representatives.append(candidate_idx)
+                        current_group.extend(duplicate_members[candidate_idx])
+                        assigned_representatives.add(candidate_idx)
+                        break
+
+            groups.append(current_group)
+
+        return groups
+
+    def _prepare_grouping_response(
+        self, normalized_text: str
+    ) -> tuple[int, Counter[str], float]:
+        """Prepare reusable lexical features for one normalized response."""
+        tokens = self.calculator._tokenize(normalized_text)
+        frequencies = Counter(tokens)
+        magnitude = math.sqrt(sum(value * value for value in frequencies.values()))
+        return len(tokens), frequencies, magnitude
+
+    def _prepared_responses_are_similar(
+        self,
+        normalized_texts: list[str],
+        prepared_responses: dict[int, tuple[int, Counter[str], float]],
+        left_idx: int,
+        right_idx: int,
+    ) -> bool:
+        """Compare normalized responses using lazily cached lexical features."""
+        left_prepared = prepared_responses.get(left_idx)
+        if left_prepared is None:
+            left_prepared = self._prepare_grouping_response(normalized_texts[left_idx])
+            prepared_responses[left_idx] = left_prepared
+
+        right_prepared = prepared_responses.get(right_idx)
+        if right_prepared is None:
+            right_prepared = self._prepare_grouping_response(
+                normalized_texts[right_idx]
+            )
+            prepared_responses[right_idx] = right_prepared
+
+        left_count, left_frequencies, left_magnitude = left_prepared
+        right_count, right_frequencies, right_magnitude = right_prepared
+        left_terms = left_frequencies.keys()
+        right_terms = right_frequencies.keys()
+
+        if not left_frequencies and not right_frequencies:
+            jaccard = 1.0
+        elif not left_frequencies or not right_frequencies:
+            jaccard = 0.0
+        else:
+            intersection_size = len(left_terms & right_terms)
+            union_size = (
+                len(left_frequencies) + len(right_frequencies) - intersection_size
+            )
+            jaccard = intersection_size / union_size
+
+        calculator = self.calculator
+        levenshtein = calculator._normalized_levenshtein(
+            normalized_texts[left_idx], normalized_texts[right_idx]
+        )
+
+        if not left_count and not right_count:
+            cosine = 1.0
+        elif not left_count or not right_count:
+            cosine = 0.0
+        else:
+            dot_product = sum(
+                frequency * right_frequencies.get(term, 0)
+                for term, frequency in left_frequencies.items()
+            )
+            if left_magnitude == 0 or right_magnitude == 0:
+                cosine = 0.0
+            else:
+                cosine = dot_product / (left_magnitude * right_magnitude)
+
+        ngram = calculator._ngram_similarity(
+            normalized_texts[left_idx], normalized_texts[right_idx]
+        )
+        hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
+
+        if left_count and right_count and (left_count <= 3 or right_count <= 3):
+            if left_terms <= right_terms or right_terms <= left_terms:
+                hybrid = max(hybrid, 0.85)
+            elif (
+                left_terms & _AFFIRMATIVE_TOKENS and right_terms & _AFFIRMATIVE_TOKENS
+            ) or (left_terms & _NEGATIVE_TOKENS and right_terms & _NEGATIVE_TOKENS):
+                hybrid = max(hybrid, 0.8)
+
+        hybrid = calculator._boost_high_overlap(jaccard, cosine, hybrid)
+        return hybrid >= self.similarity_threshold
 
     def _select_group_representative(self, texts: list[str], group: list[int]) -> int:
         """Select the index with the highest average similarity in one group."""
@@ -681,6 +899,23 @@ class ResponseGrouper:
             List of indices representing each group
         """
         return [self._select_group_representative(texts, group) for group in groups]
+
+
+_CANONICAL_CALCULATOR_ARE_SIMILAR = SemanticSimilarityCalculator.are_similar
+_CANONICAL_GROUPER_METHOD_NAMES = (
+    "group_responses",
+    "_collect_duplicate_members",
+    "_build_similarity_group",
+    "_can_use_prepared_grouping",
+    "_group_prepared_responses",
+    "_prepare_grouping_response",
+    "_prepared_responses_are_similar",
+)
+_CANONICAL_GROUPER_METHODS = tuple(
+    (name, getattr(ResponseGrouper, name)) for name in _CANONICAL_GROUPER_METHOD_NAMES
+)
+_CANONICAL_GROUPER_METHOD_NAME_SET = frozenset(_CANONICAL_GROUPER_METHOD_NAMES)
+_CANONICAL_CAN_USE_PREPARED_GROUPING = ResponseGrouper._can_use_prepared_grouping
 
 
 def calculate_response_similarity(response1: str, response2: str) -> float:
