@@ -233,12 +233,79 @@ def test_prepared_grouping_uses_canonical_ngrams_outside_mask_caps() -> None:
     """Prepared grouping must retain pair generation when mask storage is unsafe."""
     calculator = SemanticSimilarityCalculator(ngram_size=1024)
     calculator._ngram_similarity = Mock(return_value=0.0)
-    grouper = ResponseGrouper(calculator=calculator)
+    grouper = ResponseGrouper(similarity_threshold=0.2, calculator=calculator)
     texts = ["a" * 2048, "b" * 2048]
 
     assert not grouper._can_prepare_grouping_ngrams(texts)
     assert grouper._group_prepared_responses(texts) == [[0], [1]]
     calculator._ngram_similarity.assert_called_once_with(*texts)
+
+
+@pytest.mark.parametrize(
+    "threshold, expected_groups",
+    [
+        (float("nan"), [[0], [1]]),
+        (float("inf"), [[0], [1]]),
+        (-float("inf"), [[0, 1]]),
+    ],
+)
+@pytest.mark.parametrize("disable_masks", [False, True])
+def test_prepared_similarity_bounds_preserve_nonfinite_thresholds(
+    monkeypatch,
+    threshold: float,
+    expected_groups: list[list[int]],
+    disable_masks: bool,
+) -> None:
+    """Non-finite thresholds must match the canonical legacy decisions."""
+
+    class TextList(list):
+        """Force the legacy path without changing list behavior."""
+
+    if disable_masks:
+        monkeypatch.setattr(similarity_module, "_MAX_PREPARED_NGRAM_CHARACTERS", 0)
+
+    texts = ["alpha response", "beta response"]
+    grouper = ResponseGrouper(similarity_threshold=threshold)
+
+    assert grouper.group_responses(texts) == expected_groups
+    assert grouper.group_responses(texts) == grouper.group_responses(TextList(texts))
+
+
+def test_nan_threshold_preserves_fallback_metric_order() -> None:
+    """NaN bounds must fall through to Levenshtein before canonical n-grams."""
+    calculator = SemanticSimilarityCalculator(ngram_size=1024)
+    calls: list[str] = []
+    calculator._normalized_levenshtein = Mock(
+        side_effect=lambda *_: calls.append("levenshtein") or 0.0
+    )
+    calculator._ngram_similarity = Mock(
+        side_effect=lambda *_: calls.append("ngram") or 0.0
+    )
+    grouper = ResponseGrouper(similarity_threshold=float("nan"), calculator=calculator)
+    texts = ["a" * 2048, "b" * 2048]
+
+    assert not grouper._can_prepare_grouping_ngrams(texts)
+    assert grouper._group_prepared_responses(texts) == [[0], [1]]
+    assert calls == ["levenshtein", "ngram"]
+
+
+def test_custom_threshold_bypasses_similarity_bounds() -> None:
+    """Custom threshold comparison must remain a single final operation."""
+
+    class Threshold:
+        calls = 0
+
+        def __le__(self, score: float) -> bool:
+            type(self).calls += 1
+            return score >= 0.7
+
+    grouper = ResponseGrouper(similarity_threshold=Threshold())
+
+    assert grouper.group_responses(["alpha response", "beta response"]) == [
+        [0],
+        [1],
+    ]
+    assert Threshold.calls == 1
 
 
 def test_prepared_pair_preserves_exact_hybrid_threshold_boundary() -> None:

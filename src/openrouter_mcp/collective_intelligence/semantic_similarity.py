@@ -839,10 +839,6 @@ class ResponseGrouper:
             jaccard = intersection_size / union_size
 
         calculator = self.calculator
-        levenshtein = calculator._normalized_levenshtein(
-            normalized_texts[left_idx], normalized_texts[right_idx]
-        )
-
         if not left_count and not right_count:
             cosine = 1.0
         elif not left_count or not right_count:
@@ -857,30 +853,58 @@ class ResponseGrouper:
             else:
                 cosine = dot_product / (left_magnitude * right_magnitude)
 
-        if left_ngrams is None or right_ngrams is None:
-            ngram = calculator._ngram_similarity(
-                normalized_texts[left_idx], normalized_texts[right_idx]
-            )
-        elif not left_ngrams and not right_ngrams:
-            ngram = 1.0
-        elif not left_ngrams or not right_ngrams:
-            ngram = 0.0
-        else:
+        ngram = None
+        if left_ngrams is not None and right_ngrams is not None:
             intersection_size = (left_ngrams & right_ngrams).bit_count()
             union_size = (left_ngrams | right_ngrams).bit_count()
             ngram = intersection_size / union_size
-        hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
 
+        boost_floor = 0.0
         if left_count and right_count and (left_count <= 3 or right_count <= 3):
             if left_terms <= right_terms or right_terms <= left_terms:
-                hybrid = max(hybrid, 0.85)
+                boost_floor = 0.85
             elif (
                 left_terms & _AFFIRMATIVE_TOKENS and right_terms & _AFFIRMATIVE_TOKENS
             ) or (left_terms & _NEGATIVE_TOKENS and right_terms & _NEGATIVE_TOKENS):
-                hybrid = max(hybrid, 0.8)
+                boost_floor = 0.8
 
-        hybrid = calculator._boost_high_overlap(jaccard, cosine, hybrid)
-        return hybrid >= self.similarity_threshold
+        if jaccard >= 0.6 and cosine >= 0.6:
+            boost_floor = max(boost_floor, 0.72)
+        elif jaccard >= 0.5 and cosine >= 0.7:
+            boost_floor = max(boost_floor, 0.7)
+
+        threshold = self.similarity_threshold
+        if type(threshold) is int or type(threshold) is float:
+            lower_ngram = 0.0 if ngram is None else ngram
+            upper_ngram = 1.0 if ngram is None else ngram
+            lower_hybrid = (
+                0.30 * jaccard + 0.20 * 0.0 + 0.35 * cosine + 0.15 * lower_ngram
+            )
+            upper_hybrid = (
+                0.30 * jaccard + 0.20 * 1.0 + 0.35 * cosine + 0.15 * upper_ngram
+            )
+            if boost_floor:
+                lower_hybrid = max(lower_hybrid, boost_floor)
+                upper_hybrid = max(upper_hybrid, boost_floor)
+
+            if lower_hybrid >= threshold:
+                return True
+            if upper_hybrid < threshold:
+                return False
+
+        levenshtein = calculator._normalized_levenshtein(
+            normalized_texts[left_idx], normalized_texts[right_idx]
+        )
+        if ngram is None:
+            ngram = calculator._ngram_similarity(
+                normalized_texts[left_idx], normalized_texts[right_idx]
+            )
+
+        hybrid = 0.30 * jaccard + 0.20 * levenshtein + 0.35 * cosine + 0.15 * ngram
+        if boost_floor:
+            hybrid = max(hybrid, boost_floor)
+
+        return hybrid >= threshold
 
     def _select_group_representative(self, texts: list[str], group: list[int]) -> int:
         """Select the index with the highest average similarity in one group."""
