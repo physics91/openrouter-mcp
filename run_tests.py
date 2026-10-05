@@ -51,7 +51,7 @@ def main():
 Examples:
   %(prog)s unit              # Run only unit tests (fast)
   %(prog)s integration       # Run integration tests (mocked APIs)
-  %(prog)s assurance         # Run PR assurance gate (unit/contract/replay + Node security)
+  %(prog)s assurance         # Run PR assurance gate (unit/contract/property/replay/security + Node security)
   %(prog)s all               # Run all tests except real API tests
   %(prog)s real              # Run real API tests (requires API key)
   %(prog)s coverage          # Run tests with coverage report
@@ -126,7 +126,7 @@ Examples:
         ]
 
     elif args.suite == 'assurance':
-        print("Running ASSURANCE tests (PR gate: unit/contract/property/replay + Node security)")
+        print("Running ASSURANCE tests (PR gate: unit/contract/property/replay/security + Node security)")
         if enable_cov and not pytest_cov_installed:
             print("\nASSURANCE_COVERAGE_REQUIRED: pytest-cov is required for assurance suite.")
             print("Install development dependencies before running assurance:")
@@ -134,7 +134,7 @@ Examples:
             return 1
         cmd = base_cmd + [
             '--ignore=tests/test_real_world_integration.py',
-            '-m', 'unit or contract or property or replay',
+            '-m', 'unit or contract or property or replay or security',
             'tests/'
         ]
         if enable_cov:

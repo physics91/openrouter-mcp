@@ -12,6 +12,8 @@ const {
   resolveSupportedPythonCommand,
 } = require('./python-version');
 const { resolveApiKeyForStart } = require('./start-runtime');
+const { readEnvApiKey } = require('./env-credentials');
+const { writePrivateFile } = require('./secure-file');
 
 const packageJson = require('../package.json');
 const secureCredentials = require('./secure-credentials');
@@ -206,27 +208,15 @@ async function checkPythonRequirements() {
 
     // Check required packages
     try {
-      await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
-      writeStartInfo(chalk.green('✓ Required Python packages are installed'));
+      await runCommand(pythonInfo.command, [path.join(__dirname, 'check-requirements.py')]);
+      writeStartInfo(chalk.green('✓ Runtime dependency versions are supported'));
       return pythonInfo.command;
     } catch (error) {
-      writeStartError(chalk.red('✗ Missing required Python packages'));
-      writeStartInfo(chalk.blue('Installing Python dependencies...'));
-
-      try {
-        await runCommand(
-          pythonInfo.command,
-          ['-m', 'pip', 'install', '-r', path.join(__dirname, '..', 'requirements.txt')]
-        );
-        writeStartInfo(chalk.green('✓ Python dependencies installed successfully'));
-        return pythonInfo.command;
-      } catch (installError) {
-        writeStartError(chalk.red('✗ Failed to install Python dependencies'));
-        writeStartError(
-          chalk.blue(`Please run: ${pythonInfo.command} -m pip install -r requirements.txt`)
-        );
-        return null;
-      }
+      writeStartError(chalk.red(`✗ ${error.message}`));
+      writeStartError(chalk.blue(
+        `Install the supported versions in your virtual environment: ${pythonInfo.command} -m pip install --upgrade -r "${path.join(__dirname, '..', 'requirements.txt')}"`
+      ));
+      return null;
     }
 
   } catch (error) {
@@ -452,7 +442,7 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 `;
-      fs.writeFileSync('.env', envContent, { mode: 0o600 });
+      writePrivateFile('.env', envContent);
       secureCredentials.setSecurePermissions('.env');
       console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
     } catch (error) {
@@ -473,7 +463,7 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 `;
-        fs.writeFileSync('.env', envContent, { mode: 0o600 });
+        writePrivateFile('.env', envContent);
         secureCredentials.setSecurePermissions('.env');
         console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
       } catch (encError) {
@@ -513,7 +503,7 @@ HOST=localhost
 PORT=8000
 LOG_LEVEL=info
 `;
-      fs.writeFileSync('.env', envContent, { mode: 0o600 });
+      writePrivateFile('.env', envContent);
       secureCredentials.setSecurePermissions('.env');
       console.log(chalk.green('✓ Configuration saved to .env file (without API key)'));
     } catch (error) {
@@ -651,10 +641,11 @@ async function checkStatus() {
   // Dependencies check
   if (pythonInfo.status === 'supported') {
     try {
-      await runCommand(pythonInfo.command, ['-c', 'import fastmcp, httpx, pydantic']);
-      console.log(chalk.green('  ✓ Python Dependencies: Installed'));
-    } catch {
-      console.log(chalk.red('  ✗ Python Dependencies: Missing'));
+      await runCommand(pythonInfo.command, [path.join(__dirname, 'check-requirements.py')]);
+      console.log(chalk.green('  ✓ Python Dependencies: Supported versions installed'));
+    } catch (error) {
+      console.log(chalk.red('  ✗ Python Dependencies: Missing or unsupported versions'));
+      console.log(chalk.gray(error.message));
     }
   } else {
     console.log(chalk.yellow('  ⚠ Python Dependencies: Not checked (Python unavailable)'));
@@ -729,7 +720,7 @@ async function installClaudeConfig(apiKey = null) {
   };
 
   // Write config with secure permissions
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  writePrivateFile(configPath, JSON.stringify(config, null, 2));
   secureCredentials.setSecurePermissions(configPath);
 
   console.log(chalk.green(`✓ Claude Desktop configuration updated: ${configPath}`));
@@ -998,7 +989,7 @@ async function securityAudit() {
     const envDisplayName = path.basename(envPath);
     const stats = fs.statSync(envPath);
     const envContent = fs.readFileSync(envPath, 'utf8');
-    const hasApiKey = envContent.includes('OPENROUTER_API_KEY=sk-or-');
+    const hasApiKey = Boolean(readEnvApiKey(envContent));
 
     if (hasApiKey) {
       console.log(chalk.yellow(`  ⚠  ${envDisplayName}: Contains API key (plaintext)`));
@@ -1294,7 +1285,7 @@ async function migrateEncryption() {
     console.log(chalk.gray(`  ✓ Backup created: ${backupFile}`));
 
     // Write new encrypted file
-    fs.writeFileSync(ENCRYPTED_FILE, newData, { mode: 0o600 });
+    writePrivateFile(ENCRYPTED_FILE, newData);
     secureCredentials.setSecurePermissions(ENCRYPTED_FILE);
 
     console.log(chalk.green('  ✓ Migration complete!\n'));

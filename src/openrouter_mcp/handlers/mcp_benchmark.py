@@ -12,6 +12,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import Field
@@ -730,6 +731,29 @@ async def compare_model_categories(
         raise BenchmarkError(f"카테고리 비교 실패: {e!s}") from e
 
 
+def _report_file_path(results_dir: str, filename: str) -> str:
+    """Restrict MCP report arguments to regular filenames in the results directory."""
+    if (
+        not filename
+        or filename in {".", ".."}
+        or Path(filename).name != filename
+        or PureWindowsPath(filename).name != filename
+        or PureWindowsPath(filename).is_reserved()
+        or filename.rstrip(" .") != filename
+        or ":" in filename
+        or "\x00" in filename
+    ):
+        raise BenchmarkError("Report paths must be filenames without directories")
+
+    root = Path(results_dir).resolve(strict=True)
+    candidate = root / filename
+    if candidate.is_symlink() or candidate.resolve().parent != root:
+        raise BenchmarkError("Report files must not be symbolic links")
+    if candidate.exists() and not candidate.is_file():
+        raise BenchmarkError("Report path must be a regular file")
+    return str(candidate)
+
+
 async def export_benchmark_report(
     benchmark_file: Annotated[
         str, Field(description="Benchmark result filename to export")
@@ -750,7 +774,7 @@ async def export_benchmark_report(
         handler = await get_benchmark_handler()
 
         # 결과 파일 경로
-        results_path = os.path.join(handler.results_dir, benchmark_file)
+        results_path = _report_file_path(handler.results_dir, benchmark_file)
 
         if not os.path.exists(results_path):
             raise BenchmarkError(f"벤치마크 파일을 찾을 수 없습니다: {benchmark_file}")
@@ -774,7 +798,7 @@ async def export_benchmark_report(
 
         # 리포트 내보내기
         exporter = BenchmarkReportExporter()
-        output_path = os.path.join(handler.results_dir, output_file)
+        output_path = _report_file_path(handler.results_dir, output_file)
 
         if format == "markdown":
             await exporter.export_markdown(results, output_path)

@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
     ("encoding", "expected_fdopen"),
     [
         (None, call(7, "w")),
-        ("utf-8", call(7, "w", encoding="utf-8")),
+        ("utf-8", call(7, "w", encoding="utf-8", newline=None)),
     ],
 )
 def test_replace_file_atomically_preserves_operation_order(
@@ -60,7 +60,7 @@ def test_replace_file_atomically_preserves_operation_order(
         (
             "fdopen",
             (7, "w"),
-            {} if encoding is None else {"encoding": "utf-8"},
+            {} if encoding is None else {"encoding": "utf-8", "newline": None},
         ),
         "enter",
         ("write", handle),

@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from http import HTTPStatus
 from math import isnan
 from types import TracebackType
 from typing import Any, NoReturn, Optional
@@ -31,7 +32,7 @@ from ..runtime_thrift import (
 )
 from ..utils.async_utils import maybe_await
 from ..utils.env import get_env_value, get_required_env
-from ..utils.http import build_openrouter_headers
+from ..utils.http import build_openrouter_headers, validate_api_base_url
 from ..utils.pricing import normalize_pricing
 
 # Import sanitizer from utils (extracted for SRP compliance)
@@ -90,17 +91,16 @@ def _parse_retry_after(header_value: Optional[str]) -> Optional[float]:
 
 
 async def _extract_http_error_message(response: httpx.Response) -> str:
-    """Extract an API error message without exposing an unsanitized body."""
+    """Describe the status without echoing provider-controlled body content.
+
+    Providers can include credentials or the user's prompt in JSON error
+    messages and non-JSON bodies. Truncating that content is not redaction.
+    """
     try:
-        error_data = await maybe_await(response.json())
-        return error_data.get("error", {}).get("message", "Unknown error")
-    except (json_lib.JSONDecodeError, KeyError):
-        response_preview = (
-            SensitiveDataSanitizer.truncate_content(response.text, max_length=100)
-            if response.text
-            else "No response body"
-        )
-        return f"HTTP {response.status_code}: {response_preview}"
+        reason = HTTPStatus(response.status_code).phrase
+    except ValueError:
+        reason = "Upstream request failed"
+    return f"HTTP {response.status_code}: {reason}"
 
 
 def _build_model_pricing_result(
@@ -207,7 +207,7 @@ class OpenRouterClient:
             raise ValueError("API key is required")
 
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_api_base_url(base_url)
         self.app_name = app_name
         self.http_referer = http_referer
         self.timeout = timeout

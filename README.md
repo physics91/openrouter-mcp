@@ -50,7 +50,9 @@ See `docs/MCP_CLIENT_GUIDE.md` for the common flow and client-specific examples.
 ## Prerequisites
 - Node.js 22+
 - Python 3.10+ (`python` or `python3` must be available in `PATH`)
-- First run attempts dependency install via `<python> -m pip install -r requirements.txt`
+- Install Python dependencies in a virtual environment with `python -m pip install --upgrade -r requirements.txt`. Keep that environment active when starting the server.
+- Startup validates declared dependency versions and stops with installation instructions if packages are missing or outdated; it does not install packages automatically.
+- Custom API base URLs must use HTTPS. HTTP is allowed only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`.
 - OpenRouter API key: https://openrouter.ai
 
 ## DevOps Readiness (Clone -> Test/Build/Deploy)

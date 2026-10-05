@@ -77,9 +77,9 @@ This document outlines the security architecture, threat model, and best practic
 - **Likelihood**: Low
 - **Impact**: Critical (API key theft, data manipulation)
 - **Mitigation**:
-  - Enforce TLS 1.2+ for all HTTPS communications
-  - Certificate pinning (OpenRouter API)
-  - No fallback to HTTP
+  - HTTPX's default TLS context verifies certificates; certificate pinning is not implemented
+  - Require HTTPS for remote API base URLs
+  - Allow HTTP only for explicitly configured loopback test services
 
 **Threat 2.2**: Modification of configuration files
 - **Likelihood**: Medium
@@ -203,14 +203,18 @@ This document outlines the security architecture, threat model, and best practic
 ### Defense in Depth Layers
 
 1. **Transport Layer**
-   - TLS 1.2+ enforcement
-   - Certificate validation
-   - No HTTP fallback
+   - Require HTTPS for remote API base URLs; allow explicit loopback HTTP for local tests
+   - HTTPX default certificate verification and TLS settings
+   - No automatic redirect following or HTTP fallback
 
 2. **Application Layer**
    - Input validation
    - Output sanitization
    - Error handling without information leakage
+
+   Provider HTTP failures expose only the status code and standard status text.
+   Arbitrary JSON error messages and raw response bodies are not copied into
+   tool errors or logs because they may contain prompts or credentials.
 
 3. **Storage Layer**
    - OS keychain integration (primary)

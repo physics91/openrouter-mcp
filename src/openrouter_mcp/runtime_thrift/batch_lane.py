@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from ..utils._atomic_file import replace_file_atomically
 from .metrics import record_deferred_requests
 from .policy import get_runtime_thrift_policy
 
@@ -85,14 +87,23 @@ def _write_grouped_request_files(
         grouped[(request.provider, request.model_id)].append(request)
 
     groups_payload: list[dict[str, Any]] = []
-    for (provider, model_id), group_requests in sorted(grouped.items()):
-        file_name = f"{_slugify(provider)}__{_slugify(model_id)}.jsonl"
+    for index, ((provider, model_id), group_requests) in enumerate(
+        sorted(grouped.items())
+    ):
+        # The index prevents distinct model names from colliding after slugging.
+        file_name = (
+            f"{index:04d}_{_slugify(provider)[:48]}__{_slugify(model_id)[:96]}.jsonl"
+        )
         output_path = batch_dir / file_name
-        with open(output_path, "w", encoding="utf-8") as handle:
-            for request in group_requests:
+
+        def write_group(handle, records=group_requests):
+            for request in records:
                 handle.write(json.dumps(request.to_jsonl_record(), ensure_ascii=False))
                 handle.write("\n")
 
+        replace_file_atomically(
+            str(output_path), str(batch_dir), write_group, encoding="utf-8"
+        )
         groups_payload.append(
             {
                 "provider": provider,
@@ -128,9 +139,11 @@ class DeferredBatchLane:
             raise ValueError("Deferred batch export requires at least one request")
 
         created_at = datetime.now(timezone.utc)
-        batch_id = f"{_slugify(batch_name)}-{created_at.strftime('%Y%m%d_%H%M%S')}"
-        batch_dir = self.base_dir / batch_id
-        batch_dir.mkdir(parents=True, exist_ok=True)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        prefix = f"{_slugify(batch_name)[:80]}-{created_at.strftime('%Y%m%d_%H%M%S')}-"
+        # Create an exclusive private directory; never reuse a predictable path.
+        batch_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=self.base_dir))
+        batch_id = batch_dir.name
 
         groups_payload = _write_grouped_request_files(batch_dir, request_list)
 
@@ -146,8 +159,12 @@ class DeferredBatchLane:
             "metadata": metadata or {},
             "groups": groups_payload,
         }
-        with open(manifest_path, "w", encoding="utf-8") as handle:
-            json.dump(manifest, handle, indent=2, ensure_ascii=False)
+        replace_file_atomically(
+            str(manifest_path),
+            str(batch_dir),
+            lambda handle: json.dump(manifest, handle, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         record_deferred_requests(len(request_list))
         return DeferredBatchExport(

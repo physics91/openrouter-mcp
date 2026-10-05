@@ -113,7 +113,7 @@ npm run test:assurance
 ```
 
 Included in the assurance gate:
-- Python: `-m \"unit or contract or property or replay\"`
+- Python: `-m \"unit or contract or property or replay or security\"` (includes the real local stdio security checks)
 - Node: `npm run test:security`
 - Coverage: branch coverage enabled with fail-under threshold
 - Coverage dependency: `pytest-cov` is required; missing plugin causes fast failure

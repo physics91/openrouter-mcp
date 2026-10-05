@@ -135,3 +135,52 @@ assert.strictEqual(
 );
 
 console.log('security-audit CLI regression test passed');
+
+const { readEnvApiKey, replaceEnvApiKey } = require('../bin/env-credentials');
+const auditFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'openrouter-env-forms-'));
+try {
+  const fakeKey = 'sk-or-security-regression-placeholder';
+  for (const assignment of [
+    `OPENROUTER_API_KEY="${fakeKey}"`,
+    `OPENROUTER_API_KEY = '${fakeKey}' # comment`,
+    `export OPENROUTER_API_KEY = ${fakeKey}`,
+    `OPENROUTER_API_KEY=old-placeholder\nOPENROUTER_API_KEY="${fakeKey}"`,
+  ]) {
+    const content = `${assignment}\nOPENROUTER_APP_NAME=test\n`;
+    assert.strictEqual(readEnvApiKey(content), fakeKey);
+    const rotated = replaceEnvApiKey(content, 'sk-or-rotated-placeholder');
+    assert.strictEqual(readEnvApiKey(rotated), 'sk-or-rotated-placeholder');
+    assert(!rotated.includes(fakeKey));
+    assert(!rotated.includes('old-placeholder'));
+    const removed = replaceEnvApiKey(content);
+    assert.strictEqual(readEnvApiKey(removed), null);
+    assert(removed.includes('OPENROUTER_APP_NAME=test'));
+
+    const envFile = path.join(auditFixture, '.env');
+    fs.writeFileSync(envFile, content, { mode: 0o644 });
+    const auditResult = spawnSync(process.execPath, [cliPath, 'security-audit'], {
+      cwd: auditFixture,
+      encoding: 'utf8',
+      env: process.env,
+    });
+    assert.strictEqual(auditResult.status, 0, auditResult.stderr);
+    assert(auditResult.stdout.includes('.env: Contains API key (plaintext)'));
+    assert(!auditResult.stdout.includes(fakeKey));
+    if (process.platform !== 'win32') {
+      assert(auditResult.stdout.includes('.env has insecure permissions'));
+    }
+  }
+  const nested = 'OTHER="hello\nOPENROUTER_API_KEY=embedded-text\nworld"\n';
+  assert.strictEqual(readEnvApiKey(nested), null);
+  assert.strictEqual(replaceEnvApiKey(nested), null);
+  assert.strictEqual(readEnvApiKey('# OPENROUTER_API_KEY=comment\n'), null);
+  assert.throws(() => replaceEnvApiKey('OPENROUTER_API_KEY=old', 'bad\nINJECTED=yes'));
+} finally {
+  fs.rmSync(auditFixture, { recursive: true, force: true });
+}
+
+console.log('dotenv credential security regressions passed');
+
+// Node dotenv supports multiline backtick values; remove the entire value.
+const backtickSecret = "OPENROUTER_API_KEY=`placeholder\ncontinued`\nNEXT=value\n";
+assert.strictEqual(replaceEnvApiKey(backtickSecret), "\nNEXT=value\n");

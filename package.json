@@ -60,7 +60,7 @@
     "test:coverage": "cd . && python -m pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html",
     "test:collective": "cd . && python -m pytest tests/test_collective_intelligence_mocked.py tests/test_lifecycle_manager.py tests/test_operational_controls.py -v",
     "test:runtime": "node tests/test-python-version-check.js",
-    "test:security": "node tests/test-encryption-security.js && node tests/test-security-audit-cli.js",
+    "test:security": "node tests/test-encryption-security.js && node tests/test-security-audit-cli.js && node tests/test-private-file.js",
     "test:handlers": "cd . && python -m pytest tests/test_handlers/ -v",
     "test:integration": "cd . && python -m pytest tests/test_mcp_integration.py tests/test_server_integration.py -v",
     "test:all": "npm run test && npm run test:runtime && npm run test:security",

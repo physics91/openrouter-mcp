@@ -50,17 +50,17 @@ class TestDeferredBatchLane:
             {
                 "provider": "alpha",
                 "model_id": "alpha/model-two",
-                "file_name": "alpha__alpha-model-two.jsonl",
+                "file_name": "0000_alpha__alpha-model-two.jsonl",
                 "request_count": 1,
             },
             {
                 "provider": "zeta",
                 "model_id": "zeta/model one",
-                "file_name": "zeta__zeta-model-one.jsonl",
+                "file_name": "0001_zeta__zeta-model-one.jsonl",
                 "request_count": 2,
             },
         ]
-        zeta_text = (tmp_path / "zeta__zeta-model-one.jsonl").read_text(
+        zeta_text = (tmp_path / "0001_zeta__zeta-model-one.jsonl").read_text(
             encoding="utf-8"
         )
         assert "안녕" in zeta_text

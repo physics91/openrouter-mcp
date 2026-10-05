@@ -810,7 +810,7 @@ class TestOpenRouterClient:
             )
             mock_request.return_value = mock_response
 
-            with pytest.raises(AuthenticationError, match="Invalid API key provided"):
+            with pytest.raises(AuthenticationError, match="HTTP 401: Unauthorized"):
                 await client.list_models()
 
     @pytest.mark.unit
@@ -833,7 +833,7 @@ class TestOpenRouterClient:
             )
             mock_request.return_value = mock_response
 
-            with pytest.raises(RateLimitError, match="Rate limit exceeded"):
+            with pytest.raises(RateLimitError, match="HTTP 429: Too Many Requests"):
                 await client.list_models()
 
     @pytest.mark.unit
@@ -856,7 +856,7 @@ class TestOpenRouterClient:
             )
             mock_request.return_value = mock_response
 
-            with pytest.raises(InvalidRequestError, match="Invalid model specified"):
+            with pytest.raises(InvalidRequestError, match="HTTP 400: Bad Request"):
                 await client.chat_completion(
                     model="invalid-model",
                     messages=[{"role": "user", "content": "test"}],

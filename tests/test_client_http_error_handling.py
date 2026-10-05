@@ -1,6 +1,6 @@
-import json
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 
 from src.openrouter_mcp.client import openrouter
@@ -16,101 +16,30 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("async_json", [False, True])
-async def test_extract_http_error_message_preserves_json_message_identity(async_json):
-    message = "message-identity-marker"
-    json_result = {"error": {"message": message}}
-    response = Mock()
-    response.json = (
-        AsyncMock(return_value=json_result)
-        if async_json
-        else Mock(return_value=json_result)
-    )
-
+@pytest.mark.parametrize(
+    "status_code, reason",
+    [
+        (400, "Bad Request"),
+        (401, "Unauthorized"),
+        (429, "Too Many Requests"),
+        (500, "Internal Server Error"),
+        (599, "Upstream request failed"),
+    ],
+)
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"error":{"message":"private-user-content"}}',
+        b"<html>private-user-content</html>",
+        b"null",
+        b"",
+    ],
+)
+async def test_http_error_body_never_becomes_public_message(status_code, reason, body):
+    response = httpx.Response(status_code, content=body)
     result = await openrouter._extract_http_error_message(response)
-
-    assert result is message
-    response.json.assert_called_once_with()
-
-
-@pytest.mark.asyncio
-async def test_extract_http_error_message_sanitizes_parse_failure(monkeypatch):
-    secret = "secret-response-body"
-    response = Mock(status_code=503, text=secret)
-    response.json.side_effect = json.JSONDecodeError("invalid", secret, 0)
-    sanitize = Mock(return_value="<sanitized>")
-    monkeypatch.setattr(
-        openrouter.SensitiveDataSanitizer,
-        "truncate_content",
-        sanitize,
-    )
-
-    result = await openrouter._extract_http_error_message(response)
-
-    assert result == "HTTP 503: <sanitized>"
-    assert secret not in result
-    sanitize.assert_called_once_with(secret, max_length=100)
-
-
-@pytest.mark.asyncio
-async def test_extract_http_error_message_uses_empty_body_fallback(monkeypatch):
-    response = Mock(status_code=500, text="")
-    response.json.side_effect = json.JSONDecodeError("invalid", "", 0)
-    sanitize = Mock(side_effect=AssertionError("sanitizer must not run"))
-    monkeypatch.setattr(
-        openrouter.SensitiveDataSanitizer,
-        "truncate_content",
-        sanitize,
-    )
-
-    assert (
-        await openrouter._extract_http_error_message(response)
-        == "HTTP 500: No response body"
-    )
-    sanitize.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_extract_http_error_message_does_not_swallow_payload_attribute_error(
-    monkeypatch,
-):
-    expected_error = AttributeError("malformed payload")
-
-    class Payload:
-        def get(self, *_args, **_kwargs):
-            raise expected_error
-
-    response = Mock()
-    response.json.return_value = Payload()
-    sanitize = Mock()
-    monkeypatch.setattr(
-        openrouter.SensitiveDataSanitizer,
-        "truncate_content",
-        sanitize,
-    )
-
-    with pytest.raises(AttributeError) as exc_info:
-        await openrouter._extract_http_error_message(response)
-
-    assert exc_info.value is expected_error
-    sanitize.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_extract_http_error_message_propagates_sanitizer_failure(monkeypatch):
-    expected_error = RuntimeError("sanitizer failed")
-    response = Mock(status_code=500, text="body")
-    response.json.side_effect = json.JSONDecodeError("invalid", "body", 0)
-    monkeypatch.setattr(
-        openrouter.SensitiveDataSanitizer,
-        "truncate_content",
-        Mock(side_effect=expected_error),
-    )
-
-    with pytest.raises(RuntimeError) as exc_info:
-        await openrouter._extract_http_error_message(response)
-
-    assert exc_info.value is expected_error
+    assert result == f"HTTP {status_code}: {reason}"
+    assert "private-user-content" not in result
 
 
 @pytest.mark.asyncio

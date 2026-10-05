@@ -173,7 +173,9 @@ def _open_validated_image(
             f"Decoded image too large: {len(image_bytes)} bytes exceeds safe limit"
         )
 
-    image: Image.Image = Image.open(io.BytesIO(image_bytes))
+    image: Image.Image = Image.open(
+        io.BytesIO(image_bytes), formats=ImageProcessingConfig.SUPPORTED_FORMATS
+    )
 
     width, height = image.size
     if width * height > ImageProcessingConfig.MAX_PIXELS:

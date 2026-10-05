@@ -27,6 +27,8 @@ const chalk = require('chalk');
 const { getClaudeCodeUserConfigPath } = require('./claude-config-utils');
 const cryptoManager = require('./crypto-manager');
 const { buildNpxStartArgs } = require('./package-launch-utils');
+const { readEnvApiKey, replaceEnvApiKey } = require('./env-credentials');
+const { writePrivateFile } = require('./secure-file');
 
 // Try to load keytar for OS keychain support
 let keytar = null;
@@ -250,9 +252,13 @@ function isSharedEnvironment() {
 function setSecurePermissions(filePath) {
   try {
     if (os.platform() !== 'win32') {
-      // Unix-like: Set to 600 (owner read/write only)
-      fs.chmodSync(filePath, 0o600);
-      console.log(chalk.green(`✓ Set secure permissions (600) on ${filePath}`));
+      const metadata = fs.lstatSync(filePath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error('Refusing to change permissions through a symbolic link');
+      }
+      const mode = metadata.isDirectory() ? 0o700 : 0o600;
+      fs.chmodSync(filePath, mode);
+      console.log(chalk.green(`✓ Set secure permissions (${mode.toString(8)}) on ${filePath}`));
     } else {
       // Windows: Use icacls to restrict access
       const { execFileSync } = require('child_process');
@@ -332,6 +338,14 @@ async function deleteFromKeychain() {
  * Store API key in .env file
  */
 function storeInEnvFile(apiKey, appName, httpReferer, envPath = '.env') {
+  const validation = validateApiKey(apiKey);
+  if (!validation.valid && !validation.warning) {
+    throw new Error(validation.error);
+  }
+  apiKey = apiKey.trim();
+  if ([appName, httpReferer].some(value => value && /[\r\n\0]/.test(value))) {
+    throw new Error('Environment settings must not contain line breaks or NUL characters');
+  }
   const envContent = `# OpenRouter API Configuration
 # ${chalk.yellow('WARNING: This file contains sensitive credentials in PLAINTEXT')}
 # DO NOT commit this file to version control
@@ -347,7 +361,7 @@ PORT=8000
 LOG_LEVEL=info
 `;
 
-  fs.writeFileSync(envPath, envContent, { mode: 0o600 });
+  writePrivateFile(envPath, envContent);
   setSecurePermissions(envPath);
 
   console.log(chalk.green(`✓ Configuration saved to ${envPath}`));
@@ -389,7 +403,7 @@ function storeInConfigFile(apiKey, configPath, configType = 'claude-desktop') {
   };
 
   // Write config with secure permissions
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  writePrivateFile(configPath, JSON.stringify(config, null, 2));
   setSecurePermissions(configPath);
 
   console.log(chalk.green(`✓ Configuration saved to ${configPath}`));
@@ -438,15 +452,11 @@ function removeApiKeyFromEnvFile(envPath) {
   }
 
   const envContent = fs.readFileSync(envPath, 'utf8');
-  const lines = envContent.split(/\r?\n/u);
-  const filteredLines = lines.filter((line) => !line.startsWith('OPENROUTER_API_KEY='));
-
-  if (filteredLines.length === lines.length) {
+  const newContent = replaceEnvApiKey(envContent);
+  if (newContent === null) {
     return false;
   }
-
-  const newContent = `${filteredLines.join('\n').replace(/\n{3,}/gu, '\n\n').trimEnd()}\n`;
-  fs.writeFileSync(envPath, newContent, { mode: 0o600 });
+  writePrivateFile(envPath, newContent);
   setSecurePermissions(envPath);
   return true;
 }
@@ -469,7 +479,7 @@ function removeApiKeyFromConfig(configPath) {
     delete serverConfig.env;
   }
 
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  writePrivateFile(configPath, JSON.stringify(config, null, 2));
   setSecurePermissions(configPath);
   return true;
 }
@@ -488,9 +498,9 @@ function getFromEnvironment() {
     if (fs.existsSync(envPath)) {
       try {
         const envContent = fs.readFileSync(envPath, 'utf8');
-        const match = envContent.match(/OPENROUTER_API_KEY=(.+)/);
-        if (match && match[1]) {
-          return match[1].trim();
+        const apiKey = readEnvApiKey(envContent);
+        if (apiKey) {
+          return apiKey;
         }
       } catch (error) {
         continue;
@@ -543,6 +553,8 @@ async function rotateApiKey(newApiKey) {
     throw new Error(validation.error);
   }
 
+  newApiKey = newApiKey.trim();
+
   const locations = [];
 
   // Update keychain
@@ -576,15 +588,11 @@ async function rotateApiKey(newApiKey) {
 
     try {
       const envContent = fs.readFileSync(envPath, 'utf8');
-      if (!envContent.includes('OPENROUTER_API_KEY=')) {
+      const newContent = replaceEnvApiKey(envContent, newApiKey);
+      if (newContent === null) {
         continue;
       }
-
-      const newContent = envContent.replace(
-        /OPENROUTER_API_KEY=.+/,
-        `OPENROUTER_API_KEY=${newApiKey}`
-      );
-      fs.writeFileSync(envPath, newContent, { mode: 0o600 });
+      writePrivateFile(envPath, newContent);
       setSecurePermissions(envPath);
       locations.push(path.basename(envPath));
     } catch (error) {
@@ -599,7 +607,7 @@ async function rotateApiKey(newApiKey) {
       const config = JSON.parse(fs.readFileSync(claudeDesktopPath, 'utf8'));
       if (config.mcpServers?.openrouter?.env?.OPENROUTER_API_KEY) {
         config.mcpServers.openrouter.env.OPENROUTER_API_KEY = newApiKey;
-        fs.writeFileSync(claudeDesktopPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+        writePrivateFile(claudeDesktopPath, JSON.stringify(config, null, 2));
         setSecurePermissions(claudeDesktopPath);
         locations.push('Claude Desktop config');
       }
@@ -615,7 +623,7 @@ async function rotateApiKey(newApiKey) {
       const config = JSON.parse(fs.readFileSync(claudeCodePath, 'utf8'));
       if (config.mcpServers?.openrouter?.env?.OPENROUTER_API_KEY) {
         config.mcpServers.openrouter.env.OPENROUTER_API_KEY = newApiKey;
-        fs.writeFileSync(claudeCodePath, JSON.stringify(config, null, 2), { mode: 0o600 });
+        writePrivateFile(claudeCodePath, JSON.stringify(config, null, 2));
         setSecurePermissions(claudeCodePath);
         locations.push('Claude Code config');
       }
@@ -778,6 +786,11 @@ function validateApiKey(apiKey) {
     return { valid: false, error: 'API key appears too short' };
   }
 
+  // Reject injection characters even when an unfamiliar prefix is allowed.
+  if (!/^[a-zA-Z0-9\-_]+$/.test(apiKey)) {
+    return { valid: false, error: 'API key contains invalid characters' };
+  }
+
   // Check for common patterns (sk-or-v1-...)
   if (!apiKey.startsWith('sk-or-')) {
     return {
@@ -785,11 +798,6 @@ function validateApiKey(apiKey) {
       error: 'API key should start with "sk-or-" (OpenRouter format)',
       warning: true
     };
-  }
-
-  // Check for suspicious characters
-  if (!/^[a-zA-Z0-9\-_]+$/.test(apiKey)) {
-    return { valid: false, error: 'API key contains invalid characters' };
   }
 
   return { valid: true, key: apiKey };
@@ -904,7 +912,7 @@ async function storeInEncryptedFile(apiKey) {
     hostname: os.hostname()
   });
 
-  fs.writeFileSync(ENCRYPTED_FILE, data, { mode: 0o600 });
+  writePrivateFile(ENCRYPTED_FILE, data);
   setSecurePermissions(ENCRYPTED_FILE);
   auditLog('key-stored', { method: 'encrypted-file', version: '2.0' });
 
@@ -1066,7 +1074,7 @@ async function performSecurityAudit() {
     const stats = fs.statSync(envPath);
     const mode = stats.mode & parseInt('777', 8);
     const content = fs.readFileSync(envPath, 'utf8');
-    const hasApiKey = content.includes('OPENROUTER_API_KEY=sk-or-');
+    const hasApiKey = Boolean(readEnvApiKey(content));
 
     if (hasApiKey) {
       audit.credentials.push({

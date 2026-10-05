@@ -5,8 +5,11 @@ Benchmark report exporting utilities.
 
 import json
 import logging
+import os
 from datetime import datetime
-from typing import Any
+from typing import Any, TextIO
+
+from ..utils._atomic_file import replace_file_atomically
 
 
 def _success_value(result: Any) -> Any:
@@ -152,8 +155,15 @@ class BenchmarkReportExporter:
         for model_id, result in results.items():
             lines.extend(_render_markdown_result(model_id, result))
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+        def write_markdown(handle: TextIO) -> None:
+            handle.write("\n".join(lines))
+
+        replace_file_atomically(
+            output_path,
+            os.path.dirname(output_path),
+            write_markdown,
+            encoding="utf-8",
+        )
 
         self.logger.info(f"Markdown report exported to {output_path}")
         return output_path
@@ -173,8 +183,8 @@ class BenchmarkReportExporter:
             "response_length",
         ]
 
-        with open(output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+        def write_csv(handle: TextIO) -> None:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
 
             for model_id, result_list in results.items():
@@ -187,6 +197,14 @@ class BenchmarkReportExporter:
 
                 for result in result_entries:
                     writer.writerow(_serialize_csv_result(model_id, result))
+
+        replace_file_atomically(
+            output_path,
+            os.path.dirname(output_path),
+            write_csv,
+            encoding="utf-8",
+            newline="",
+        )
 
         self.logger.info(f"CSV report exported to {output_path}")
         return output_path
@@ -203,8 +221,12 @@ class BenchmarkReportExporter:
             "results": results_payload,
         }
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        replace_file_atomically(
+            output_path,
+            os.path.dirname(output_path),
+            lambda handle: json.dump(export_data, handle, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
         self.logger.info(f"JSON report exported to {output_path}")
         return output_path

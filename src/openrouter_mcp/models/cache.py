@@ -23,7 +23,7 @@ import portalocker
 from ..config.constants import APIConfig, CacheConfig, EnvVars
 from ..utils.async_utils import await_cleanup_future
 from ..utils.env import get_env_value
-from ..utils.http import build_openrouter_headers
+from ..utils.http import build_openrouter_headers, validate_api_base_url
 
 # Import metadata utilities
 from ..utils.metadata import ModelCategory, ModelProvider, batch_enhance_models
@@ -89,7 +89,7 @@ class HTTPTransport:
             timeout: Request timeout in seconds
         """
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.base_url = validate_api_base_url(base_url)
         self.timeout = timeout
         self._client: Optional[Any] = None
 

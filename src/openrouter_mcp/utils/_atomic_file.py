@@ -14,6 +14,7 @@ def replace_file_atomically(
     writer: Callable[[TextIO], None],
     *,
     encoding: str | None = None,
+    newline: str | None = None,
 ) -> None:
     """Write a temporary file and replace *destination*, cleaning up on failure."""
     fd, tmp_path = tempfile.mkstemp(dir=directory or ".", suffix=".tmp")
@@ -21,7 +22,7 @@ def replace_file_atomically(
         if encoding is None:
             opened_file = os.fdopen(fd, "w")
         else:
-            opened_file = os.fdopen(fd, "w", encoding=encoding)
+            opened_file = os.fdopen(fd, "w", encoding=encoding, newline=newline)
         with opened_file as handle:
             writer(handle)
         os.replace(tmp_path, destination)
