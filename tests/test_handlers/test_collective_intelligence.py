@@ -62,7 +62,7 @@ def test_collective_request_requirements_preserve_precedence_and_zeroes() -> Non
     request = EnsembleReasoningRequest(
         problem="test",
         temperature=0.0,
-        max_tokens=0,
+        max_tokens=1,
         models=["request-model"],
         system_prompt="request prompt",
     )
@@ -84,7 +84,7 @@ def test_collective_request_requirements_preserve_precedence_and_zeroes() -> Non
         "base_only": True,
         "extra_only": True,
         "temperature": 0.0,
-        "max_tokens": 0,
+        "max_tokens": 1,
         "preferred_models": ["request-model"],
         "system_prompt": "request prompt",
     }
@@ -205,9 +205,24 @@ def test_model_validations_preserve_explicit_order_duplicates_and_inputs() -> No
     original_issues = list(report.issues)
 
     assert _build_model_validations(report, report.issues) == [
-        {"model": "validator-b", "criteria": "multiple", "issues_found": 2},
-        {"model": "validator-a", "criteria": "none", "issues_found": 0},
-        {"model": "validator-b", "criteria": "multiple", "issues_found": 2},
+        {
+            "model": "validator-b",
+            "criteria": "multiple",
+            "issues_found": 2,
+            "status": "completed",
+        },
+        {
+            "model": "validator-a",
+            "criteria": "none",
+            "issues_found": 0,
+            "status": "completed",
+        },
+        {
+            "model": "validator-b",
+            "criteria": "multiple",
+            "issues_found": 2,
+            "status": "completed",
+        },
     ]
     assert report.validator_models == original_validator_models
     assert report.issues == original_issues
@@ -300,9 +315,24 @@ def test_model_validations_delegates_criteria_summary_for_each_explicit_model() 
         result = _build_model_validations(report, issues)
 
     assert result == [
-        {"model": "validator-a", "criteria": "delegated", "issues_found": 1},
-        {"model": "validator-b", "criteria": "delegated", "issues_found": 0},
-        {"model": "validator-a", "criteria": "delegated", "issues_found": 1},
+        {
+            "model": "validator-a",
+            "criteria": "delegated",
+            "issues_found": 1,
+            "status": "completed",
+        },
+        {
+            "model": "validator-b",
+            "criteria": "delegated",
+            "issues_found": 0,
+            "status": "completed",
+        },
+        {
+            "model": "validator-a",
+            "criteria": "delegated",
+            "issues_found": 1,
+            "status": "completed",
+        },
     ]
     assert summarize.call_count == 3
     assert summarize.call_args_list[0].args[0] == [issues[0]]
@@ -347,8 +377,18 @@ def test_build_model_validations_derives_truthy_models_in_first_seen_order() -> 
     ).validation_report
 
     assert _build_model_validations(report, report.issues) == [
-        {"model": "validator-z", "criteria": "custom", "issues_found": 2},
-        {"model": "validator-a", "criteria": "accuracy", "issues_found": 1},
+        {
+            "model": "validator-z",
+            "criteria": "custom",
+            "issues_found": 2,
+            "status": "completed",
+        },
+        {
+            "model": "validator-a",
+            "criteria": "accuracy",
+            "issues_found": 1,
+            "status": "completed",
+        },
     ]
     assert report.validator_models == []
     assert report.issues == issues
@@ -391,6 +431,8 @@ def test_serialize_solving_result_preserves_independent_fields() -> None:
             "consistency": 0.7,
             "completeness": 0.6,
         },
+        "validation_status": "provided",
+        "is_valid": None,
         "component_contributions": {"router": 0.4, "reasoner": 0.6},
         "confidence": 0.84,
         "improvement_suggestions": ["Add rollback drill"],
@@ -515,6 +557,9 @@ def test_serialize_consensus_result_preserves_independent_model_lists() -> None:
         ],
         "strategy_used": "weighted_average",
         "processing_time": 0.9,
+        "quality_evaluation": "provided",
+        "confidence_basis": "provided",
+        "heuristic_score": None,
         "quality_metrics": {
             "accuracy": 0.75,
             "consistency": 0.75,
@@ -539,7 +584,11 @@ def test_serialize_cross_validation_result_with_explicit_validators() -> None:
 
     assert _serialize_cross_validation_result(result) == {
         "validation_result": "INVALID",
-        "validation_score": 0.73,
+        "validation_score": 0.75,
+        "validation_status": "complete",
+        "successful_validators": 2,
+        "validator_failures": [],
+        "criteria_scores": {},
         "validation_issues": [
             {
                 "criteria": "accuracy",
@@ -550,11 +599,17 @@ def test_serialize_cross_validation_result_with_explicit_validators() -> None:
             }
         ],
         "model_validations": [
-            {"model": "validator-a", "criteria": "accuracy", "issues_found": 1},
+            {
+                "model": "validator-a",
+                "criteria": "accuracy",
+                "issues_found": 1,
+                "status": "completed",
+            },
             {
                 "model": "validator-without-issues",
                 "criteria": "none",
                 "issues_found": 0,
+                "status": "completed",
             },
         ],
         "recommendations": ["Improve the source"],
@@ -595,7 +650,11 @@ def test_serializer_derives_validator_order_from_issues() -> None:
 
     assert _serialize_cross_validation_result(result) == {
         "validation_result": "INVALID",
-        "validation_score": 0.73,
+        "validation_score": 0.75,
+        "validation_status": "complete",
+        "successful_validators": 2,
+        "validator_failures": [],
+        "criteria_scores": {},
         "validation_issues": [
             {
                 "criteria": "accuracy",
@@ -620,8 +679,18 @@ def test_serializer_derives_validator_order_from_issues() -> None:
             },
         ],
         "model_validations": [
-            {"model": "validator-z", "criteria": "multiple", "issues_found": 2},
-            {"model": "validator-a", "criteria": "consistency", "issues_found": 1},
+            {
+                "model": "validator-z",
+                "criteria": "multiple",
+                "issues_found": 2,
+                "status": "completed",
+            },
+            {
+                "model": "validator-a",
+                "criteria": "consistency",
+                "issues_found": 1,
+                "status": "completed",
+            },
         ],
         "recommendations": ["Improve the source"],
         "confidence": 0.73,
@@ -733,6 +802,8 @@ def test_serialize_ensemble_result_preserves_response_contract() -> None:
             },
         ],
         "model_assignments": {"shared-model": "Plan the target system"},
+        "quality_evaluation": "provided",
+        "heuristic_score": None,
         "reasoning_quality": {
             "overall_quality": 0.5,
             "consistency": 0.5,

@@ -163,7 +163,8 @@ async def test_peer_review_delegates_issue_report_building(
     failures = [Mock()]
     report = Mock(spec=ValidationReport)
     build_report = Mock(return_value=report)
-    collect_results = Mock(return_value=(issues, failures))
+    report.metadata = {}
+    collect_results = Mock(return_value=(issues, failures, {}))
     monkeypatch.setattr(
         validator,
         "_build_issue_validation_report",
@@ -181,7 +182,11 @@ async def test_peer_review_delegates_issue_report_building(
     )
 
     assert result is report
-    collect_results.assert_called_once_with([], validator_models)
+    collect_results.assert_called_once_with(
+        [],
+        validator_models,
+        [criterion.value for criterion in validator.config.criteria],
+    )
     build_report.assert_called_once_with(
         original_result,
         sample_task,
@@ -201,6 +206,7 @@ async def test_adversarial_delegates_issue_report_building(
 ):
     validator = CrossValidator(mock_model_provider)
     report = Mock(spec=ValidationReport)
+    report.metadata = {}
     build_report = Mock(return_value=report)
     monkeypatch.setattr(
         validator,

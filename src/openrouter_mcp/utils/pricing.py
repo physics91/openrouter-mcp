@@ -2,9 +2,35 @@
 
 from __future__ import annotations
 
+from math import isfinite
 from typing import Any, Optional
 
 from ..config.constants import PricingDefaults
+
+
+def validate_usage_tokens(usage: dict[str, Any]) -> None:
+    """Token accounting accepts nonnegative JSON integers only."""
+    for name, value in usage.items():
+        if name in {"prompt_tokens", "completion_tokens", "total_tokens"} and (
+            type(value) is not int or value < 0
+        ):
+            raise ValueError(f"Invalid token usage counter: {name}")
+
+
+def reported_usage_cost(usage: dict[str, Any]) -> float | None:
+    """Read authoritative response spending, including a legitimate zero charge."""
+    validate_usage_tokens(usage)
+    value = usage.get("cost")
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not isfinite(value)
+        or value < 0
+    ):
+        raise ValueError("Invalid reported usage cost")
+    return float(value)
 
 
 def parse_price(value: Any) -> float:
@@ -93,13 +119,16 @@ def estimate_cost_from_usage(
     usage: dict[str, int],
     pricing: dict[str, Any],
     default_price: float = PricingDefaults.DEFAULT_TOKEN_PRICE,
+    *,
+    pricing_is_normalized: bool = False,
 ) -> float:
-    """Estimate total cost from usage and pricing."""
+    """Estimate spending, preserving explicit per-token prices when normalized."""
     prompt_price = parse_price(pricing.get("prompt"))
     completion_price = parse_price(pricing.get("completion"))
-    prompt_price, completion_price = _fill_missing_prices(
-        prompt_price, completion_price, default_price
-    )
+    if not pricing_is_normalized:
+        prompt_price, completion_price = _fill_missing_prices(
+            prompt_price, completion_price, default_price
+        )
 
     prompt_tokens = usage.get("prompt_tokens", 0) or 0
     completion_tokens = usage.get("completion_tokens", 0) or 0
@@ -108,6 +137,8 @@ def estimate_cost_from_usage(
     if prompt_tokens == 0 and completion_tokens == 0 and total_tokens:
         prompt_tokens, completion_tokens = _split_tokens(total_tokens)
 
+    if pricing_is_normalized:
+        return prompt_tokens * prompt_price + completion_tokens * completion_price
     return cost_for_tokens(prompt_tokens, prompt_price) + cost_for_tokens(
         completion_tokens, completion_price
     )

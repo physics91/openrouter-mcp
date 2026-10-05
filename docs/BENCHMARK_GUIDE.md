@@ -17,8 +17,8 @@ Learn how to use the OpenRouter MCP Server's powerful benchmarking system to com
 The OpenRouter MCP Server benchmarking system provides:
 
 - 🏃‍♂️ **Multi-Model Performance Comparison**: Send identical prompts to multiple models for fair comparison
-- 📊 **Detailed Metric Collection**: Response time, token usage, costs, quality scores
-- 📈 **Intelligent Ranking**: Model ranking based on speed, cost, and quality
+- 📊 **Detailed Metric Collection**: Response time, token usage, and costs; unevaluated answer quality remains unknown
+- 📈 **Performance Ranking**: Model ranking based on measured speed, cost, and throughput
 - 📋 **Multiple Report Formats**: Export results as Markdown, CSV, or JSON
 - 🎯 **Category-Based Comparison**: Find the best models for chat, code, reasoning, etc.
 
@@ -58,10 +58,9 @@ comparison = await compare_model_categories(
 analysis = await compare_model_performance(
     models=["openai/gpt-4", "anthropic/claude-3-opus"],
     weights={
-        "speed": 0.2,
-        "cost": 0.3,
-        "quality": 0.4,
-        "throughput": 0.1
+        "speed": 0.3,
+        "cost": 0.5,
+        "throughput": 0.2
     }
 )
 ```
@@ -104,7 +103,7 @@ Compare top-performing models by category.
 **Parameters:**
 - `categories` (Optional[List[str]]): List of categories to compare
 - `top_n` (int): Number of top models to select per category (default: 3)
-- `metric` (str): Comparison metric (default: "overall")
+- `metric` (str): `overall`, `speed`, or `cost` (default: `overall`); `quality` is rejected until an answer evaluator is available
 
 **Example:**
 ```
@@ -129,12 +128,12 @@ Perform advanced weight-based model performance comparison.
 
 **Parameters:**
 - `models` (List[str]): List of model IDs to compare
-- `weights` (Optional[Dict[str, float]]): Weights for each metric
+- `weights` (Optional[Dict[str, float]]): Weights for speed, cost, and throughput; nonzero quality weights are rejected before model calls
 - `include_cost_analysis` (bool): Whether to include detailed cost analysis
 
 **Example:**
 ```
-Compare gpt-4 and claude-3-opus with weights: speed 20%, cost 30%, quality 50%
+Compare gpt-4 and claude-3-opus with weights: speed 30%, cost 50%, throughput 20%
 ```
 
 ## Python API Usage
@@ -183,7 +182,7 @@ async def advanced_benchmark():
     cache = handler.model_cache
     models = await cache.get_models()
 
-    # Select top 3 chat models
+    # Select 3 chat candidates by catalog metadata, not measured answer quality
     chat_models = cache.filter_models_by_metadata(category="chat")
     top_chat_models = sorted(
         chat_models,
@@ -227,16 +226,16 @@ asyncio.run(advanced_benchmark())
 - **Success Rate**: Percentage of successful requests
 
 ### Advanced Metrics
-- **Quality Score**: Combined evaluation of completeness, relevance, and language consistency (0-10)
+- **Quality Score**: `null` until an answer evaluator supplies a correctness/quality assessment. Text-shape heuristics are available as `text_heuristic_score` from `ResponseQualityAnalyzer` and must not be interpreted as accuracy.
 - **Throughput**: Tokens processed per second (tokens/second)
-- **Cost Efficiency**: Cost per quality point
+- **Cost Efficiency**: Cost per evaluated quality point, unavailable when quality is unknown
 - **Response Length**: Length of generated text
 - **Code Inclusion**: Whether response includes code examples
 
 ### Score Calculation
 - **Speed Score**: Normalized score based on response time (0-1)
 - **Cost Score**: Normalized score based on cost efficiency (0-1)
-- **Quality Score**: Normalized score based on response quality (0-1)
+- **Quality Score**: No automatic score from response length or word overlap. Default MCP rankings omit quality; explicit quality comparisons are rejected before model calls.
 - **Throughput Score**: Normalized score based on throughput (0-1)
 
 ## Report Formats
@@ -255,15 +254,14 @@ Summarizes results in a readable format.
 
 | Model | Avg Response Time | Avg Cost | Quality Score | Success Rate |
 |------|---------------|-----------|-----------|--------|
-| gpt-4 | 2.34s | $0.001230 | 9.2 | 100% |
-| claude-3-opus | 1.89s | $0.000980 | 9.1 | 100% |
-| gemini-pro | 1.23s | $0.000456 | 8.7 | 100% |
+| gpt-4 | 2.34s | $0.001230 | Not evaluated | 100% |
+| claude-3-opus | 1.89s | $0.000980 | Not evaluated | 100% |
+| gemini-pro | 1.23s | $0.000456 | Not evaluated | 100% |
 
 ## Overall Ranking
 
-1. **gpt-4**: Overall Score 8.9
-2. **claude-3-opus**: Overall Score 8.7
-3. **gemini-pro**: Overall Score 8.1
+Rankings use measured speed, cost, and throughput. These illustrative values
+do not establish which model answers correctly.
 ```
 
 ### 2. CSV Report
@@ -271,9 +269,9 @@ Ideal format for spreadsheet analysis.
 
 ```csv
 model_id,avg_response_time_ms,avg_cost,quality_score,success_rate,throughput
-gpt-4,2340,0.001230,9.2,1.0,98.5
-claude-3-opus,1890,0.000980,9.1,1.0,112.3
-gemini-pro,1230,0.000456,8.7,1.0,145.2
+gpt-4,2340,0.001230,,1.0,98.5
+claude-3-opus,1890,0.000980,,1.0,112.3
+gemini-pro,1230,0.000456,,1.0,145.2
 ```
 
 ### 3. JSON Report
@@ -293,17 +291,10 @@ Ideal format for programmatic processing.
       "metrics": {
         "avg_response_time_ms": 2340,
         "avg_cost": 0.001230,
-        "quality_score": 9.2
+        "quality_score": null
       }
     }
-  },
-  "ranking": [
-    {
-      "rank": 1,
-      "model_id": "gpt-4",
-      "overall_score": 8.9
-    }
-  ]
+  }
 }
 ```
 
@@ -317,22 +308,21 @@ Compare models based on different priorities:
 speed_focused = {
     "speed": 0.6,
     "cost": 0.2,
-    "quality": 0.2
+    "throughput": 0.2
 }
 
-# Quality-focused comparison
-quality_focused = {
-    "speed": 0.1,
-    "cost": 0.2,
-    "quality": 0.7
+# Cost-focused comparison
+cost_focused = {
+    "speed": 0.2,
+    "cost": 0.7,
+    "throughput": 0.1
 }
 
 # Balanced comparison
 balanced = {
-    "speed": 0.25,
-    "cost": 0.25,
-    "quality": 0.25,
-    "throughput": 0.25
+    "speed": 0.35,
+    "cost": 0.35,
+    "throughput": 0.30
 }
 ```
 
@@ -346,8 +336,8 @@ Use optimized prompts for each category:
 - **Image**: Image generation questions
 
 ### 3. Performance Analysis
-- **Cost Efficiency Analysis**: Find cost-optimized models for quality
-- **Performance Distribution Analysis**: Statistical distribution of response time, quality, throughput
+- **Cost Efficiency Analysis**: Quality-per-cost analysis is unavailable without evaluated quality scores
+- **Performance Distribution Analysis**: Statistical distribution of response time and throughput; quality is `null` when unevaluated
 - **Recommendation System**: Optimal model recommendations by use case
 
 ## Optimization Tips
@@ -425,7 +415,7 @@ print(f"Best performing model: {best_model[0]}")
 # Find models with good performance-to-cost ratio
 cost_efficient = await compare_model_performance(
     models=budget_models,
-    weights={"cost": 0.5, "quality": 0.4, "speed": 0.1}
+    weights={"cost": 0.7, "throughput": 0.2, "speed": 0.1}
 )
 
 print("Cost efficiency ranking:")
@@ -435,17 +425,17 @@ for rank in cost_efficient["ranking"]:
 
 ### 3. Finding Category Specialist Models
 ```python
-# Compare specialist models in each category
+# Compare response speed within each category; this does not assess expertise
 specialist_comparison = await compare_model_categories(
     categories=["chat", "code", "reasoning", "multimodal"],
     top_n=2,
-    metric="quality"
+    metric="speed"
 )
 
 for category, models in specialist_comparison["results"].items():
     print(f"\n{category.upper()} Specialists:")
     for model in models:
-        print(f"  - {model['model_id']}: {model['metrics']['quality_score']:.1f}")
+        print(f"  - {model['model_id']}: {model['metrics']['avg_response_time']:.2f}s")
 ```
 
 ### 4. Regular Performance Monitoring
@@ -499,3 +489,29 @@ Use this guide to fully leverage the powerful benchmarking features of the OpenR
 
 **Last Updated**: 2025-01-12
 **Version**: 1.4.0
+
+### Persisted measurements and historical reports
+
+CSV latency (`response_time`) uses milliseconds, and throughput uses tokens/second.
+JSON reload and CSV export preserve average cost, tokens, latency, throughput, and
+success rate; missing values are not replaced by measured zeros. History applies
+model filtering before the result limit and skips malformed files.
+
+Legacy quality numbers without `quality_evaluation: "provided"` are not accepted
+as answer evaluations. Library callers may supply a score from 0 to 1; its marker
+records that provenance only. The built-in benchmark still has no answer evaluator.
+
+Costs use the response's `usage.cost` when available. Otherwise they are estimates
+from catalog USD-per-token prices, excluding conditional pricing and other fees.
+Unavailable fallback pricing fails the measurement. Real zero-token samples are
+included in averages, and elapsed measurements use a monotonic clock.
+
+Category preselection with `metric: "cost"` orders available catalog prompt prices
+from lowest to highest. It does not divide an unevaluated quality heuristic by a
+price floor. Missing or invalid prices/latencies cannot outrank measured values
+as free or fast. Final benchmark spending still uses observed `usage.cost` where
+available; catalog preselection is not a prediction of the complete invoice.
+
+Category and weighted comparisons return `benchmark_status` (`complete`, `degraded`,
+or `failed`) and `failed_models` with per-model failure messages. An upstream rate
+limit or outage must not disappear into an unexplained empty comparison.

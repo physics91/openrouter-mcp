@@ -170,7 +170,7 @@ async def test_build_processing_result_preserves_pipeline_order_and_payloads() -
     assert result.processing_time == 1.25
     assert result.tokens_used == 17
     assert result.cost == 0.004
-    assert list(result.metadata) == ["usage", "response_metadata"]
+    assert list(result.metadata) == ["usage", "response_metadata", "finish_reason"]
     assert result.metadata["usage"] is usage
     assert result.metadata["response_metadata"] is response_metadata
     assert events == [
@@ -200,7 +200,11 @@ async def test_build_processing_result_preserves_no_choice_defaults() -> None:
     assert result.content == ""
     assert result.confidence == pytest.approx(0.5)
     assert result.tokens_used == 0
-    assert result.metadata == {"usage": {}, "response_metadata": {}}
+    assert result.metadata == {
+        "usage": {},
+        "response_metadata": {},
+        "finish_reason": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -240,18 +244,10 @@ async def test_process_task_delegates_response_and_elapsed_time_to_result_builde
     provider = OpenRouterModelProvider(client)
     task = TaskContext(task_id="task-1", content="test")
     expected = MagicMock()
-    start = MagicMock()
-    end = MagicMock()
-    duration = MagicMock()
-    end.__sub__.return_value = duration
-    duration.total_seconds.return_value = 1.25
-    fake_datetime = MagicMock()
-    fake_datetime.now.side_effect = [start, end]
-
     with patch.object(
         provider_module,
-        "datetime",
-        fake_datetime,
+        "perf_counter",
+        side_effect=[100, 101.25],
     ), patch.object(
         provider,
         "_build_processing_result",

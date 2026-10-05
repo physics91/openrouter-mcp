@@ -74,7 +74,9 @@ class TestToolDescriptionQuality:
     def test_all_tools_have_descriptions(self, tools):
         for tool in tools:
             assert tool.description, f"Tool '{tool.name}' has empty description"
-            assert len(tool.description) > 20, f"Tool '{tool.name}' description too short"
+            assert (
+                len(tool.description) > 20
+            ), f"Tool '{tool.name}' description too short"
 
     def test_ci_tools_no_wrapper_description(self, tools):
         for tool in tools:
@@ -87,7 +89,9 @@ class TestToolDescriptionQuality:
         for tool in tools:
             if tool.name in BENCHMARK_TOOLS:
                 has_korean = any("\uac00" <= c <= "\ud7a3" for c in tool.description)
-                assert not has_korean, f"Benchmark tool '{tool.name}' has Korean in description"
+                assert (
+                    not has_korean
+                ), f"Benchmark tool '{tool.name}' has Korean in description"
 
 
 class TestParameterDescriptions:
@@ -198,9 +202,13 @@ class TestCIParameterPassthrough:
         import inspect
         import textwrap
 
-        from openrouter_mcp.collective_intelligence.collaborative_solver import CollaborativeSolver
+        from openrouter_mcp.collective_intelligence.collaborative_solver import (
+            CollaborativeSolver,
+        )
 
-        source = textwrap.dedent(inspect.getsource(CollaborativeSolver._solve_iterative))
+        source = textwrap.dedent(
+            inspect.getsource(CollaborativeSolver._solve_iterative)
+        )
         tree = ast.parse(source)
         # Find the assignment: max_iterations = task.requirements.get("max_iterations", 3)
         found = any(
@@ -208,7 +216,9 @@ class TestCIParameterPassthrough:
             for node in ast.walk(tree)
             if isinstance(node, ast.Assign)
         )
-        assert found, "_solve_iterative should read max_iterations from task.requirements"
+        assert (
+            found
+        ), "_solve_iterative should read max_iterations from task.requirements"
 
     def test_validation_threshold_in_requirements(self):
         from openrouter_mcp.handlers.collective_intelligence import _build_requirements
@@ -229,9 +239,12 @@ class TestCIParameterPassthrough:
 
         provider = AsyncMock()
         # Config threshold is 0.7 (default), but task says 0.3
-        validator = CrossValidator(provider, config=ValidationConfig(confidence_threshold=0.7))
+        validator = CrossValidator(
+            provider, config=ValidationConfig(confidence_threshold=0.7)
+        )
 
         report = MagicMock(spec=ValidationReport)
+        report.metadata = {}
         report.issues = []
         report.overall_score = 0.5  # Fails 0.7 config, passes 0.3 task threshold
         report.consensus_level = 1.0

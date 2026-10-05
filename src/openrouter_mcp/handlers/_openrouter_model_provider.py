@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -14,7 +14,11 @@ if TYPE_CHECKING:
 from ..collective_intelligence import ModelInfo, ProcessingResult, TaskContext
 from ..collective_intelligence.base import ModelCapability
 from ..config.constants import ConsensusDefaults, ModelDefaults, PricingDefaults
-from ..utils.pricing import estimate_cost_from_usage, normalize_pricing
+from ..utils.pricing import (
+    estimate_cost_from_usage,
+    normalize_pricing,
+    reported_usage_cost,
+)
 
 logger = logging.getLogger(f"{__package__}.collective_intelligence")
 
@@ -101,6 +105,9 @@ class OpenRouterModelProvider:
             metadata={
                 "usage": usage,
                 "response_metadata": response.get("model", {}),
+                "finish_reason": (
+                    first_choice.get("finish_reason") if has_choice else None
+                ),
             },
         )
 
@@ -108,7 +115,7 @@ class OpenRouterModelProvider:
         self, task: TaskContext, model_id: str, **kwargs: Any
     ) -> ProcessingResult:
         """Process a task using the specified model."""
-        start_time = datetime.now()
+        start_time = perf_counter()
 
         try:
             messages, temperature, max_tokens_val = (
@@ -124,7 +131,7 @@ class OpenRouterModelProvider:
                 stream=False,
             )
 
-            processing_time = (datetime.now() - start_time).total_seconds()
+            processing_time = perf_counter() - start_time
 
             return await self._build_processing_result(
                 task,
@@ -237,6 +244,9 @@ class OpenRouterModelProvider:
         Returns:
             Estimated cost in USD
         """
+        reported = reported_usage_cost(usage)
+        if reported is not None:
+            return reported
         pricing = await self._get_model_pricing(model_id)
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
@@ -245,6 +255,7 @@ class OpenRouterModelProvider:
                 usage,
                 pricing,
                 PricingDefaults.DEFAULT_TOKEN_PRICE,
+                pricing_is_normalized=True,
             )
         )
         prompt_cost = prompt_tokens * pricing["prompt"]
@@ -261,7 +272,12 @@ class OpenRouterModelProvider:
 
     def _extract_cost(self, pricing: dict[str, Any]) -> float:
         """Extract cost per token from pricing information."""
-        normalized = normalize_pricing(pricing, PricingDefaults.DEFAULT_TOKEN_PRICE)
+        normalized = normalize_pricing(
+            pricing,
+            PricingDefaults.DEFAULT_TOKEN_PRICE,
+            normalize_units=False,
+            fill_missing="completion" not in pricing,
+        )
         return float(normalized.get("completion", PricingDefaults.DEFAULT_TOKEN_PRICE))
 
     def _estimate_capabilities(

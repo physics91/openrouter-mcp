@@ -31,6 +31,12 @@ from .benchmark import (
     EnhancedBenchmarkResult,
     ModelPerformanceAnalyzer,
 )
+from .benchmark_metrics import (
+    nonnegative_measurement,
+    supplied_quality_score,
+    validate_benchmark_inputs,
+    validate_performance_weights,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +48,12 @@ SUPPORTED_CATEGORY_METRICS = {"overall", "speed", "cost", "quality"}
 class ReportMetrics:
     """BenchmarkReportExporter와 호환되는 최소 메트릭 뷰."""
 
-    avg_response_time: float = 0.0
-    avg_cost: float = 0.0
-    quality_score: float = 0.0
-    throughput: float = 0.0
+    avg_response_time: float | None = None
+    avg_cost: float | None = None
+    quality_score: float | None = None
+    throughput: float | None = None
+    avg_total_tokens: float | None = None
+    success_rate: float | None = None
 
 
 @dataclass
@@ -72,13 +80,29 @@ def _deserialize_benchmark_report_results(
     """Convert successful benchmark payloads into report exporter views."""
     results: Dict[str, ReportResult] = {}
     for model_id, result_data in data.get("results", {}).items():
-        if result_data.get("success") and result_data.get("metrics"):
-            metrics_data = result_data.get("metrics", {})
+        metrics_data = result_data.get("metrics")
+        if not metrics_data and "response_time_ms" in result_data:
+            latency = nonnegative_measurement(result_data.get("response_time_ms"))
+            metrics_data = {
+                "avg_response_time": latency / 1000 if latency is not None else None,
+                "avg_cost": result_data.get("cost"),
+                "avg_total_tokens": result_data.get("tokens_used"),
+                "throughput": result_data.get("throughput_tokens_per_second"),
+                "quality_score": result_data.get("quality_score"),
+                "quality_evaluation": result_data.get("quality_evaluation"),
+            }
+        if result_data.get("success") and metrics_data:
             report_metrics = ReportMetrics(
-                avg_response_time=_to_float(metrics_data.get("avg_response_time"), 0.0),
-                avg_cost=_to_float(metrics_data.get("avg_cost"), 0.0),
-                quality_score=_to_float(metrics_data.get("quality_score"), 0.0),
-                throughput=_to_float(metrics_data.get("throughput"), 0.0),
+                avg_response_time=nonnegative_measurement(
+                    metrics_data.get("avg_response_time")
+                ),
+                avg_cost=nonnegative_measurement(metrics_data.get("avg_cost")),
+                quality_score=supplied_quality_score(metrics_data),
+                throughput=nonnegative_measurement(metrics_data.get("throughput")),
+                avg_total_tokens=nonnegative_measurement(
+                    metrics_data.get("avg_total_tokens")
+                ),
+                success_rate=nonnegative_measurement(metrics_data.get("success_rate")),
             )
             results[model_id] = ReportResult(
                 model_id=model_id,
@@ -97,18 +121,20 @@ def _extract_response_time_seconds(model: Dict[str, Any]) -> Optional[float]:
 
     for key in seconds_keys:
         if key in model:
-            return _to_float(model.get(key), 0.0)
+            return nonnegative_measurement(model.get(key))
 
     for key in millis_keys:
         if key in model:
-            return _to_float(model.get(key), 0.0) / 1000.0
+            value = nonnegative_measurement(model.get(key))
+            return value / 1000.0 if value is not None else None
 
     benchmark_meta = model.get("benchmark", {})
     if isinstance(benchmark_meta, dict):
         if "avg_response_time" in benchmark_meta:
-            return _to_float(benchmark_meta.get("avg_response_time"), 0.0)
+            return nonnegative_measurement(benchmark_meta.get("avg_response_time"))
         if "avg_response_time_ms" in benchmark_meta:
-            return _to_float(benchmark_meta.get("avg_response_time_ms"), 0.0) / 1000.0
+            value = nonnegative_measurement(benchmark_meta.get("avg_response_time_ms"))
+            return value / 1000.0 if value is not None else None
 
     return None
 
@@ -120,12 +146,12 @@ def _extract_prompt_price(model: Dict[str, Any]) -> Optional[float]:
         return None
     if "prompt" not in pricing:
         return None
-    return _to_float(pricing.get("prompt"), 0.0)
+    return nonnegative_measurement(pricing.get("prompt"))
 
 
 def _selection_score(model: Dict[str, Any], metric: str) -> float:
     """카테고리별 사전 모델 선택 점수 계산."""
-    quality_score = _to_float(model.get("quality_score"), 0.0)
+    quality_score = nonnegative_measurement(model.get("quality_score")) or 0.0
     response_time = _extract_response_time_seconds(model)
     prompt_price = _extract_prompt_price(model)
 
@@ -134,13 +160,13 @@ def _selection_score(model: Dict[str, Any], metric: str) -> float:
 
     if metric == "speed":
         if response_time is None:
-            return quality_score
+            return float("-inf")
         return -response_time
 
     if metric == "cost":
         if prompt_price is None:
-            return quality_score
-        return quality_score / max(prompt_price, 0.0001)
+            return float("-inf")
+        return -prompt_price
 
     # overall
     speed_component = 0.0
@@ -231,7 +257,7 @@ def _serialize_benchmark_ranking(
             "overall_score": score,
             "speed_score": result.metrics.speed_score if result.metrics else 0,
             "cost_score": result.metrics.cost_score if result.metrics else 0,
-            "quality_score": result.metrics.quality_score if result.metrics else 0,
+            "quality_score": result.metrics.quality_score if result.metrics else None,
             "throughput_score": (
                 result.metrics.throughput_score if result.metrics else 0
             ),
@@ -245,6 +271,21 @@ def _select_successful_benchmark_results(
 ) -> Dict[str, EnhancedBenchmarkResult]:
     """Select successful benchmark results in source order."""
     return {key: value for key, value in results.items() if value.success}
+
+
+def _benchmark_outcome(results: dict[str, EnhancedBenchmarkResult]) -> dict[str, Any]:
+    """Keep failed provider measurements visible when building comparisons."""
+    failures = {
+        model_id: result.error_message or "No usable benchmark measurement"
+        for model_id, result in results.items()
+        if not result.success
+    }
+    status = "complete"
+    if not results or len(failures) == len(results):
+        status = "failed"
+    elif failures:
+        status = "degraded"
+    return {"benchmark_status": status, "failed_models": failures}
 
 
 def _build_benchmark_data(
@@ -345,7 +386,7 @@ def _serialize_category_overall_ranking(
             "overall_score": score,
             "speed_score": result.metrics.speed_score if result.metrics else 0,
             "cost_score": result.metrics.cost_score if result.metrics else 0,
-            "quality_score": result.metrics.quality_score if result.metrics else 0,
+            "quality_score": result.metrics.quality_score if result.metrics else None,
         }
         for result, score in ranking[:10]
     ]
@@ -412,8 +453,9 @@ def _normalize_performance_weights(
     weights: Optional[Dict[str, float]],
 ) -> Dict[str, float]:
     if weights is None:
-        weights = {"speed": 0.2, "cost": 0.3, "quality": 0.4, "throughput": 0.1}
+        weights = {"speed": 0.3, "cost": 0.5, "throughput": 0.2}
 
+    validate_performance_weights(weights)
     total_weight = sum(weights.values())
     if total_weight > 0:
         return {key: value / total_weight for key, value in weights.items()}
@@ -512,10 +554,14 @@ async def benchmark_models(
         str, Field(description="Test prompt for benchmarking")
     ] = BenchmarkDefaults.DEFAULT_PROMPT,
     runs: Annotated[
-        int, Field(description="Number of runs per model for statistical accuracy")
+        int,
+        Field(ge=1, description="Number of runs per model for statistical accuracy"),
     ] = BenchmarkDefaults.DEFAULT_MCP_RUNS,
     delay_seconds: Annotated[
-        float, Field(description="Delay between API calls in seconds")
+        float,
+        Field(
+            ge=0, allow_inf_nan=False, description="Delay between API calls in seconds"
+        ),
     ] = BenchmarkDefaults.DEFAULT_DELAY_SECONDS,
     save_results: Annotated[
         bool, Field(description="Whether to save results to a file")
@@ -530,6 +576,7 @@ async def benchmark_models(
     response time, cost, quality, and throughput metrics with statistical ranking.
     """
     try:
+        validate_benchmark_inputs(models, runs, delay_seconds)
         handler = await get_benchmark_handler()
 
         logger.info(f"{len(models)}개 모델 벤치마킹 시작: {models}")
@@ -582,9 +629,11 @@ async def benchmark_models(
 
 async def get_benchmark_history(
     limit: Annotated[
-        int, Field(description="Maximum number of results to return")
+        int, Field(ge=1, description="Maximum number of results to return")
     ] = 10,
-    days_back: Annotated[int, Field(description="Number of days to look back")] = 30,
+    days_back: Annotated[
+        int, Field(ge=1, description="Number of days to look back")
+    ] = 30,
     model_filter: Annotated[
         Optional[str], Field(description="Filter results by model ID substring match")
     ] = None,
@@ -639,7 +688,10 @@ async def compare_model_categories(
         Field(description="Categories to compare (None for all categories)"),
     ] = None,
     top_n: Annotated[
-        int, Field(description="Number of top models to select per category")
+        int,
+        Field(
+            ge=1, strict=True, description="Number of top models to select per category"
+        ),
     ] = 3,
     metric: Annotated[
         Literal["overall", "speed", "cost", "quality"],
@@ -652,10 +704,16 @@ async def compare_model_categories(
     runs benchmarks on all of them, and returns a cross-category ranking.
     """
     # Defensive: also validates when called directly outside MCP schema validation
+    if type(top_n) is not int or top_n < 1:
+        raise BenchmarkError("top_n must be a positive integer")
     normalized_metric = metric.lower().strip()
     if normalized_metric not in SUPPORTED_CATEGORY_METRICS:
         supported = ", ".join(sorted(SUPPORTED_CATEGORY_METRICS))
         raise BenchmarkError(f"지원하지 않는 metric: {metric}. 지원 값: {supported}")
+    if normalized_metric == "quality":
+        raise BenchmarkError(
+            "Quality comparison requires an answer evaluator; use speed, cost, or overall"
+        )
 
     try:
         handler = await get_benchmark_handler()
@@ -700,6 +758,7 @@ async def compare_model_categories(
 
         comparison_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
+            **_benchmark_outcome(results),
             "config": {
                 "categories": categories or list(category_models.keys()),
                 "top_n": top_n,
@@ -882,7 +941,7 @@ async def compare_model_performance(
     weights: Annotated[
         Optional[Dict[str, float]],
         Field(
-            description="Metric weights, e.g. {'speed': 0.2, 'cost': 0.3, 'quality': 0.4, 'throughput': 0.1}"
+            description="Metric weights, e.g. {'speed': 0.3, 'cost': 0.5, 'throughput': 0.2}. Quality weights require an answer evaluator and are currently unsupported."
         ),
     ] = None,
     include_cost_analysis: Annotated[
@@ -896,8 +955,17 @@ async def compare_model_performance(
     actionable recommendations.
     """
     try:
-        handler = await get_benchmark_handler()
+        validate_benchmark_inputs(
+            models,
+            BenchmarkDefaults.PERFORMANCE_COMPARE_RUNS,
+            BenchmarkDefaults.PERFORMANCE_COMPARE_DELAY,
+        )
+        if weights and weights.get("quality", 0) != 0:
+            raise BenchmarkError(
+                "Quality comparison requires an answer evaluator; omit the quality weight"
+            )
         weights = _normalize_performance_weights(weights)
+        handler = await get_benchmark_handler()
 
         logger.info(f"고급 성능 비교 시작: {models}")
         logger.info(f"가중치: {weights}")
@@ -915,7 +983,11 @@ async def compare_model_performance(
         successful_results = _select_successful_benchmark_results(results)
 
         if not successful_results:
-            return {"error": "성공한 벤치마크 결과가 없습니다.", "models": models}
+            return {
+                "error": "성공한 벤치마크 결과가 없습니다.",
+                "models": models,
+                **_benchmark_outcome(results),
+            }
 
         comparison_data = _build_performance_comparison_data(
             successful_results,
@@ -923,6 +995,7 @@ async def compare_model_performance(
             weights,
             include_cost_analysis,
         )
+        comparison_data.update(_benchmark_outcome(results))
 
         logger.info(f"고급 성능 비교 완료: {len(successful_results)} 모델 분석")
         return comparison_data
@@ -985,13 +1058,19 @@ def _read_benchmark_files(
 
     # 시간순 정렬 (최신 먼저)
     recent_files.sort(key=lambda x: x[2], reverse=True)
-    recent_files = recent_files[:limit]
+    if limit <= 0:
+        return []
 
     history: List[Dict[str, Any]] = []
     for filename, filepath, file_time in recent_files:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
+
+            if not isinstance(data, dict) or not isinstance(data.get("results"), dict):
+                raise TypeError("Expected an object containing benchmark results")
+            if any(not isinstance(result, dict) for result in data["results"].values()):
+                raise TypeError("Expected object entries in benchmark results")
 
             # 모델 필터 적용
             if model_filter:
@@ -1003,8 +1082,10 @@ def _read_benchmark_files(
 
             # 요약 정보 생성
             history.append(_build_benchmark_history_entry(filename, file_time, data))
+            if len(history) >= limit:
+                break
 
-        except (json.JSONDecodeError, OSError, KeyError) as e:
+        except (ValueError, TypeError, AttributeError, OSError, KeyError) as e:
             logger.warning(f"파일 {filename} 읽기 실패: {e}")
             continue
 
@@ -1014,9 +1095,13 @@ def _read_benchmark_files(
 def _calculate_avg_response_time(results: Dict[str, Any]) -> Optional[float]:
     """결과들의 평균 응답 시간 계산"""
     times = [
-        result["metrics"].get("avg_response_time", 0)
+        value
         for result in results.values()
-        if result.get("success") and result.get("metrics")
+        if result.get("success") and isinstance(result.get("metrics"), dict)
+        if (
+            value := nonnegative_measurement(result["metrics"].get("avg_response_time"))
+        )
+        is not None
     ]
 
     return sum(times) / len(times) if times else None
@@ -1025,12 +1110,12 @@ def _calculate_avg_response_time(results: Dict[str, Any]) -> Optional[float]:
 def _get_best_model(results: Dict[str, Any]) -> Optional[str]:
     """최고 품질 점수 모델 찾기"""
     best_model = None
-    best_score = 0
+    best_score = -1.0
 
     for model_id, result in results.items():
         if result.get("success") and result.get("metrics"):
-            quality_score = result["metrics"].get("quality_score", 0)
-            if quality_score > best_score:
+            quality_score = supplied_quality_score(result["metrics"])
+            if quality_score is not None and quality_score > best_score:
                 best_score = quality_score
                 best_model = model_id
 
@@ -1055,7 +1140,11 @@ def _analyze_cost_efficiency(results: Dict[str, Any]) -> Dict[str, Any]:
     cost_data = []
 
     for model_id, result in results.items():
-        if result.success and result.metrics:
+        if (
+            result.success
+            and result.metrics
+            and result.metrics.quality_score is not None
+        ):
             quality_per_cost = result.metrics.quality_score / max(
                 result.metrics.avg_cost, 0.0001
             )
@@ -1101,7 +1190,8 @@ def _analyze_performance_distribution(results: Dict[str, Any]) -> Dict[str, Any]
     for result in results.values():
         if result.success and result.metrics:
             response_times.append(result.metrics.avg_response_time)
-            quality_scores.append(result.metrics.quality_score)
+            if result.metrics.quality_score is not None:
+                quality_scores.append(result.metrics.quality_score)
             throughputs.append(result.metrics.throughput)
 
     if not response_times:
@@ -1114,12 +1204,16 @@ def _analyze_performance_distribution(results: Dict[str, Any]) -> Dict[str, Any]
             "max": max(response_times),
             "std": _calculate_std(response_times),
         },
-        "quality": {
-            "avg": sum(quality_scores) / len(quality_scores),
-            "min": min(quality_scores),
-            "max": max(quality_scores),
-            "std": _calculate_std(quality_scores),
-        },
+        "quality": (
+            {
+                "avg": sum(quality_scores) / len(quality_scores),
+                "min": min(quality_scores),
+                "max": max(quality_scores),
+                "std": _calculate_std(quality_scores),
+            }
+            if quality_scores
+            else None
+        ),
         "throughput": {
             "avg": sum(throughputs) / len(throughputs),
             "min": min(throughputs),
@@ -1170,6 +1264,13 @@ def _build_primary_metric_recommendation(
         }
 
     if metric_name == "quality":
+        ranking = [
+            item
+            for item in ranking
+            if item[0].metrics and item[0].metrics.quality_score is not None
+        ]
+        if not ranking:
+            return None
         highest_quality = max(
             ranking, key=lambda x: x[0].metrics.quality_score if x[0].metrics else 0
         )

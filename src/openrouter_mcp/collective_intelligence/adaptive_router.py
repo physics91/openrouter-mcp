@@ -409,7 +409,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
         Returns:
             RoutingDecision with selected model and metadata
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         try:
             # Get strategy for this routing
@@ -460,7 +460,7 @@ class AdaptiveRouter(CollectiveIntelligenceComponent):
             )
 
             # Create routing decision
-            routing_time = time.time() - start_time
+            routing_time = time.perf_counter() - start_time
             decision = RoutingDecision(
                 task_id=task.task_id,
                 selected_model_id=selected_model_id,

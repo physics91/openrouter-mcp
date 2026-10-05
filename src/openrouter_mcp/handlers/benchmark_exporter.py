@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, TextIO
 
 from ..utils._atomic_file import replace_file_atomically
+from .benchmark_metrics import metric_value, supplied_quality_score
 
 
 def _success_value(result: Any) -> Any:
@@ -40,16 +41,19 @@ def _render_enhanced_markdown_metrics(result: Any) -> list[str]:
     """Render metrics exposed by the enhanced benchmark result."""
     lines = []
     if hasattr(result, "metrics") and result.metrics:
-        if hasattr(result.metrics, "avg_response_time"):
-            lines.append(
-                f"- **Avg Response Time**: {result.metrics.avg_response_time:.2f}s"
-            )
-        if hasattr(result.metrics, "avg_cost"):
-            lines.append(f"- **Avg Cost**: ${result.metrics.avg_cost:.6f}")
-        if hasattr(result.metrics, "quality_score"):
-            lines.append(f"- **Quality Score**: {result.metrics.quality_score:.2f}")
-        if hasattr(result.metrics, "throughput"):
-            lines.append(f"- **Throughput**: {result.metrics.throughput:.2f} tokens/s")
+        latency = metric_value(result.metrics, "avg_response_time")
+        cost = metric_value(result.metrics, "avg_cost")
+        throughput = metric_value(result.metrics, "throughput")
+        if latency is not None:
+            lines.append(f"- **Avg Response Time**: {latency:.2f}s")
+        if cost is not None:
+            lines.append(f"- **Avg Cost**: ${cost:.6f}")
+        if metric_value(result.metrics, "quality_score", "absent") != "absent":
+            quality = supplied_quality_score(result.metrics)
+            rendered = f"{quality:.2f}" if quality is not None else "Not evaluated"
+            lines.append(f"- **Quality Score**: {rendered}")
+        if throughput is not None:
+            lines.append(f"- **Throughput**: {throughput:.2f} tokens/s")
     return lines
 
 
@@ -98,32 +102,56 @@ def _serialize_json_result(model_id: str, result: Any) -> dict[str, Any]:
         result_data["cost"] = result.cost
     if hasattr(result, "tokens_used"):
         result_data["tokens_used"] = result.tokens_used
+    if hasattr(result, "throughput_tokens_per_second"):
+        result_data["throughput_tokens_per_second"] = (
+            result.throughput_tokens_per_second
+        )
+    if hasattr(result, "quality_score"):
+        quality = supplied_quality_score(result)
+        result_data["quality_score"] = quality
+        result_data["quality_evaluation"] = (
+            "provided" if quality is not None else "not_evaluated"
+        )
 
     if hasattr(result, "metrics") and result.metrics:
+        quality = supplied_quality_score(result.metrics)
         result_data["metrics"] = {
-            "avg_response_time": getattr(result.metrics, "avg_response_time", 0),
-            "avg_cost": getattr(result.metrics, "avg_cost", 0),
-            "quality_score": getattr(result.metrics, "quality_score", 0),
-            "throughput": getattr(result.metrics, "throughput", 0),
-            "avg_total_tokens": getattr(result.metrics, "avg_total_tokens", 0),
-            "success_rate": getattr(result.metrics, "success_rate", 1.0),
+            "avg_response_time": metric_value(result.metrics, "avg_response_time"),
+            "avg_cost": metric_value(result.metrics, "avg_cost"),
+            "quality_score": quality,
+            "quality_evaluation": (
+                "provided" if quality is not None else "not_evaluated"
+            ),
+            "throughput": metric_value(result.metrics, "throughput"),
+            "avg_total_tokens": metric_value(result.metrics, "avg_total_tokens"),
+            "success_rate": metric_value(result.metrics, "success_rate"),
         }
 
     return result_data
 
 
 def _serialize_csv_result(model_id: str, result: Any) -> dict[str, Any]:
-    """Serialize one benchmark result as a CSV row."""
+    """Serialize a CSV row with latency in milliseconds for both result types."""
+    metrics = getattr(result, "metrics", None)
+    latency = metric_value(metrics, "avg_response_time")
     return {
         "model_id": model_id,
-        "success": result.success if hasattr(result, "success") else True,
+        "success": _success_value(result),
         "response_time": (
-            result.response_time_ms if hasattr(result, "response_time_ms") else 0
+            latency * 1000
+            if latency is not None
+            else getattr(result, "response_time_ms", None)
         ),
-        "cost": result.cost if hasattr(result, "cost") else 0,
-        "quality_score": 0,
-        "throughput": 0,
-        "tokens_used": result.tokens_used if hasattr(result, "tokens_used") else 0,
+        "cost": metric_value(metrics, "avg_cost", getattr(result, "cost", None)),
+        "quality_score": supplied_quality_score(
+            metrics if metrics is not None else result
+        ),
+        "throughput": metric_value(
+            metrics, "throughput", getattr(result, "throughput_tokens_per_second", None)
+        ),
+        "tokens_used": metric_value(
+            metrics, "avg_total_tokens", getattr(result, "tokens_used", None)
+        ),
         "response_length": (
             len(result.response)
             if hasattr(result, "response") and result.response

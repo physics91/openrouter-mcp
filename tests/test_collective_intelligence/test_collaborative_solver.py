@@ -248,10 +248,18 @@ class TestCollaborativeSolver:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.AdaptiveRouter")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator")
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.AdaptiveRouter"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator"
+    )
     async def test_solve_sequential_strategy(
         self,
         mock_cross_validator_class,
@@ -269,9 +277,11 @@ class TestCollaborativeSolver:
         mock_router_class.return_value = mock_router
 
         mock_ensemble = AsyncMock()
-        mock_ensemble_result = Mock()
+        mock_ensemble_result = Mock(success_rate=1.0)
         mock_ensemble_result.final_content = "Ensemble solution"
-        mock_ensemble_result.sub_task_results = [Mock(success=True, result=Mock(confidence=0.9))]
+        mock_ensemble_result.sub_task_results = [
+            Mock(success=True, result=Mock(confidence=0.9))
+        ]
         mock_ensemble_result.success_rate = 0.9
         mock_ensemble.process.return_value = mock_ensemble_result
         mock_ensemble_class.return_value = mock_ensemble
@@ -297,8 +307,12 @@ class TestCollaborativeSolver:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner")
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner"
+    )
     async def test_solve_parallel_strategy(
         self,
         mock_ensemble_class,
@@ -310,7 +324,7 @@ class TestCollaborativeSolver:
 
         # Setup mocks
         mock_ensemble = AsyncMock()
-        mock_ensemble_result = Mock()
+        mock_ensemble_result = Mock(success_rate=1.0)
         mock_ensemble_result.final_content = "Ensemble solution"
         mock_ensemble_result.success_rate = 0.8
         mock_ensemble.process.return_value = mock_ensemble_result
@@ -333,10 +347,18 @@ class TestCollaborativeSolver:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.AdaptiveRouter")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator")
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.AdaptiveRouter"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator"
+    )
     async def test_solve_hierarchical_strategy(
         self,
         mock_cross_validator_class,
@@ -354,9 +376,11 @@ class TestCollaborativeSolver:
         mock_router_class.return_value = mock_router
 
         mock_ensemble = AsyncMock()
-        mock_ensemble_result = Mock()
+        mock_ensemble_result = Mock(success_rate=1.0)
         mock_ensemble_result.final_content = "Hierarchical solution"
-        mock_ensemble_result.sub_task_results = [Mock(success=True, result=Mock(confidence=0.9))]
+        mock_ensemble_result.sub_task_results = [
+            Mock(success=True, result=Mock(confidence=0.9))
+        ]
         mock_ensemble.process.return_value = mock_ensemble_result
         mock_ensemble_class.return_value = mock_ensemble
 
@@ -371,16 +395,24 @@ class TestCollaborativeSolver:
 
         solver = CollaborativeSolver(mock_model_provider)
 
-        result = await solver.process(sample_task, strategy=SolvingStrategy.HIERARCHICAL)
+        result = await solver.process(
+            sample_task, strategy=SolvingStrategy.HIERARCHICAL
+        )
 
         assert isinstance(result, SolvingResult)
         assert result.final_content == "Hierarchical solution"
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner")
-    @patch("src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator")
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.ConsensusEngine"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.EnsembleReasoner"
+    )
+    @patch(
+        "src.openrouter_mcp.collective_intelligence.collaborative_solver.CrossValidator"
+    )
     async def test_solve_iterative_strategy(
         self,
         mock_cross_validator_class,
@@ -393,7 +425,7 @@ class TestCollaborativeSolver:
 
         # Setup mocks
         mock_ensemble = AsyncMock()
-        mock_ensemble_result = Mock()
+        mock_ensemble_result = Mock(success_rate=1.0)
         mock_ensemble_result.final_content = "Iterative solution iteration 1"
         mock_ensemble.process.return_value = mock_ensemble_result
         mock_ensemble_class.return_value = mock_ensemble
@@ -407,7 +439,9 @@ class TestCollaborativeSolver:
         # Mock validator to trigger improvement in first iteration
         mock_validator = AsyncMock()
         validation_results = [
-            Mock(is_valid=False, validation_confidence=0.6),  # First iteration needs improvement
+            Mock(
+                is_valid=False, validation_confidence=0.6
+            ),  # First iteration needs improvement
             Mock(is_valid=True, validation_confidence=0.9),  # Second iteration is good
         ]
         mock_validator.process.side_effect = validation_results
@@ -433,7 +467,7 @@ class TestCollaborativeSolver:
         solver.cross_validator = AsyncMock()
 
         solver.ensemble_reasoner.process.return_value = Mock(
-            final_content="Stable iterative solution"
+            final_content="Stable iterative solution", success_rate=1.0
         )
         solver.consensus_engine.process.return_value = Mock(
             consensus_content="Stable iterative solution"
@@ -542,8 +576,9 @@ class TestCollaborativeSolver:
         assert isinstance(result, SolvingResult)
         assert result.session == session
         assert result.final_content == final_content
-        assert 0.0 <= result.confidence_score <= 1.0
-        assert isinstance(result.quality_assessment, QualityMetrics)
+        assert result.confidence_score is None
+        assert result.quality_assessment is None
+        assert result.metadata["validation_status"] == "not_evaluated"
         assert isinstance(result.solution_path, list)
         assert len(result.solution_path) == 3  # router, ensemble, validator
         assert isinstance(result.component_contributions, dict)
@@ -691,17 +726,24 @@ class TestCollaborativeSolver:
                 total_processing_time=0.1,
             )
 
-        with patch.object(solver, "_solve_sequential", side_effect=mock_solve_side_effect):
+        with patch.object(
+            solver, "_solve_sequential", side_effect=mock_solve_side_effect
+        ):
             # Process all tasks concurrently
             results = await asyncio.gather(
-                *[solver.process(task, strategy=SolvingStrategy.SEQUENTIAL) for task in tasks],
+                *[
+                    solver.process(task, strategy=SolvingStrategy.SEQUENTIAL)
+                    for task in tasks
+                ],
                 return_exceptions=True,
             )
 
             # All should succeed
             assert len(results) == 3
             assert all(isinstance(result, SolvingResult) for result in results)
-            assert len(set(result.final_content for result in results)) == 3  # All unique
+            assert (
+                len(set(result.final_content for result in results)) == 3
+            )  # All unique
 
             # All sessions should be completed
             assert len(solver.active_sessions) == 0
@@ -743,7 +785,9 @@ class TestCollaborativeSolver:
             mock_solve.return_value = mock_result
 
             start_time = datetime.now()
-            result = await solver.process(sample_task, strategy=SolvingStrategy.ADAPTIVE)
+            result = await solver.process(
+                sample_task, strategy=SolvingStrategy.ADAPTIVE
+            )
             end_time = datetime.now()
 
             processing_time = (end_time - start_time).total_seconds()
@@ -753,7 +797,9 @@ class TestCollaborativeSolver:
             assert isinstance(result, SolvingResult)
 
     @pytest.mark.unit
-    def test_component_contributions_calculation(self, mock_model_provider, sample_task):
+    def test_component_contributions_calculation(
+        self, mock_model_provider, sample_task
+    ):
         """Test calculation of component contributions."""
         solver = CollaborativeSolver(mock_model_provider)
 
@@ -787,13 +833,19 @@ class TestCollaborativeSolver:
 
     @pytest.mark.asyncio
     @pytest.mark.edge_case
-    async def test_solving_with_all_component_failures(self, mock_model_provider, sample_task):
+    async def test_solving_with_all_component_failures(
+        self, mock_model_provider, sample_task
+    ):
         """Test solving when all components fail."""
         solver = CollaborativeSolver(mock_model_provider)
 
         # Patch solver's instance components directly to fail
-        solver.ensemble_reasoner.process = AsyncMock(side_effect=Exception("Ensemble failed"))
-        solver.adaptive_router.process = AsyncMock(side_effect=Exception("Router failed"))
+        solver.ensemble_reasoner.process = AsyncMock(
+            side_effect=Exception("Ensemble failed")
+        )
+        solver.adaptive_router.process = AsyncMock(
+            side_effect=Exception("Router failed")
+        )
 
         with pytest.raises(Exception):
             await solver.process(sample_task, strategy=SolvingStrategy.SEQUENTIAL)

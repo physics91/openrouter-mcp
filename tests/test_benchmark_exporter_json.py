@@ -102,11 +102,12 @@ def test_serialize_json_result_preserves_enhanced_metric_defaults():
         "error_message": None,
         "metrics": {
             "avg_response_time": 1.25,
-            "avg_cost": 0,
+            "avg_cost": None,
             "quality_score": 0.91,
-            "throughput": 0,
-            "avg_total_tokens": 0,
-            "success_rate": 1.0,
+            "quality_evaluation": "provided",
+            "throughput": None,
+            "avg_total_tokens": None,
+            "success_rate": None,
         },
     }
 

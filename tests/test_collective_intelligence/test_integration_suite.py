@@ -25,6 +25,7 @@ from src.openrouter_mcp.collective_intelligence.cross_validator import CrossVali
 from src.openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     EnsembleReasoner,
 )
+from tests.fixtures.collective_payloads import structured_peer_review
 
 
 @pytest.mark.integration
@@ -76,10 +77,15 @@ class TestCollectiveIntelligenceIntegration:
             # Simulate processing delay
             await asyncio.sleep(0.01)  # Small delay for realism
 
+            content = f"{base_response} Task: {task.content[:100]}..."
+            if task.metadata.get("validation_type") == "peer_review":
+                content = structured_peer_review(
+                    task.requirements.get("validation_criteria")
+                )
             return ProcessingResult(
                 task_id=task.task_id,
                 model_id=model_id,
-                content=f"{base_response} Task: {task.content[:100]}...",
+                content=content,
                 confidence=char["confidence"],
                 processing_time=char["time"],
                 tokens_used=len(task.content) // 4,
@@ -274,6 +280,7 @@ class TestCollectiveIntelligenceIntegration:
                 results[strategy] = {
                     "success": True,
                     "confidence": result.confidence_score,
+                    "validation_status": result.metadata["validation_status"],
                     "content_length": len(result.final_content),
                     "processing_time": result.total_processing_time,
                     "components_used": len(result.component_contributions),
@@ -288,7 +295,10 @@ class TestCollectiveIntelligenceIntegration:
         # Verify quality across successful strategies
         for strategy in successful_strategies:
             result = results[strategy]
-            assert result["confidence"] > 0.0
+            if result["validation_status"] == "not_evaluated":
+                assert result["confidence"] is None
+            else:
+                assert result["confidence"] > 0.0
             assert result["content_length"] > 0
             assert result["components_used"] > 0
 

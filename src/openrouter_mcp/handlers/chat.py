@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Import shared MCP instance and client manager from registry
 from ..mcp_registry import get_openrouter_client, mcp
@@ -39,11 +39,21 @@ class UsageStatsRequest(BaseModel):
     """Request for usage statistics."""
 
     start_date: Optional[str] = Field(
-        None, description="Start date for usage tracking (YYYY-MM-DD)"
+        None,
+        description="Deprecated: arbitrary date ranges are unsupported; omit this field",
     )
     end_date: Optional[str] = Field(
-        None, description="End date for usage tracking (YYYY-MM-DD)"
+        None,
+        description="Deprecated: arbitrary date ranges are unsupported; omit this field",
     )
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def reject_date_range(cls, value: str | None) -> None:
+        if value is not None:
+            raise ValueError(
+                "API-key usage does not support arbitrary date ranges; omit start_date/end_date"
+            )
 
 
 async def _stream_chat_with_thrift_metadata(
@@ -209,30 +219,27 @@ async def list_available_models(request: ModelListRequest) -> list[dict[str, Any
 @mcp.tool()
 async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
     """
-    Get API usage statistics from OpenRouter.
+    Get spending counters for the authenticated OpenRouter API key.
 
-    This tool retrieves usage statistics for your OpenRouter API account,
-    including total costs, token usage, and request counts. You can optionally
-    specify a date range to get statistics for a specific period.
+    Returns cumulative spending and current UTC day/week/month counters from
+    GET /key, plus separately scoped local runtime thrift savings. Arbitrary
+    start_date/end_date ranges are rejected. This is not account-wide activity.
 
     Args:
-        request: Usage stats request with optional date range
+        request: Usage stats request; omit start_date and end_date
 
     Returns:
         Dictionary containing usage statistics:
         - total_cost: Total cost in USD
-        - total_tokens: Total tokens used
-        - requests: Number of API requests made
-        - models: List of models used
+        - scope: api_key
+        - usage_daily/usage_weekly/usage_monthly: Current UTC-period spending
+        - total_tokens/requests/models: null (not provided by this endpoint)
 
     Raises:
         OpenRouterError: If the API request fails
 
     Example:
-        request = UsageStatsRequest(
-            start_date="2024-01-01",
-            end_date="2024-01-31"
-        )
+        request = UsageStatsRequest()
         stats = await get_usage_stats(request)
     """
     logger.info(
@@ -249,11 +256,19 @@ async def get_usage_stats(request: UsageStatsRequest) -> dict[str, Any]:
         if not isinstance(stats, dict):
             raise ValueError("Invalid usage stats response format")
         stats = dict(stats)
+        stats["thrift_scope"] = "local_runtime"
         thrift_metrics = get_thrift_metrics_snapshot_for_dates(
             request.start_date,
             request.end_date,
         )
         stats = attach_thrift_metadata_from_payload(stats, thrift_metrics)
+        if stats.get("scope") == "api_key":
+            # Local savings and key-wide spending may cover different clients,
+            # credentials, and periods; combining them would invent a savings rate.
+            stats["thrift_summary"]["estimated_cost_without_thrift_usd"] = None
+            stats["thrift_summary"]["effective_cost_reduction_pct"] = None
+            for name in ("cache_hit_request_rate_pct", "cache_write_request_rate_pct"):
+                stats["thrift_summary"]["cache_efficiency"][name] = None
         logger.info(
             f"Retrieved usage stats: {stats.get('total_cost', 'unknown')} USD total cost"
         )

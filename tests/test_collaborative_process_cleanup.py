@@ -58,7 +58,7 @@ async def test_process_cancellation_discards_active_session_and_releases_control
 
 @pytest.mark.asyncio
 async def test_process_discards_successful_session_before_storage():
-    result = object()
+    result = SimpleNamespace(final_content="Answer", total_processing_time=0.0)
     solver = _bare_solver(None)
     solver._execute_solving_strategy.return_value = result
     task = TaskContext(task_id="successful-task", content="work")

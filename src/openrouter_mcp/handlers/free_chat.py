@@ -25,6 +25,7 @@ from ..runtime_thrift import (
     thrift_request_scope,
 )
 from ..utils.async_utils import collect_async_iterable
+from ..utils.pricing import reported_usage_cost
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +122,17 @@ class FreeChatRequest(BaseModel):
         default_factory=list, description="Previous conversation messages"
     )
     max_tokens: int = Field(
-        FreeChatConfig.MAX_TOKENS, description="Maximum tokens to generate"
+        FreeChatConfig.MAX_TOKENS,
+        ge=1,
+        strict=True,
+        description="Maximum tokens to generate",
     )
     temperature: float = Field(
-        ModelDefaults.TEMPERATURE, description="Sampling temperature"
+        ModelDefaults.TEMPERATURE,
+        ge=0,
+        le=2,
+        allow_inf_nan=False,
+        description="Sampling temperature",
     )
     preferred_models: list[str] = Field(
         default_factory=list, description="Preferred free model IDs (optional override)"
@@ -352,6 +360,14 @@ async def _build_result(
     """Record metrics and build the final response dictionary."""
     actual_model = exec_result.get("actual_model") or model_id
     usage = exec_result["usage"]
+    content = exec_result["content"]
+    if not isinstance(content, str) or not content.strip():
+        raise OpenRouterError("Free model did not return a nonempty text response")
+    charged = reported_usage_cost(usage)
+    if charged is not None and charged > 0:
+        raise RuntimeError(
+            "Provider reported a charge for a free-model request; stopping retries"
+        )
     total_tokens = usage.get("total_tokens", 0)
     metrics.record_success(actual_model, elapsed_ms, total_tokens)
     return await enrich_response_with_request_thrift_metadata(

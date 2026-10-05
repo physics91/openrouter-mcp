@@ -14,19 +14,47 @@
     "quality_metrics"
   ],
   "properties": {
-    "validation_result": {"type": "string", "enum": ["VALID", "INVALID"]},
-    "validation_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "validation_result": {
+      "type": "string",
+      "enum": [
+        "VALID",
+        "INVALID"
+      ]
+    },
+    "validation_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "validation_issues": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["criteria", "severity", "description", "suggestion", "confidence"],
+        "required": [
+          "criteria",
+          "severity",
+          "description",
+          "suggestion",
+          "confidence"
+        ],
         "properties": {
-          "criteria": {"type": "string"},
-          "severity": {"type": "string"},
-          "description": {"type": "string"},
-          "suggestion": {"type": "string"},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+          "criteria": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
         },
         "additionalProperties": true
       }
@@ -35,30 +63,115 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["model", "criteria", "issues_found"],
+        "required": [
+          "model",
+          "criteria",
+          "issues_found"
+        ],
         "properties": {
-          "model": {"type": "string"},
-          "criteria": {"type": "string"},
-          "issues_found": {"type": "integer", "minimum": 0}
+          "model": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "string"
+          },
+          "issues_found": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed"
+            ]
+          }
         },
         "additionalProperties": true
       }
     },
     "recommendations": {
       "type": "array",
-      "items": {"type": "string"}
+      "items": {
+        "type": "string"
+      }
     },
-    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-    "processing_time": {"type": "number", "minimum": 0},
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "processing_time": {
+      "type": "number",
+      "minimum": 0
+    },
     "quality_metrics": {
       "type": "object",
-      "required": ["overall_score", "accuracy", "consistency"],
+      "required": [
+        "overall_score",
+        "accuracy",
+        "consistency"
+      ],
       "properties": {
-        "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
-        "accuracy": {"type": "number", "minimum": 0, "maximum": 1},
-        "consistency": {"type": "number", "minimum": 0, "maximum": 1}
+        "overall_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "accuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "consistency": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       },
       "additionalProperties": true
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "degraded",
+        "incomplete"
+      ]
+    },
+    "successful_validators": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "validator_failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "validator_model_id",
+          "criteria",
+          "error"
+        ],
+        "properties": {
+          "validator_model_id": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "criteria_scores": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
     }
   },
   "additionalProperties": true

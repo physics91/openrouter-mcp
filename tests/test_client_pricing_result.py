@@ -52,7 +52,9 @@ def test_build_model_pricing_result_preserves_available_price_policy(
             "source": "api",
         },
     }
-    assert normalize.call_args_list == [call(pricing, fill_missing=False)]
+    assert normalize.call_args_list == [
+        call(pricing, normalize_units=False, fill_missing=False)
+    ]
     assert normalize.call_args.args[0] is pricing
 
 

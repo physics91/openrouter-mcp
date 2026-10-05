@@ -39,8 +39,8 @@ def test_serialize_csv_result_preserves_full_row_contract():
         "success": False,
         "response_time": 12.5,
         "cost": 0.004,
-        "quality_score": 0,
-        "throughput": 0,
+        "quality_score": None,
+        "throughput": None,
         "tokens_used": 17,
         "response_length": 8,
     }
@@ -50,11 +50,11 @@ def test_serialize_csv_result_preserves_sparse_defaults():
     assert _serialize_csv_result("model-sparse", SimpleNamespace()) == {
         "model_id": "model-sparse",
         "success": True,
-        "response_time": 0,
-        "cost": 0,
-        "quality_score": 0,
-        "throughput": 0,
-        "tokens_used": 0,
+        "response_time": None,
+        "cost": None,
+        "quality_score": None,
+        "throughput": None,
+        "tokens_used": None,
         "response_length": 0,
     }
 
@@ -86,8 +86,8 @@ async def test_export_csv_delegates_mixed_results_in_order(tmp_path):
             "success": result is not second,
             "response_time": 1,
             "cost": 2,
-            "quality_score": 0,
-            "throughput": 0,
+            "quality_score": None,
+            "throughput": None,
             "tokens_used": 3,
             "response_length": 4,
         }
@@ -136,8 +136,8 @@ async def test_export_csv_stops_after_serialization_failure(tmp_path):
         "success": True,
         "response_time": 1,
         "cost": 2,
-        "quality_score": 0,
-        "throughput": 0,
+        "quality_score": None,
+        "throughput": None,
         "tokens_used": 3,
         "response_length": 4,
     }

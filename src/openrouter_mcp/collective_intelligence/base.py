@@ -85,6 +85,15 @@ class ProcessingResult:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
+def require_complete_text(result: ProcessingResult) -> None:
+    """A transport response is usable only when it contains completed text."""
+    if not isinstance(result.content, str) or not result.content.strip():
+        raise ValueError("Model response was empty or non-textual")
+    finish_reason = result.metadata.get("finish_reason")
+    if finish_reason is not None and finish_reason != "stop":
+        raise ValueError(f"Incomplete model response (finish_reason={finish_reason})")
+
+
 class ModelProvider(Protocol):
     """Protocol for model providers that can process tasks."""
 
@@ -190,7 +199,7 @@ class PerformanceMetrics:
             weights["response_time"] * min(1.0, 10.0 / max(self.response_time, 0.1))
             + weights["throughput"] * min(1.0, self.throughput / 100.0)
             + weights["success_rate"] * self.success_rate
-            + weights["error_rate"] * (1.0 - self.error_rate)
+            + weights["error_rate"] * self.error_rate
             + weights["cost_efficiency"] * self.cost_efficiency
             + weights["resource_utilization"] * self.resource_utilization
         )

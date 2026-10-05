@@ -41,13 +41,15 @@ from ..runtime_thrift import DeferredBatchLane, DeferredBatchRequest
 from ..utils.env import get_env_value
 from ..utils.pricing import (
     cost_for_tokens,
-    estimate_cost_from_usage,
     normalize_pricing,
     parse_price,
+    reported_usage_cost,
+    validate_usage_tokens,
 )
 from ..utils.text import CORE_ENGLISH_STOPWORDS
 from .benchmark_analyzer import ModelPerformanceAnalyzer  # noqa: F401
 from .benchmark_exporter import BenchmarkReportExporter  # noqa: F401
+from .benchmark_metrics import nonnegative_measurement, supplied_quality_score
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,19 @@ class BenchmarkError(Exception):
         self.model_id = model_id
         self.error_code = error_code
         super().__init__(message)
+
+
+def _estimate_catalog_cost(model_info, prompt_tokens, completion_tokens, total_tokens):
+    """Estimate using catalog USD-per-token prices; missing pricing is not free."""
+    pricing = model_info.get("pricing", {})
+    prompt_price = nonnegative_measurement(pricing.get("prompt"))
+    completion_price = nonnegative_measurement(pricing.get("completion"))
+    if prompt_price is None or completion_price is None:
+        raise BenchmarkError("Cost unavailable: missing or invalid model pricing")
+    if prompt_tokens is None or completion_tokens is None:
+        prompt_tokens = total_tokens // 2
+        completion_tokens = total_tokens - prompt_tokens
+    return prompt_tokens * prompt_price + completion_tokens * completion_price
 
 
 def _extract_benchmark_response_data(
@@ -83,6 +98,7 @@ def _extract_benchmark_response_data(
 
     response_text = choice["message"]["content"]
     usage = response.get("usage", {})
+    validate_usage_tokens(usage)
     return (
         response_text,
         usage.get("total_tokens", 0),
@@ -129,7 +145,7 @@ class _BenchmarkSample:
 
 
 class ResponseQualityAnalyzer:
-    """Advanced response quality analysis with multiple metrics."""
+    """Describe text shape without claiming to evaluate answer correctness."""
 
     def __init__(self) -> None:
         # Common patterns for detecting code examples
@@ -145,7 +161,9 @@ class ResponseQualityAnalyzer:
         """Perform comprehensive response quality analysis."""
         if not response or not response.strip():
             return {
-                "quality_score": 0.0,
+                "quality_score": None,
+                "quality_evaluation": "not_evaluated",
+                "text_heuristic_score": 0.0,
                 "response_length": 0,
                 "contains_code_example": False,
                 "language_coherence_score": 0.0,
@@ -172,7 +190,9 @@ class ResponseQualityAnalyzer:
         )
 
         return {
-            "quality_score": min(quality_score, 1.0),
+            "quality_score": None,
+            "quality_evaluation": "not_evaluated",
+            "text_heuristic_score": min(quality_score, 1.0),
             "response_length": response_length,
             "contains_code_example": contains_code_example,
             "language_coherence_score": coherence_score,
@@ -509,9 +529,9 @@ class BenchmarkMetrics:
         return self.avg_response_time_ms / 1000.0
 
     @property
-    def quality_score(self) -> float:
+    def quality_score(self) -> float | None:
         """Alias for average quality score."""
-        return self.avg_quality_score or 0.0
+        return self.avg_quality_score
 
     @property
     def throughput(self) -> float:
@@ -773,7 +793,7 @@ class BenchmarkHandler:
         max_tokens: int = BenchmarkDefaults.DEFAULT_MAX_TOKENS,
     ) -> BenchmarkResult:
         """Benchmark a single model with a prompt."""
-        start_time = time.time()
+        start_time = time.perf_counter()
         error = None
         response_text = None
         tokens_used = 0
@@ -793,19 +813,24 @@ class BenchmarkHandler:
             tokens_used = response.get("usage", {}).get("total_tokens", 0)
 
             # Calculate cost using model pricing when available
-            model_info = await self.model_cache.get_model_info(model_id)
-            if model_info and "pricing" in model_info:
-                cost = estimate_cost_from_usage(
-                    response.get("usage", {}),
-                    model_info.get("pricing", {}),
-                    PricingDefaults.DEFAULT_TOKEN_PRICE,
+            usage = response.get("usage", {})
+            reported_cost = reported_usage_cost(usage)
+            if reported_cost is None:
+                model_info = await self.model_cache.get_model_info(model_id) or {}
+                cost = _estimate_catalog_cost(
+                    model_info,
+                    usage.get("prompt_tokens"),
+                    usage.get("completion_tokens"),
+                    tokens_used,
                 )
+            else:
+                cost = reported_cost
 
         except Exception as e:
             error = str(e)
             logger.error(f"Error benchmarking {model_id}: {error}")
 
-        response_time_ms = (time.time() - start_time) * 1000
+        response_time_ms = (time.perf_counter() - start_time) * 1000
 
         return self._build_benchmark_result(
             model_id=model_id,
@@ -1131,10 +1156,9 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             runs_per_model=runs_per_model,
         )
 
-    def assess_response_quality(self, prompt: str, response: str) -> float:
-        """Assess the quality of a response using advanced analysis."""
-        analysis = self.quality_analyzer.analyze_response(prompt, response)
-        return float(analysis.get("quality_score", 0.0))
+    def assess_response_quality(self, prompt: str, response: str) -> float | None:
+        """Return unknown quality until an actual answer evaluator is configured."""
+        return self.quality_analyzer.analyze_response(prompt, response)["quality_score"]
 
     def analyze_response_comprehensive(
         self, prompt: str, response: str
@@ -1207,7 +1231,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         timeout: float = BenchmarkDefaults.DEFAULT_TIMEOUT_SECONDS,
     ) -> BenchmarkResult:
         """Benchmark a single model with enhanced error handling and metrics."""
-        start_time = time.time()
+        start_time = time.perf_counter()
         error = None
         sample = _BenchmarkSample()
         throughput_tokens_per_second = None
@@ -1234,7 +1258,7 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             error = f"Unexpected error: {e!s}"
             logger.exception(f"Unexpected error benchmarking {model_id}: {error}")
 
-        response_time_ms = (time.time() - start_time) * 1000
+        response_time_ms = (time.perf_counter() - start_time) * 1000
 
         # Calculate throughput
         if response_time_ms > 0 and sample.tokens_used > 0:
@@ -1304,13 +1328,17 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
             sample.comprehensive_analysis,
         ) = _analyze_benchmark_response(self, prompt, sample.response_text)
 
-        model_info = await self.model_cache.get_model_info(model_id) or {}
-        sample.cost = self._calculate_cost_enhanced(
-            model_info,
-            sample.prompt_tokens,
-            sample.completion_tokens,
-            sample.tokens_used,
-        )
+        reported_cost = reported_usage_cost(response.get("usage", {}))
+        if reported_cost is None:
+            model_info = await self.model_cache.get_model_info(model_id) or {}
+            sample.cost = self._calculate_cost_enhanced(
+                model_info,
+                sample.prompt_tokens,
+                sample.completion_tokens,
+                sample.tokens_used,
+            )
+        else:
+            sample.cost = reported_cost
 
         logger.info(
             f"Successfully benchmarked {model_id}: "
@@ -1324,37 +1352,10 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
         completion_tokens: Optional[int],
         total_tokens: int,
     ) -> float:
-        """Enhanced cost calculation with better error handling."""
-        if not model_info or "pricing" not in model_info:
-            logger.warning("No pricing information available for cost calculation")
-            return 0.0
-
-        try:
-            prompt_price = self._safe_float_conversion(
-                model_info["pricing"].get("prompt", 0), "prompt_price"
-            )
-            completion_price = self._safe_float_conversion(
-                model_info["pricing"].get("completion", 0), "completion_price"
-            )
-
-            # Use actual token breakdown if available
-            if prompt_tokens is not None and completion_tokens is not None:
-                cost = (
-                    prompt_tokens * prompt_price + completion_tokens * completion_price
-                ) / 1_000_000
-                logger.debug(f"Cost calculated from token breakdown: {cost}")
-            else:
-                # Fallback to rough estimate
-                cost = (
-                    total_tokens / 2 * prompt_price
-                    + total_tokens / 2 * completion_price
-                ) / 1_000_000
-                logger.debug(f"Cost estimated from total tokens: {cost}")
-
-            return cost
-        except Exception as e:
-            logger.error(f"Error calculating cost: {e}")
-            return 0.0
+        """Estimate fallback cost from catalog per-token prices."""
+        return _estimate_catalog_cost(
+            model_info, prompt_tokens, completion_tokens, total_tokens
+        )
 
     def _safe_float_conversion(self, value: Any, field_name: str) -> float:
         """Safely convert a value to float with logging."""
@@ -1421,6 +1422,15 @@ class EnhancedBenchmarkHandler(BenchmarkHandler):
                 "timestamp": result.timestamp.isoformat(),
                 "metrics": result.metrics.__dict__ if result.metrics else None,
             }
+            if result.metrics:
+                quality = supplied_quality_score(result.metrics)
+                serializable_results[model_id]["metrics"] = {
+                    **result.metrics.__dict__,
+                    "quality_score": quality,
+                    "quality_evaluation": (
+                        "provided" if quality is not None else "not_evaluated"
+                    ),
+                }
 
         save_data: Dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -1544,42 +1554,32 @@ class EnhancedBenchmarkResult:
 
 def _calculate_enhanced_optional_averages(
     successful: List[BenchmarkResult],
-) -> Tuple[float, float, float, float, float]:
+) -> tuple[float, float, float, float | None, float]:
     """Calculate enhanced token, quality, and throughput averages."""
-    prompt_tokens = [
-        result.prompt_tokens for result in successful if result.prompt_tokens
-    ]
-    completion_tokens = [
-        result.completion_tokens for result in successful if result.completion_tokens
-    ]
-    total_tokens = [result.tokens_used for result in successful if result.tokens_used]
 
-    avg_prompt_tokens = sum(prompt_tokens) / len(prompt_tokens) if prompt_tokens else 0
-    avg_completion_tokens = (
-        sum(completion_tokens) / len(completion_tokens) if completion_tokens else 0
-    )
-    avg_total_tokens = sum(total_tokens) / len(total_tokens) if total_tokens else 0
+    def measured_average(attribute: str) -> float:
+        values = [
+            value
+            for result in successful
+            if (value := nonnegative_measurement(getattr(result, attribute)))
+            is not None
+        ]
+        return sum(values) / len(values) if values else 0.0
 
     quality_scores = [
-        result.quality_score
+        score
         for result in successful
-        if result.quality_score is not None
+        if (score := supplied_quality_score(result)) is not None
     ]
-    quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
-
-    throughputs = [
-        result.throughput_tokens_per_second
-        for result in successful
-        if result.throughput_tokens_per_second
-    ]
-    throughput = sum(throughputs) / len(throughputs) if throughputs else 0
-
+    quality_score = (
+        sum(quality_scores) / len(quality_scores) if quality_scores else None
+    )
     return (
-        avg_prompt_tokens,
-        avg_completion_tokens,
-        avg_total_tokens,
+        measured_average("prompt_tokens"),
+        measured_average("completion_tokens"),
+        measured_average("tokens_used"),
         quality_score,
-        throughput,
+        measured_average("throughput_tokens_per_second"),
     )
 
 
@@ -1596,7 +1596,7 @@ class EnhancedBenchmarkMetrics:
     avg_prompt_tokens: float = 0.0
     avg_completion_tokens: float = 0.0
     avg_total_tokens: float = 0.0
-    quality_score: float = 0.0
+    quality_score: float | None = None
     throughput: float = 0.0
     success_rate: float = 1.0
     speed_score: float = 0.0

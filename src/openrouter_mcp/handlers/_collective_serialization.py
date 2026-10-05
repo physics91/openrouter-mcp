@@ -16,6 +16,7 @@ from ..collective_intelligence.cross_validator import ValidationIssue, Validatio
 
 def _serialize_consensus_result(result: ConsensusResult) -> dict[str, Any]:
     """Serialize a consensus result to the MCP response contract."""
+    quality_evaluation = result.metadata.get("quality_evaluation", "provided")
     return {
         "consensus_response": result.consensus_content,
         "agreement_level": result.agreement_level.value,
@@ -31,12 +32,27 @@ def _serialize_consensus_result(result: ConsensusResult) -> dict[str, Any]:
         ],
         "strategy_used": result.strategy_used.value,
         "processing_time": result.processing_time,
-        "quality_metrics": {
-            "accuracy": result.quality_metrics.accuracy,
-            "consistency": result.quality_metrics.consistency,
-            "completeness": result.quality_metrics.completeness,
-            "overall_score": result.quality_metrics.overall_score(),
-        },
+        "quality_evaluation": quality_evaluation,
+        "confidence_basis": (
+            "response_heuristic"
+            if quality_evaluation == "not_evaluated"
+            else "provided"
+        ),
+        "heuristic_score": (
+            result.quality_metrics.overall_score()
+            if quality_evaluation == "not_evaluated"
+            else None
+        ),
+        "quality_metrics": (
+            {
+                "accuracy": result.quality_metrics.accuracy,
+                "consistency": result.quality_metrics.consistency,
+                "completeness": result.quality_metrics.completeness,
+                "overall_score": result.quality_metrics.overall_score(),
+            }
+            if quality_evaluation != "not_evaluated"
+            else None
+        ),
     }
 
 
@@ -72,6 +88,10 @@ def _build_model_validations(
                 validator_models.append(model_id)
 
     model_validations = []
+    failures = {
+        item["validator_model_id"]
+        for item in report.metadata.get("validator_failures", [])
+    }
     for model_id in validator_models:
         model_issues = [
             issue for issue in issues if issue.validator_model_id == model_id
@@ -83,6 +103,7 @@ def _build_model_validations(
                 "model": model_id,
                 "criteria": criteria_label,
                 "issues_found": len(model_issues),
+                "status": "failed" if model_id in failures else "completed",
             }
         )
 
@@ -97,10 +118,19 @@ def _serialize_cross_validation_result(result: ValidationResult) -> dict[str, An
 
     return {
         "validation_result": "VALID" if result.is_valid else "INVALID",
-        "validation_score": result.validation_confidence,
+        "validation_score": report.overall_score,
+        "validation_status": report.metadata.get("validation_status", "complete"),
+        "successful_validators": report.metadata.get(
+            "successful_validators", len(model_validations)
+        ),
+        "validator_failures": report.metadata.get("validator_failures", []),
+        "criteria_scores": {
+            getattr(criterion, "value", criterion): score
+            for criterion, score in report.criteria_scores.items()
+        },
         "validation_issues": [
             {
-                "criteria": issue.criteria.value,
+                "criteria": getattr(issue.criteria, "value", issue.criteria),
                 "severity": issue.severity.value,
                 "description": issue.description,
                 "suggestion": issue.suggestion,
@@ -122,6 +152,7 @@ def _serialize_cross_validation_result(result: ValidationResult) -> dict[str, An
 
 def _serialize_ensemble_result(result: EnsembleResult) -> dict[str, Any]:
     """Serialize an ensemble result to the MCP response contract."""
+    quality_evaluation = result.metadata.get("quality_evaluation", "provided")
     return {
         "final_result": result.final_content,
         "subtask_results": [
@@ -138,11 +169,21 @@ def _serialize_ensemble_result(result: EnsembleResult) -> dict[str, Any]:
             subtask.assignment.model_id: subtask.sub_task.content
             for subtask in result.sub_task_results
         },
-        "reasoning_quality": {
-            "overall_quality": result.overall_quality.overall_score(),
-            "consistency": result.overall_quality.consistency,
-            "completeness": result.overall_quality.completeness,
-        },
+        "quality_evaluation": quality_evaluation,
+        "heuristic_score": (
+            result.overall_quality.overall_score()
+            if quality_evaluation == "not_evaluated"
+            else None
+        ),
+        "reasoning_quality": (
+            {
+                "overall_quality": result.overall_quality.overall_score(),
+                "consistency": result.overall_quality.consistency,
+                "completeness": result.overall_quality.completeness,
+            }
+            if quality_evaluation != "not_evaluated"
+            else None
+        ),
         "processing_time": result.total_time,
         "strategy_used": result.decomposition_strategy.value,
         "success_rate": result.success_rate,
@@ -181,12 +222,21 @@ def _serialize_solving_result(result: SolvingResult) -> dict[str, Any]:
         "final_solution": result.final_content,
         "solution_path": result.solution_path,
         "alternative_solutions": result.alternative_solutions,
-        "quality_assessment": {
-            "overall_score": result.quality_assessment.overall_score(),
-            "accuracy": result.quality_assessment.accuracy,
-            "consistency": result.quality_assessment.consistency,
-            "completeness": result.quality_assessment.completeness,
-        },
+        "quality_assessment": (
+            {
+                "overall_score": result.quality_assessment.overall_score(),
+                "accuracy": result.quality_assessment.accuracy,
+                "consistency": result.quality_assessment.consistency,
+                "completeness": result.quality_assessment.completeness,
+            }
+            if result.quality_assessment is not None
+            else None
+        ),
+        "validation_status": result.metadata.get(
+            "validation_status",
+            "provided" if result.quality_assessment is not None else "not_evaluated",
+        ),
+        "is_valid": result.metadata.get("is_valid"),
         "component_contributions": result.component_contributions,
         "confidence": result.confidence_score,
         "improvement_suggestions": result.improvement_suggestions,

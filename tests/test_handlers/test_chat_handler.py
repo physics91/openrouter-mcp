@@ -298,7 +298,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_chat_with_model_success(self, mock_chat_response):
         """Test successful chat completion."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.chat_completion.return_value = mock_chat_response
             mock_get_client.return_value = mock_client
@@ -312,7 +314,10 @@ class TestChatHandler:
 
             result = await chat_with_model(request)
 
-            assert result["choices"][0]["message"]["content"] == "Hello! How can I help you today?"
+            assert (
+                result["choices"][0]["message"]["content"]
+                == "Hello! How can I help you today?"
+            )
             assert result["usage"]["total_tokens"] == 18
 
             mock_client.chat_completion.assert_called_once_with(
@@ -325,17 +330,23 @@ class TestChatHandler:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_chat_with_model_returns_request_scoped_thrift_metadata(self, mock_chat_response):
+    async def test_chat_with_model_returns_request_scoped_thrift_metadata(
+        self, mock_chat_response
+    ):
         reset_thrift_metrics()
         record_compaction_savings(42)
-        record_coalesced_savings(prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003)
+        record_coalesced_savings(
+            prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003
+        )
         record_prompt_cache_activity(
             cached_prompt_tokens=300,
             cache_write_prompt_tokens=100,
             estimated_saved_cost_usd=0.007,
         )
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
 
             async def chat_completion_with_request_local_thrift(*args, **kwargs):
@@ -352,7 +363,9 @@ class TestChatHandler:
                 )
                 return mock_chat_response
 
-            mock_client.chat_completion.side_effect = chat_completion_with_request_local_thrift
+            mock_client.chat_completion.side_effect = (
+                chat_completion_with_request_local_thrift
+            )
             mock_get_client.return_value = mock_client
 
             result = await chat_with_model(
@@ -364,9 +377,16 @@ class TestChatHandler:
 
             assert result["thrift_metrics"]["compacted_tokens"] == 7
             assert result["thrift_summary"]["saved_cost_usd"] == 0.006
-            assert result["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 120
             assert (
-                result["thrift_summary"]["prompt_savings_breakdown"]["coalesced_prompt_tokens"]
+                result["thrift_summary"]["prompt_savings_breakdown"][
+                    "cache_reuse_tokens"
+                ]
+                == 120
+            )
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"][
+                    "coalesced_prompt_tokens"
+                ]
                 == 30
             )
             assert get_thrift_metrics_snapshot()["compacted_tokens"] == 49
@@ -376,7 +396,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_chat_with_model_streaming(self, mock_stream_response):
         """Test streaming chat completion."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
 
             async def mock_stream_gen():
@@ -408,7 +430,9 @@ class TestChatHandler:
         reset_thrift_metrics()
         record_compaction_savings(42)
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
 
             async def mock_stream_gen():
@@ -437,7 +461,10 @@ class TestChatHandler:
             assert result[-1]["thrift_metrics"]["compacted_tokens"] == 5
             assert result[-1]["thrift_summary"]["saved_cost_usd"] == 0.005
             assert (
-                result[-1]["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 80
+                result[-1]["thrift_summary"]["prompt_savings_breakdown"][
+                    "cache_reuse_tokens"
+                ]
+                == 80
             )
             assert get_thrift_metrics_snapshot()["compacted_tokens"] == 47
 
@@ -445,7 +472,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_chat_with_model_validation_error(self):
         """Test chat completion with validation error."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.chat_completion.side_effect = ValueError("Invalid model")
             mock_get_client.return_value = mock_client
@@ -462,7 +491,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_chat_with_model_api_error(self):
         """Test chat completion with API error."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.chat_completion.side_effect = OpenRouterError("API error")
             mock_get_client.return_value = mock_client
@@ -478,7 +509,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_chat_with_model_compacts_long_conversation(self, mock_chat_response):
         """Long conversations should be compacted before chat completion."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.chat_completion.return_value = mock_chat_response
             mock_client.model_cache.get_model_info = AsyncMock(
@@ -515,7 +548,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_list_available_models_success(self, mock_models_response):
         """Test successful model listing."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.list_models.return_value = mock_models_response["data"]
             mock_get_client.return_value = mock_client
@@ -534,11 +569,15 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_list_available_models_with_filter(self, mock_models_response):
         """Test model listing with filter."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             # Filter results to only include GPT models
             filtered_models = [
-                model for model in mock_models_response["data"] if "gpt" in model["id"].lower()
+                model
+                for model in mock_models_response["data"]
+                if "gpt" in model["id"].lower()
             ]
             mock_client.list_models.return_value = filtered_models
             mock_get_client.return_value = mock_client
@@ -556,7 +595,9 @@ class TestChatHandler:
     @pytest.mark.asyncio
     async def test_list_available_models_api_error(self):
         """Test model listing with API error."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.list_models.side_effect = OpenRouterError("API error")
             mock_get_client.return_value = mock_client
@@ -577,12 +618,14 @@ class TestChatHandler:
             "models": ["openai/gpt-4"],
         }
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.track_usage.return_value = usage_data
             mock_get_client.return_value = mock_client
 
-            request = UsageStatsRequest(start_date="2024-01-01", end_date="2024-01-31")
+            request = UsageStatsRequest()
 
             result = await get_usage_stats(request)
 
@@ -592,7 +635,7 @@ class TestChatHandler:
             assert "openai/gpt-4" in result["models"]
 
             mock_client.track_usage.assert_called_once_with(
-                start_date="2024-01-01", end_date="2024-01-31"
+                start_date=None, end_date=None
             )
 
     @pytest.mark.unit
@@ -606,7 +649,9 @@ class TestChatHandler:
             "models": ["openai/gpt-4"],
         }
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.track_usage.return_value = usage_data
             mock_get_client.return_value = mock_client
@@ -617,7 +662,9 @@ class TestChatHandler:
 
             assert result["total_cost"] == 0.00054
 
-            mock_client.track_usage.assert_called_once_with(start_date=None, end_date=None)
+            mock_client.track_usage.assert_called_once_with(
+                start_date=None, end_date=None
+            )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -632,7 +679,9 @@ class TestChatHandler:
             "models": ["openai/gpt-4"],
         }
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.track_usage.return_value = usage_data
             mock_get_client.return_value = mock_client
@@ -646,7 +695,9 @@ class TestChatHandler:
     async def test_get_usage_stats_includes_thrift_summary(self):
         reset_thrift_metrics()
         record_compaction_savings(42)
-        record_coalesced_savings(prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003)
+        record_coalesced_savings(
+            prompt_tokens=100, completion_tokens=20, estimated_cost_usd=0.003
+        )
         record_recent_reuse_savings(
             prompt_tokens=25,
             completion_tokens=5,
@@ -666,7 +717,9 @@ class TestChatHandler:
             "models": ["anthropic/claude-sonnet-4"],
         }
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.track_usage.return_value = usage_data
             mock_get_client.return_value = mock_client
@@ -674,33 +727,66 @@ class TestChatHandler:
             result = await get_usage_stats(UsageStatsRequest())
 
             assert result["thrift_summary"]["saved_cost_usd"] == 0.011
-            assert result["thrift_summary"]["estimated_cost_without_thrift_usd"] == 0.101
-            assert result["thrift_summary"]["effective_cost_reduction_pct"] == 10.89
-            assert result["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 300
             assert (
-                result["thrift_summary"]["prompt_savings_breakdown"]["coalesced_prompt_tokens"]
+                result["thrift_summary"]["estimated_cost_without_thrift_usd"] == 0.101
+            )
+            assert result["thrift_summary"]["effective_cost_reduction_pct"] == 10.89
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"][
+                    "cache_reuse_tokens"
+                ]
+                == 300
+            )
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"][
+                    "coalesced_prompt_tokens"
+                ]
                 == 100
             )
             assert (
-                result["thrift_summary"]["prompt_savings_breakdown"]["recent_reuse_prompt_tokens"]
+                result["thrift_summary"]["prompt_savings_breakdown"][
+                    "recent_reuse_prompt_tokens"
+                ]
                 == 25
             )
-            assert result["thrift_summary"]["prompt_savings_breakdown"]["compacted_tokens"] == 42
+            assert (
+                result["thrift_summary"]["prompt_savings_breakdown"]["compacted_tokens"]
+                == 42
+            )
             assert result["thrift_summary"]["request_savings_breakdown"] == {
                 "coalesced_requests": 1,
                 "recent_reuse_requests": 1,
                 "deferred_requests": 0,
             }
-            assert result["thrift_summary"]["cache_efficiency"]["cache_write_prompt_tokens"] == 100
-            assert result["thrift_summary"]["cache_efficiency"]["cache_hit_requests"] == 1
-            assert result["thrift_summary"]["cache_efficiency"]["cache_write_requests"] == 1
             assert (
-                result["thrift_summary"]["cache_efficiency"]["cache_hit_request_rate_pct"] == 10.0
+                result["thrift_summary"]["cache_efficiency"][
+                    "cache_write_prompt_tokens"
+                ]
+                == 100
             )
             assert (
-                result["thrift_summary"]["cache_efficiency"]["cache_write_request_rate_pct"] == 10.0
+                result["thrift_summary"]["cache_efficiency"]["cache_hit_requests"] == 1
             )
-            assert result["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"] == 3.0
+            assert (
+                result["thrift_summary"]["cache_efficiency"]["cache_write_requests"]
+                == 1
+            )
+            assert (
+                result["thrift_summary"]["cache_efficiency"][
+                    "cache_hit_request_rate_pct"
+                ]
+                == 10.0
+            )
+            assert (
+                result["thrift_summary"]["cache_efficiency"][
+                    "cache_write_request_rate_pct"
+                ]
+                == 10.0
+            )
+            assert (
+                result["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"]
+                == 3.0
+            )
             assert (
                 result["thrift_summary"]["cache_efficiency_by_provider"]["anthropic"][
                     "cache_hit_request_rate_pct"
@@ -708,9 +794,9 @@ class TestChatHandler:
                 == 100.0
             )
             assert (
-                result["thrift_summary"]["cache_efficiency_by_model"]["anthropic/claude-sonnet-4"][
-                    "cache_write_request_rate_pct"
-                ]
+                result["thrift_summary"]["cache_efficiency_by_model"][
+                    "anthropic/claude-sonnet-4"
+                ]["cache_write_request_rate_pct"]
                 == 100.0
             )
             assert result["thrift_summary"]["cache_hotspots"] == {
@@ -744,7 +830,9 @@ class TestChatHandler:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_get_usage_stats_uses_date_filtered_thrift_rollup(self, tmp_path, monkeypatch):
+    async def test_local_thrift_rollup_keeps_date_filtering(
+        self, tmp_path, monkeypatch
+    ):
         current_time = {"value": datetime(2026, 4, 10, 12, 0, 0)}
         collector = ThriftMetricsCollector(
             persistence_path=str(tmp_path / "runtime_thrift_metrics.json"),
@@ -787,43 +875,38 @@ class TestChatHandler:
             "models": ["anthropic/claude-sonnet-4"],
         }
 
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
-            mock_client = AsyncMock(spec=OpenRouterClient)
-            mock_client.track_usage.return_value = usage_data
-            mock_get_client.return_value = mock_client
+        metrics = chat_module.get_thrift_metrics_snapshot_for_dates(
+            "2026-04-10", "2026-04-10"
+        )
+        result = chat_module.attach_thrift_metadata_from_payload(usage_data, metrics)
 
-            result = await get_usage_stats(
-                UsageStatsRequest(
-                    start_date="2026-04-10",
-                    end_date="2026-04-10",
-                )
-            )
-
-            assert result["thrift_summary"]["saved_cost_usd"] == 0.01
-            assert result["thrift_summary"]["prompt_savings_breakdown"] == {
-                "cache_reuse_tokens": 300,
-                "coalesced_prompt_tokens": 100,
-                "recent_reuse_prompt_tokens": 0,
-                "compacted_tokens": 10,
-            }
-            assert result["thrift_summary"]["request_savings_breakdown"] == {
-                "coalesced_requests": 1,
-                "recent_reuse_requests": 0,
-                "deferred_requests": 0,
-            }
-            assert "openai" not in result["thrift_summary"]["cache_efficiency_by_provider"]
-            assert (
-                result["thrift_summary"]["cache_efficiency_by_provider"]["anthropic"][
-                    "cached_prompt_tokens"
-                ]
-                == 300
-            )
+        assert result["thrift_summary"]["saved_cost_usd"] == 0.01
+        assert result["thrift_summary"]["prompt_savings_breakdown"] == {
+            "cache_reuse_tokens": 300,
+            "coalesced_prompt_tokens": 100,
+            "recent_reuse_prompt_tokens": 0,
+            "compacted_tokens": 10,
+        }
+        assert result["thrift_summary"]["request_savings_breakdown"] == {
+            "coalesced_requests": 1,
+            "recent_reuse_requests": 0,
+            "deferred_requests": 0,
+        }
+        assert "openai" not in result["thrift_summary"]["cache_efficiency_by_provider"]
+        assert (
+            result["thrift_summary"]["cache_efficiency_by_provider"]["anthropic"][
+                "cached_prompt_tokens"
+            ]
+            == 300
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_get_usage_stats_api_error(self):
         """Test usage stats retrieval with API error."""
-        with patch("src.openrouter_mcp.handlers.chat.get_openrouter_client") as mock_get_client:
+        with patch(
+            "src.openrouter_mcp.handlers.chat.get_openrouter_client"
+        ) as mock_get_client:
             mock_client = AsyncMock(spec=OpenRouterClient)
             mock_client.track_usage.side_effect = OpenRouterError("API error")
             mock_get_client.return_value = mock_client
@@ -881,6 +964,5 @@ class TestChatHandler:
         assert request.end_date is None
 
         # Request with date range
-        request_dated = UsageStatsRequest(start_date="2024-01-01", end_date="2024-01-31")
-        assert request_dated.start_date == "2024-01-01"
-        assert request_dated.end_date == "2024-01-31"
+        with pytest.raises(ValueError, match="date ranges"):
+            UsageStatsRequest(start_date="2024-01-01", end_date="2024-01-31")

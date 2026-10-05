@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -22,7 +23,11 @@ from openrouter_mcp.handlers.collective_intelligence import (
     _ensemble_reasoning_impl,
 )
 from openrouter_mcp.utils.metadata import extract_provider_from_id
-from tests.fixtures.collective_payloads import cleanup_collective_lifecycle, contract_model_pair
+from tests.fixtures.collective_payloads import (
+    cleanup_collective_lifecycle,
+    contract_model_pair,
+    structured_peer_review,
+)
 from tests.fixtures.mock_clients import MockClientFactory
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
@@ -61,7 +66,9 @@ def contract_mock_client():
     """Create a deterministic OpenRouter client mock for contract tests."""
     client = MockClientFactory.create_openrouter_client()
     client.list_models = AsyncMock(return_value=contract_model_pair())
-    client.get_model_pricing = AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002})
+    client.get_model_pricing = AsyncMock(
+        return_value={"prompt": 0.00001, "completion": 0.00002}
+    )
     client.chat_completion = AsyncMock(
         return_value={
             "choices": [
@@ -88,7 +95,9 @@ def _assert_schema(instance: dict, schema_file: str) -> None:
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collective_chat_completion_contract(mock_get_client, contract_mock_client):
+async def test_collective_chat_completion_contract(
+    mock_get_client, contract_mock_client
+):
     mock_get_client.return_value = contract_mock_client
 
     response = await _collective_chat_completion_impl(
@@ -101,6 +110,30 @@ async def test_collective_chat_completion_contract(mock_get_client, contract_moc
         )
     )
 
+    _assert_schema(response, "collective_chat_completion.response.schema.json")
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract
+@patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
+async def test_collective_chat_duration_survives_clock_rollback(
+    mock_get_client, contract_mock_client
+):
+    mock_get_client.return_value = contract_mock_client
+    start = datetime(2026, 10, 5, 12, tzinfo=timezone.utc)
+    with patch(
+        "openrouter_mcp.collective_intelligence.consensus_engine.datetime"
+    ) as clock:
+        clock.now.side_effect = [start, start - timedelta(milliseconds=50)]
+        response = await _collective_chat_completion_impl(
+            CollectiveChatRequest(
+                prompt="Check duration reporting",
+                models=MODEL_IDS,
+                min_models=2,
+                max_models=2,
+            )
+        )
+    assert response["processing_time"] >= 0
     _assert_schema(response, "collective_chat_completion.response.schema.json")
 
 
@@ -151,7 +184,9 @@ async def test_adaptive_model_selection_contract(mock_get_client, contract_mock_
     assert "preferred_provider" in response["routing_metrics"]["preference_matches"]
     assert response["routing_metrics"]["thrift_feedback"]["source"] == "provider"
     assert (
-        response["routing_metrics"]["thrift_feedback"]["bucket_summary"]["cache_write_requests"]
+        response["routing_metrics"]["thrift_feedback"]["bucket_summary"][
+            "cache_write_requests"
+        ]
         == 6
     )
 
@@ -161,6 +196,9 @@ async def test_adaptive_model_selection_contract(mock_get_client, contract_mock_
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
 async def test_cross_model_validation_contract(mock_get_client, contract_mock_client):
     mock_get_client.return_value = contract_mock_client
+    contract_mock_client.chat_completion.return_value["choices"][0]["message"][
+        "content"
+    ] = structured_peer_review(["factual_accuracy", "technical_correctness"])
 
     response = await _cross_model_validation_impl(
         CrossValidationRequest(
@@ -172,13 +210,24 @@ async def test_cross_model_validation_contract(mock_get_client, contract_mock_cl
     )
 
     _assert_schema(response, "cross_model_validation.response.schema.json")
+    assert response["validation_status"] == "complete"
+    assert response["successful_validators"] == 2
+    assert response["criteria_scores"] == {
+        "factual_accuracy": 0.9,
+        "technical_correctness": 0.9,
+    }
 
 
 @pytest.mark.asyncio
 @pytest.mark.contract
 @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-async def test_collaborative_problem_solving_contract(mock_get_client, contract_mock_client):
+async def test_collaborative_problem_solving_contract(
+    mock_get_client, contract_mock_client
+):
     mock_get_client.return_value = contract_mock_client
+    contract_mock_client.chat_completion.return_value["choices"][0]["message"][
+        "content"
+    ] = structured_peer_review()
 
     response = await _collaborative_problem_solving_impl(
         CollaborativeSolvingRequest(

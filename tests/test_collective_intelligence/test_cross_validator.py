@@ -7,7 +7,7 @@ including peer review, adversarial validation, and specialized validators.
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import Mock, call, patch
 
 import pytest
 
@@ -28,6 +28,23 @@ from src.openrouter_mcp.collective_intelligence.cross_validator import (
     ValidationSeverity,
     ValidationStrategy,
 )
+from tests.fixtures.collective_payloads import structured_peer_review
+
+
+def review_with_issue(criterion, description, criteria=None):
+    return structured_peer_review(
+        criteria or [criterion],
+        score=0.2,
+        issues=[
+            {
+                "criterion": criterion,
+                "severity": "high",
+                "description": description,
+                "suggestion": "Correct the claim",
+                "evidence": description,
+            }
+        ],
+    )
 
 
 class TestValidationIssue:
@@ -127,7 +144,9 @@ class TestFactCheckValidator:
         fact_check_response = ProcessingResult(
             task_id="fact_check_test",
             model_id="fact_checker",
-            content="Found several factual errors and inaccuracies in the response",
+            content=review_with_issue(
+                "factual_correctness", "Found several factual errors"
+            ),
             confidence=0.9,
         )
 
@@ -158,7 +177,7 @@ class TestFactCheckValidator:
         fact_check_response = ProcessingResult(
             task_id="fact_check_test",
             model_id="fact_checker",
-            content="The response appears to be factually accurate with no errors detected",
+            content=structured_peer_review(["factual_correctness"]),
             confidence=0.9,
         )
 
@@ -169,6 +188,7 @@ class TestFactCheckValidator:
 
         assert isinstance(issues, list)
         assert len(issues) == 0  # Should find no issues
+        assert validator.consume_last_failure() is None
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -201,6 +221,7 @@ class TestFactCheckValidator:
         issues = await validator.validate(result, sample_task, "fact_checker_model")
 
         assert issues == []
+        assert validator.consume_last_failure() is not None
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -214,7 +235,10 @@ class TestFactCheckValidator:
         mock_model_provider.process_task.return_value = ProcessingResult(
             task_id="fact_check_test",
             model_id="fact_checker",
-            content="No errors found at first glance, but the final claim is incorrect.",
+            content=review_with_issue(
+                "factual_correctness",
+                "No errors found at first glance, but the final claim is incorrect.",
+            ),
             confidence=0.9,
         )
         mock_model_provider.process_task.side_effect = None
@@ -265,7 +289,10 @@ class TestBiasDetectionValidator:
         bias_check_response = ProcessingResult(
             task_id="bias_check_test",
             model_id="bias_detector",
-            content="The response shows cultural bias and unfair stereotypes in its analysis",
+            content=review_with_issue(
+                "bias_neutrality",
+                "The response shows cultural bias and unfair stereotypes",
+            ),
             confidence=0.8,
         )
 
@@ -296,7 +323,7 @@ class TestBiasDetectionValidator:
         bias_check_response = ProcessingResult(
             task_id="bias_check_test",
             model_id="bias_detector",
-            content="The response appears neutral and fair with no detectable bias",
+            content=structured_peer_review(["bias_neutrality"]),
             confidence=0.9,
         )
 
@@ -319,7 +346,9 @@ class TestCrossValidator:
         assert validator.model_provider == mock_model_provider
         assert isinstance(validator.config, ValidationConfig)
         assert isinstance(validator.specialized_validators, dict)
-        assert ValidationCriteria.FACTUAL_CORRECTNESS in validator.specialized_validators
+        assert (
+            ValidationCriteria.FACTUAL_CORRECTNESS in validator.specialized_validators
+        )
         assert ValidationCriteria.BIAS_NEUTRALITY in validator.specialized_validators
         assert isinstance(validator.validation_history, list)
         assert len(validator.validation_history) == 0
@@ -380,7 +409,9 @@ class TestCrossValidator:
         model = sample_models[0]
         result = sample_processing_results[0]
 
-        suitability = validator._calculate_validator_suitability(model, sample_task, result)
+        suitability = validator._calculate_validator_suitability(
+            model, sample_task, result
+        )
 
         assert isinstance(suitability, float)
         assert 0.0 <= suitability <= 1.0
@@ -428,7 +459,7 @@ class TestCrossValidator:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_peer_review_validation_ignores_no_errors_phrase(
+    async def test_peer_review_rejects_unstructured_positive_prose(
         self, mock_model_provider, sample_processing_results
     ):
         """Test that peer review parsing ignores plain 'no errors found' feedback."""
@@ -441,13 +472,12 @@ class TestCrossValidator:
             confidence=0.9,
         )
 
-        issues = validator._parse_peer_review_result(validation_result, "validator_1")
-
-        assert issues == []
+        with pytest.raises(ValueError, match="structured review"):
+            validator._parse_peer_review_result(validation_result, "validator_1")
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_peer_review_validation_mixed_feedback_keeps_real_issue(
+    async def test_peer_review_rejects_unstructured_mixed_prose(
         self, mock_model_provider, sample_processing_results
     ):
         """Test that mixed feedback still keeps strong issue signals."""
@@ -460,10 +490,8 @@ class TestCrossValidator:
             confidence=0.9,
         )
 
-        issues = validator._parse_peer_review_result(validation_result, "validator_1")
-
-        assert len(issues) == 1
-        assert issues[0].description.endswith("incorrect")
+        with pytest.raises(ValueError, match="structured review"):
+            validator._parse_peer_review_result(validation_result, "validator_1")
 
     @pytest.mark.asyncio
     @pytest.mark.integration
@@ -480,7 +508,7 @@ class TestCrossValidator:
             ProcessingResult(
                 task_id="peer_review_2",
                 model_id="validator_2",
-                content="No errors found. Overall clear response.",
+                content='{"scores":{"accuracy":0.9,"consistency":0.9,"completeness":0.9,"relevance":0.9},"issues":[]}',
                 confidence=0.85,
             ),
         ]
@@ -534,21 +562,25 @@ class TestCrossValidator:
         with patch.object(
             validator,
             "_parse_peer_review_result",
-            side_effect=[[first_issue], [second_issue, third_issue]],
+            side_effect=[
+                ([first_issue], {"accuracy": 0.8}),
+                ([second_issue, third_issue], {"accuracy": 0.9}),
+            ],
         ) as parse_result, patch(
             "src.openrouter_mcp.collective_intelligence.cross_validator.logger.warning"
         ) as warning:
-            issues, failures = validator._collect_peer_review_results(
+            issues, failures, scores = validator._collect_peer_review_results(
                 validation_results, validator_models
             )
 
         assert issues == [first_issue, second_issue, third_issue]
+        assert scores == {"duplicate": {"accuracy": 0.9}}
         assert issues[0] is first_issue
         assert issues[1] is second_issue
         assert issues[2] is third_issue
         assert parse_result.call_args_list == [
-            call(first_result, "duplicate"),
-            call(second_result, "duplicate"),
+            call(first_result, "duplicate", None),
+            call(second_result, "duplicate", None),
         ]
         assert len(failures) == 2
         assert failures[0].validator_model_id == "failed"
@@ -577,13 +609,21 @@ class TestCrossValidator:
             ProcessingResult(
                 task_id="adversarial_1",
                 model_id="adversary_1",
-                content="I challenge this response because it has logical flaws and inconsistencies",
+                content=review_with_issue(
+                    "consistency",
+                    "I challenge this response because it has logical flaws and inconsistencies",
+                    criteria=[c.value for c in validator.config.criteria],
+                ),
                 confidence=0.9,
             ),
             ProcessingResult(
                 task_id="adversarial_2",
                 model_id="adversary_2",
-                content="The response seems weak in its argumentation and lacks evidence",
+                content=review_with_issue(
+                    "consistency",
+                    "The response seems weak in its argumentation and lacks evidence",
+                    criteria=[c.value for c in validator.config.criteria],
+                ),
                 confidence=0.85,
             ),
         ]
@@ -613,7 +653,11 @@ class TestCrossValidator:
             ProcessingResult(
                 task_id="adversarial_2",
                 model_id="adversary_2",
-                content="The response seems weak in its argumentation and lacks evidence",
+                content=review_with_issue(
+                    "consistency",
+                    "The response seems weak in its argumentation and lacks evidence",
+                    criteria=[c.value for c in validator.config.criteria],
+                ),
                 confidence=0.85,
             ),
         ]
@@ -664,7 +708,9 @@ class TestCrossValidator:
         )
 
         assert isinstance(validation_report, ValidationReport)
-        assert validation_report.validation_strategy == ValidationStrategy.CONSENSUS_CHECK
+        assert (
+            validation_report.validation_strategy == ValidationStrategy.CONSENSUS_CHECK
+        )
         assert 0.0 <= validation_report.consensus_level <= 1.0
 
     @pytest.mark.asyncio
@@ -711,9 +757,9 @@ class TestCrossValidator:
         failed_validator = sample_models[1].model_id
 
         mock_model_provider.get_available_models.return_value = [sample_models[1]]
-        validator.specialized_validators[
-            ValidationCriteria.FACTUAL_CORRECTNESS
-        ].validate = AsyncMock(side_effect=RuntimeError("validator service unavailable"))
+        mock_model_provider.process_task.side_effect = RuntimeError(
+            "validator service unavailable"
+        )
 
         validation_result = await validator.process(result, sample_task)
 
@@ -1103,11 +1149,16 @@ class TestCrossValidator:
 
         # Run validations concurrently - use matching tasks
         validation_results = await asyncio.gather(
-            *[validator.process(result, task) for result, task in zip(test_results, tasks)],
+            *[
+                validator.process(result, task)
+                for result, task in zip(test_results, tasks)
+            ],
             return_exceptions=True,
         )
 
         # All should succeed
         assert len(validation_results) == 3
-        assert all(isinstance(result, ValidationResult) for result in validation_results)
-        assert len(set(result.task_id for result in validation_results)) == 3  # All unique
+        assert all(
+            isinstance(result, ValidationResult) for result in validation_results
+        )
+        assert len({result.task_id for result in validation_results}) == 3

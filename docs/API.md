@@ -20,9 +20,15 @@ Non-streaming responses include runtime thrift metadata; streaming responses att
 List available OpenRouter models with metadata and optional name filtering.
 
 ### `get_usage_stats`
-Return usage and cost information for the configured OpenRouter account.
-The response also includes runtime thrift savings metadata built from persisted daily rollups.
-When `start_date` / `end_date` are provided, the thrift summary is filtered to the same local calendar day range.
+Return spending for the authenticated API key using [OpenRouter GET /key](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key).
+`scope` is `api_key`; `total_cost` is cumulative spending, with current UTC-period
+`usage_daily`, `usage_weekly`, and `usage_monthly` counters when provided. Token,
+request, and model counts are `null`, because this endpoint does not supply them.
+Arbitrary `start_date` / `end_date` ranges are rejected. Historical account activity
+requires a separate management-key API and is not fetched by this tool.
+Persisted thrift savings remain separately labeled `thrift_scope: "local_runtime"`.
+Cross-scope cost-reduction percentages and totals are `null` rather than estimates
+combining local savings with key-wide spending.
 
 ## Free Model Tools
 
@@ -55,6 +61,10 @@ List vision-capable models currently exposed by OpenRouter.
 
 ### `benchmark_models`
 Run repeated benchmark requests across multiple models and store the result set.
+Answer quality is `null` without an answer evaluator. Text length, word overlap,
+and coherence heuristics do not measure factual correctness. Default rankings use
+measured speed, cost, and throughput; reports preserve unknown quality as `null`
+(JSON), an empty cell (CSV), or `Not evaluated` (Markdown).
 
 ### `get_benchmark_history`
 Read recent saved benchmark runs from the benchmark results directory.
@@ -67,6 +77,9 @@ Export a saved benchmark run to `markdown`, `csv`, or `json`.
 
 ### `compare_model_performance`
 Apply weighted performance comparison across selected models and return ranking, metrics, and recommendations.
+Current default weights are speed 0.3, cost 0.5, throughput 0.2. A nonzero `quality`
+weight or category `metric: "quality"` is rejected before billable requests because
+no answer evaluator is configured.
 
 ## Collective Intelligence Tools
 
@@ -84,6 +97,17 @@ Supported hard-constraint examples include `max_cost`, `excluded_provider`, `req
 
 ### `cross_model_validation`
 Validate content with multiple models and aggregate validation signals.
+Reviewers must return JSON scores for exactly the requested `validation_criteria`
+and structured issues; criterion names may be custom strings and issue descriptions
+may be in any language. Missing/malformed scores and provider failures do not count
+as successful reviews. At least the configured minimum (default two) distinct
+reviewers must succeed. `validation_status` is `complete`, `degraded` (enough reviews
+but some failed), or `incomplete` (not enough evidence). Incomplete results return
+`INVALID` and zero confidence; they do not establish that the original content is false.
+`validator_failures`, `successful_validators`, and per-model `status` expose this
+distinction. `validation_score` is the mean of criterion scores, separately from
+agreement-weighted `confidence`; these are model assessments, not calibrated accuracy.
+`models`, `system_prompt`, `temperature`, and `max_tokens` reach reviewer calls.
 
 ### `collaborative_problem_solving`
 Run iterative or parallel multi-model collaboration to refine a solution.
@@ -103,7 +127,7 @@ The following tools expose runtime thrift response metadata:
 - `chat_with_model`: request-scoped metadata on non-streaming responses, or on the final streaming chunk
 - `chat_with_vision`: request-scoped metadata on non-streaming responses, or on the final streaming chunk
 - `free_chat`: request-scoped metadata on the response payload
-- `get_usage_stats`: persisted daily-rollup metadata attached to the usage response and aligned to the requested date range
+- `get_usage_stats`: persisted daily rollups grouped by local calendar day, separately scoped from API-key spending
 
 Raw counters are returned under `thrift_metrics`. Common fields include:
 
@@ -323,10 +347,7 @@ Example routing feedback payload:
   "params": {
     "name": "get_usage_stats",
     "arguments": {
-      "request": {
-        "start_date": "2025-01-01",
-        "end_date": "2025-01-31"
-      }
+      "request": {}
     }
   }
 }
@@ -337,9 +358,14 @@ Example MCP Response
 ```json
 {
   "total_cost": 12.34,
-  "total_tokens": 1850000,
-  "requests": 412,
-  "models": ["anthropic/claude-sonnet-4", "openai/gpt-4o-mini"],
+  "scope": "api_key",
+  "usage_daily": 0.34,
+  "usage_weekly": 2.34,
+  "usage_monthly": 4.34,
+  "total_tokens": null,
+  "requests": null,
+  "models": null,
+  "thrift_scope": "local_runtime",
   "thrift_metrics": {
     "saved_cost_usd": 1.48,
     "saved_prompt_tokens": 657000,
@@ -355,8 +381,8 @@ Example MCP Response
   },
   "thrift_summary": {
     "saved_cost_usd": 1.48,
-    "estimated_cost_without_thrift_usd": 13.82,
-    "effective_cost_reduction_pct": 10.71,
+    "estimated_cost_without_thrift_usd": null,
+    "effective_cost_reduction_pct": null,
     "prompt_savings_breakdown": {
       "cache_reuse_tokens": 542000,
       "coalesced_prompt_tokens": 91000,
@@ -373,8 +399,8 @@ Example MCP Response
       "cache_write_prompt_tokens": 180000,
       "cache_hit_requests": 126,
       "cache_write_requests": 54,
-      "cache_hit_request_rate_pct": 30.58,
-      "cache_write_request_rate_pct": 13.11,
+      "cache_hit_request_rate_pct": null,
+      "cache_write_request_rate_pct": null,
       "reuse_to_write_ratio": 3.01
     },
     "cache_efficiency_by_provider": {
@@ -465,10 +491,9 @@ Example MCP Response
     "arguments": {
       "models": ["openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet"],
       "weights": {
-        "speed": 0.2,
-        "cost": 0.3,
-        "quality": 0.4,
-        "throughput": 0.1
+        "speed": 0.3,
+        "cost": 0.5,
+        "throughput": 0.2
       }
     }
   }
@@ -482,3 +507,83 @@ Example MCP Response
 - `docs/BENCHMARK_GUIDE.md`
 - `docs/COLLECTIVE_INTELLIGENCE_INTEGRATION.md`
 - `docs/SECURE_STORAGE_INTEGRATION.md`
+
+### Validation and benchmark boundary behavior
+
+All cross-validator strategies require explicit JSON scores and issues. Empty,
+malformed, duplicate-key, or truncated reviews are failed evidence. A consensus
+check first generates independent answers, then reviews their agreement with the
+candidate; this uses up to two requests per reviewer and the token cap applies to
+each request. Agreement measures score differences, not equal issue counts.
+Specialized model preferences do not bypass availability or self-review exclusion.
+
+Completion requests reject non-finite/out-of-range temperature, nonpositive token
+caps, duplicate model IDs, and invalid model-count ranges. Cross-validation also
+rejects empty content and duplicate/blank criteria. Benchmark requests reject
+nonpositive run counts, negative/non-finite delays, duplicate IDs, and invalid
+ranking weights before initializing API work.
+
+CSV `response_time` is in milliseconds for both basic and enhanced results;
+`throughput` is tokens/second. Missing exported measurements are blank in CSV and
+null in JSON. Stored quality scores without `quality_evaluation: "provided"` are
+legacy, unevaluated data and cannot select a quality winner. The `provided` marker
+only identifies a caller-supplied score; it does not certify evaluator accuracy.
+
+Benchmark costs prefer the API's `usage.cost` (including zero). Without it, catalog
+prompt/completion USD-per-token rates give an estimate; this estimate does not
+include provider-specific cache discounts, dynamic overrides, or other charges.
+Missing/invalid fallback pricing produces a failed benchmark instead of ranking
+that model as free. See [usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
+and [catalog pricing units](https://openrouter.ai/docs/guides/overview/models#pricing-object).
+
+### Collaborative solving evidence and operational limits
+
+`collaborative_problem_solving` now returns `validation_status` and `is_valid`.
+`quality_assessment` and `confidence` are null when the final answer has no completed
+review. A review of an earlier draft or one subtask does not validate the assembled
+answer. Sequential and hierarchical strategies review the assembled answer. A
+fallback consensus answer is unevaluated until that exact answer is reviewed. If
+all parallel components fail, the tool returns an error instead of a scored solution.
+
+Consensus and ensemble execution exclude empty/truncated model answers from
+successful evidence and honor the caller's model list. Consensus records each API
+attempt once, reconciles observed tokens/cost without increasing call counts, and
+cancels pending provider requests after an observed quota overage. Cost accounting
+is a best-effort local guard: already dispatched provider requests may have incurred
+charges before cancellation. It is not a provider-enforced spending cap.
+
+Consensus `quality_metrics` and ensemble `reasoning_quality` are null without an
+answer evaluator, with `quality_evaluation: "not_evaluated"`. Their existing
+response-derived scalar is available separately as `heuristic_score`; consensus
+confidence declares `confidence_basis: "response_heuristic"`. Agreement and fluent
+text are not measured correctness. Library-supplied scores are marked `provided`.
+
+Collaborative solving adapts its internal default quorum to an explicit caller
+model list without mutating shared configuration; standalone consensus retains its
+requested minimum. Ensemble `total_cost` sums observed processing-result costs
+(which may themselves be catalog estimates), rather than assignment predictions.
+Malformed token counters are rejected before they enter accounting. Both basic and
+enhanced benchmark reports preserve measurements when exported and reloaded.
+
+With `decompose: false`, ensemble reasoning assigns the original task once and
+returns its response unchanged, with `strategy_used: "none"`. Consensus rejects
+an insufficient available model set before generating any answers. Performance
+comparisons reject empty or duplicate model lists, and category comparisons require
+a positive `top_n`, before starting benchmark work.
+
+Collective cost estimates preserve explicit zero prices and use OpenRouter catalog
+prices as USD per token without guessing a different unit from their magnitude.
+Reported `usage.cost` still takes precedence over catalog estimates.
+
+Free chat requires explicit zero pricing and text-only output capability. Missing,
+negative/dynamic, non-finite, or malformed prices have cost tier `unknown`; any
+positive catalog fee prevents free routing. Cached labels are checked again before
+selection. Empty text is a failed response; a reported nonzero charge stops retries
+instead of recording a successful free response.
+
+Vision requests label PNG, GIF, WebP, and JPEG payloads with their actual MIME type.
+Transport success does not establish image understanding: in the 2026-10-06 live
+check, GPT-4.1 Nano called a solid red 64×64 PNG blue through both MCP and direct
+OpenRouter calls. The same model answered red at 256×256; Gemini 2.5 Flash Lite
+answered red at 64×64. This observed provider/model limitation remains outside the
+MIME correction and must not be reported as fixed by it.

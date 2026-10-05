@@ -281,7 +281,9 @@ async def test_compare_model_performance_delegates_only_successful_results():
 async def test_compare_model_performance_preserves_all_failed_early_return():
     models = ["model-a"]
     handler = Mock()
-    handler.benchmark_models = AsyncMock(return_value={"model-a": Mock(success=False)})
+    handler.benchmark_models = AsyncMock(
+        return_value={"model-a": Mock(success=False, error_message="Provider failed")}
+    )
 
     with patch.object(
         mcp_benchmark,
@@ -297,6 +299,8 @@ async def test_compare_model_performance_preserves_all_failed_early_return():
     assert result == {
         "error": "성공한 벤치마크 결과가 없습니다.",
         "models": models,
+        "benchmark_status": "failed",
+        "failed_models": {"model-a": "Provider failed"},
     }
     assert result["models"] is models
 
@@ -513,7 +517,7 @@ class TestMCPBenchmarkTools:
                 "overall_score": 0.12345,
                 "speed_score": 0,
                 "cost_score": 0,
-                "quality_score": 0,
+                "quality_score": None,
                 "throughput_score": 0,
             },
         ]
@@ -623,10 +627,9 @@ class TestMCPBenchmarkTools:
 
     def test_normalize_performance_weights_preserves_contract(self):
         assert mcp_benchmark._normalize_performance_weights(None) == {
-            "speed": 0.2,
-            "cost": 0.3,
-            "quality": 0.4,
-            "throughput": 0.1,
+            "speed": 0.3,
+            "cost": 0.5,
+            "throughput": 0.2,
         }
 
         positive_weights = {"speed": 1.0, "quality": 3.0}
@@ -635,23 +638,13 @@ class TestMCPBenchmarkTools:
         assert normalized is not positive_weights
         assert positive_weights == {"speed": 1.0, "quality": 3.0}
 
-        zero_total_weights = {"speed": 1.0, "cost": -1.0}
-        assert (
-            mcp_benchmark._normalize_performance_weights(zero_total_weights)
-            is zero_total_weights
-        )
-
-        negative_total_weights = {"speed": -2.0, "cost": 1.0}
-        assert (
-            mcp_benchmark._normalize_performance_weights(negative_total_weights)
-            is negative_total_weights
-        )
-
-        nan_total_weights = {"speed": float("nan")}
-        assert (
-            mcp_benchmark._normalize_performance_weights(nan_total_weights)
-            is nan_total_weights
-        )
+        for weights in (
+            {"speed": 1.0, "cost": -1.0},
+            {"speed": -2.0},
+            {"speed": float("nan")},
+        ):
+            with pytest.raises(ValueError, match="Weights"):
+                mcp_benchmark._normalize_performance_weights(weights)
 
     @pytest.mark.asyncio
     async def test_get_benchmark_handler(self, mock_env):
@@ -894,7 +887,7 @@ class TestMCPBenchmarkTools:
                         "overall_score": 0.9,
                         "speed_score": 0,
                         "cost_score": 0,
-                        "quality_score": 0,
+                        "quality_score": None,
                     }
                 ]
 
@@ -1027,7 +1020,9 @@ class TestMCPBenchmarkTools:
                 mock_exporter = AsyncMock()
                 mock_exporter_class.return_value = mock_exporter
 
-                result = await export_benchmark_report(benchmark_file=input_file, format="markdown")
+                result = await export_benchmark_report(
+                    benchmark_file=input_file, format="markdown"
+                )
 
                 assert result["format"] == "markdown"
                 assert result["input_file"] == input_file
@@ -1041,7 +1036,7 @@ class TestMCPBenchmarkTools:
     async def test_compare_model_performance(self, mock_env, mock_benchmark_result):
         """고급 모델 성능 비교 테스트"""
         models = ["gpt-4", "claude-3"]
-        weights = {"speed": 0.3, "cost": 0.3, "quality": 0.4}
+        weights = {"speed": 0.3, "cost": 0.3, "throughput": 0.4}
 
         mock_results = {
             "gpt-4": mock_benchmark_result,
@@ -1135,10 +1130,9 @@ class TestMCPBenchmarkTools:
 
                 # 기본 가중치가 사용되었는지 확인
                 expected_weights = {
-                    "speed": 0.2,
-                    "cost": 0.3,
-                    "quality": 0.4,
-                    "throughput": 0.1,
+                    "speed": 0.3,
+                    "cost": 0.5,
+                    "throughput": 0.2,
                 }
                 assert result["config"]["weights"] == expected_weights
 
@@ -1168,7 +1162,7 @@ class TestMCPBenchmarkTools:
         }
 
         best_model = _get_best_model(results_with_quality)
-        assert best_model == "model2"
+        assert best_model is None  # Unmarked legacy quality scores are not evaluations
 
         # _get_category_prompt 테스트
         chat_prompt = _get_category_prompt("chat")
@@ -1224,7 +1218,7 @@ class TestMCPBenchmarkTools:
                 "total_models": 3,
                 "successful_models": 2,
                 "avg_response_time": 3.0,
-                "best_model": "model-c",
+                "best_model": None,
             },
         }
         assert entry["config"] is config

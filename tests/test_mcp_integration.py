@@ -15,7 +15,6 @@ all modules properly register their tools with the shared FastMCP instance.
 
 import json
 import sys
-from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -271,7 +270,9 @@ class TestMCPServerStartup:
             from openrouter_mcp.server import create_app
 
             # Should raise ValueError
-            with pytest.raises(ValueError, match="Missing required environment variables"):
+            with pytest.raises(
+                ValueError, match="Missing required environment variables"
+            ):
                 create_app()
 
     def test_validate_environment_function(self, mock_env):
@@ -403,7 +404,9 @@ class TestMCPToolResponseContracts:
             "completion": 0.002,
         }
         mock_client.model_cache = Mock()
-        mock_client.model_cache.get_model_info = AsyncMock(return_value={"context_length": 8192})
+        mock_client.model_cache.get_model_info = AsyncMock(
+            return_value={"context_length": 8192}
+        )
 
         async def chat_completion_with_thrift(*args, **kwargs):
             record_compaction_savings(5)
@@ -443,7 +446,10 @@ class TestMCPToolResponseContracts:
         data = _json_from(result)
         assert data["thrift_metrics"]["compacted_tokens"] == 5
         assert data["thrift_summary"]["saved_cost_usd"] == 0.004
-        assert data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 80
+        assert (
+            data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"]
+            == 80
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -465,32 +471,30 @@ class TestMCPToolResponseContracts:
         )
         mock_client = AsyncMock(spec=OpenRouterClient)
         mock_client.track_usage.return_value = {
+            "scope": "api_key",
             "total_cost": 0.09,
-            "total_tokens": 1800,
-            "requests": 10,
-            "models": ["openai/gpt-4o-mini"],
+            "total_tokens": None,
+            "requests": None,
+            "models": None,
         }
 
         with patch(
             "openrouter_mcp.handlers.chat.get_openrouter_client",
             new=AsyncMock(return_value=mock_client),
         ):
-            today = date.today().isoformat()
             async with Client(chat_module.mcp) as client:
                 result = await client.call_tool(
                     "get_usage_stats",
-                    {
-                        "request": {
-                            "start_date": today,
-                            "end_date": today,
-                        }
-                    },
+                    {"request": {}},
                 )
 
         data = _json_from(result)
         assert data["thrift_metrics"]["compacted_tokens"] == 11
         assert data["thrift_summary"]["saved_cost_usd"] == 0.009
         assert data["thrift_summary"]["cache_efficiency"]["reuse_to_write_ratio"] == 3.0
+        assert data["scope"] == "api_key"
+        assert data["thrift_scope"] == "local_runtime"
+        assert data["thrift_summary"]["effective_cost_reduction_pct"] is None
 
     @pytest.mark.asyncio
     @pytest.mark.unit
@@ -538,7 +542,9 @@ class TestMCPToolResponseContracts:
                     {
                         "request": {
                             "model": "openai/gpt-4o",
-                            "messages": [{"role": "user", "content": "Describe this image."}],
+                            "messages": [
+                                {"role": "user", "content": "Describe this image."}
+                            ],
                             "images": [
                                 {
                                     "data": "https://example.com/chart.png",
@@ -553,7 +559,10 @@ class TestMCPToolResponseContracts:
         data = _json_from(result)
         assert data["thrift_metrics"]["compacted_tokens"] == 3
         assert data["thrift_summary"]["saved_cost_usd"] == 0.002
-        assert data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"] == 40
+        assert (
+            data["thrift_summary"]["prompt_savings_breakdown"]["cache_reuse_tokens"]
+            == 40
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.unit

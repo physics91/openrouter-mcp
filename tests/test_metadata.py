@@ -141,7 +141,10 @@ class TestModelMetadataExtraction:
         version_info = get_model_version_info(model_data)
 
         # Version should contain turbo and date
-        assert "turbo" in version_info["version"] or "2024-04-09" in version_info["version"]
+        assert (
+            "turbo" in version_info["version"]
+            or "2024-04-09" in version_info["version"]
+        )
         assert version_info["release_date"] == "2024-04-09"
         assert version_info["is_latest"] in [
             True,
@@ -336,7 +339,9 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
+        ):
             models = await cache.get_models(force_refresh=True)
 
             # Check that we got enhanced models
@@ -361,7 +366,9 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
+        ):
             await cache.get_models(force_refresh=True)
 
             # Filter chat models
@@ -383,7 +390,9 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models(mock_api_response)
 
-        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
+        ):
             await cache.get_models(force_refresh=True)
 
             # Filter OpenAI models
@@ -408,7 +417,9 @@ class TestModelCacheMetadataIntegration:
             await cache.get_models()
 
             # Filter vision-capable models
-            vision_models = cache.filter_models_by_metadata(capabilities={"supports_vision": True})
+            vision_models = cache.filter_models_by_metadata(
+                capabilities={"supports_vision": True}
+            )
             assert isinstance(vision_models, list)  # Should return a list
 
             # Filter high-context models (>100k tokens)
@@ -437,7 +448,9 @@ class TestModelCacheMetadataIntegration:
             assert "economy" in models_by_tier
 
             # Check that tiers have some models
-            all_models = sum(len(tier_models) for tier_models in models_by_tier.values())
+            all_models = sum(
+                len(tier_models) for tier_models in models_by_tier.values()
+            )
             assert all_models > 0  # Should have some models distributed across tiers
 
     @pytest.mark.asyncio
@@ -483,7 +496,9 @@ class TestModelCacheMetadataIntegration:
 
             return batch_enhance_models([old_model])
 
-        with patch.object(cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api):
+        with patch.object(
+            cache, "_fetch_models_from_api", side_effect=mock_fetch_from_api
+        ):
             models = await cache.get_models(force_refresh=True)
 
             # Should still work and add basic metadata
@@ -545,7 +560,7 @@ class TestCostTierNonTokenPricing:
             # truly free — all fields zero
             ({"prompt": "0", "completion": "0", "image": "0", "request": "0"}, "free"),
             # pricing is None explicitly
-            (None, "free"),
+            (None, "unknown"),
         ],
     )
     def test_non_token_pricing_affects_cost_tier(self, pricing, expected_tier):
@@ -557,12 +572,12 @@ class TestCostTierNonTokenPricing:
         }
         assert determine_cost_tier(model_data) == expected_tier
 
-    def test_missing_pricing_key_is_free(self):
-        """Model with no pricing key at all should be 'free'."""
+    def test_missing_pricing_key_is_unknown(self):
+        """Missing pricing cannot establish that a model is free."""
         from src.openrouter_mcp.utils.metadata import determine_cost_tier
 
         model_data = {"architecture": {"modality": "text"}}
-        assert determine_cost_tier(model_data) == "free"
+        assert determine_cost_tier(model_data) == "unknown"
 
 
 class TestMetadataQualityScoring:

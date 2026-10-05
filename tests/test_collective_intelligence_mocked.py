@@ -124,7 +124,9 @@ class TestCollectiveChatCompletionMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_collective_chat_majority_vote(self, mock_get_client, setup_mock_client):
+    async def test_collective_chat_majority_vote(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test collective chat with majority vote strategy."""
         # Create mock responses
         responses = [
@@ -204,19 +206,27 @@ class TestCollectiveChatCompletionMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_collective_chat_weighted_average(self, mock_get_client, setup_mock_client):
+    async def test_collective_chat_weighted_average(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test collective chat with weighted average strategy."""
         responses = [
             {
-                "choices": [{"message": {"content": "Response 1"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 1"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 30},
             },
             {
-                "choices": [{"message": {"content": "Response 2"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 2"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 35},
             },
             {
-                "choices": [{"message": {"content": "Response 3"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 3"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 32},
             },
         ]
@@ -239,20 +249,28 @@ class TestCollectiveChatCompletionMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_collective_chat_handles_failures(self, mock_get_client, setup_mock_client):
+    async def test_collective_chat_handles_failures(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test that collective chat handles individual model failures gracefully."""
         # Setup: First and third calls succeed, second fails
         responses = [
             {
-                "choices": [{"message": {"content": "Response 1"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 1"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 30},
             },
             {
-                "choices": [{"message": {"content": "Response 2"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 2"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 35},
             },
             {
-                "choices": [{"message": {"content": "Response 3"}, "finish_reason": "stop"}],
+                "choices": [
+                    {"message": {"content": "Response 3"}, "finish_reason": "stop"}
+                ],
                 "usage": {"total_tokens": 40},
             },
         ]
@@ -260,7 +278,9 @@ class TestCollectiveChatCompletionMocked:
         mock_client = setup_mock_client(chat_responses=responses)
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(prompt="Test prompt", min_models=2, max_models=3)
+        request = CollectiveChatRequest(
+            prompt="Test prompt", min_models=2, max_models=3
+        )
 
         result = await collective_chat_completion(request)
 
@@ -274,7 +294,9 @@ class TestEnsembleReasoningMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_ensemble_reasoning_with_decomposition(self, mock_get_client, setup_mock_client):
+    async def test_ensemble_reasoning_with_decomposition(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test ensemble reasoning with task decomposition."""
         # Mock responses for the reasoning process
         responses = [
@@ -292,7 +314,9 @@ class TestEnsembleReasoningMocked:
             {
                 "choices": [
                     {
-                        "message": {"content": "Additional analysis of remote work impacts."},
+                        "message": {
+                            "content": "Additional analysis of remote work impacts."
+                        },
                         "finish_reason": "stop",
                     }
                 ],
@@ -327,7 +351,9 @@ class TestEnsembleReasoningMocked:
         response = {
             "choices": [
                 {
-                    "message": {"content": "Direct analysis result without decomposition."},
+                    "message": {
+                        "content": "Direct analysis result without decomposition."
+                    },
                     "finish_reason": "stop",
                 }
             ],
@@ -352,7 +378,9 @@ class TestAdaptiveModelSelectionMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_adaptive_model_selection_for_code(self, mock_get_client, setup_mock_client):
+    async def test_adaptive_model_selection_for_code(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test adaptive model selection for code generation."""
         response = {
             "choices": [
@@ -384,7 +412,9 @@ class TestAdaptiveModelSelectionMocked:
             },
         ]
 
-        mock_client = setup_mock_client(chat_responses=response, list_models_response=models)
+        mock_client = setup_mock_client(
+            chat_responses=response, list_models_response=models
+        )
         mock_get_client.return_value = mock_client
 
         request = AdaptiveModelRequest(
@@ -394,7 +424,9 @@ class TestAdaptiveModelSelectionMocked:
             constraints={"preferred_provider": "openai"},
         )
 
-        thrift_metrics = _build_runtime_thrift_metrics(*(model["id"] for model in models))
+        thrift_metrics = _build_runtime_thrift_metrics(
+            *(model["id"] for model in models)
+        )
         with patch(
             "openrouter_mcp.collective_intelligence.adaptive_router.get_thrift_metrics_snapshot_for_dates",
             return_value=thrift_metrics,
@@ -412,7 +444,9 @@ class TestAdaptiveModelSelectionMocked:
         assert len(result["selected_model"]) > 0
         assert 0.0 <= result["confidence"] <= 1.0
         assert isinstance(result["alternative_models"], list)
-        assert result["routing_metrics"]["constraints_applied"] == ["preferred_provider"]
+        assert result["routing_metrics"]["constraints_applied"] == [
+            "preferred_provider"
+        ]
         assert result["routing_metrics"]["constraints_unmet"] == []
         assert result["routing_metrics"]["filtered_candidates"] == 0
         assert result["routing_metrics"]["performance_weights"]["accuracy"] > 0
@@ -421,13 +455,17 @@ class TestAdaptiveModelSelectionMocked:
         assert result["routing_metrics"]["thrift_feedback"]["source"] == "provider"
         assert result["routing_metrics"]["thrift_feedback"]["lookback_days"] == 7
         assert (
-            result["routing_metrics"]["thrift_feedback"]["bucket_summary"]["observed_requests"]
+            result["routing_metrics"]["thrift_feedback"]["bucket_summary"][
+                "observed_requests"
+            ]
             >= 20
         )
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_adaptive_model_selection_for_chat(self, mock_get_client, setup_mock_client):
+    async def test_adaptive_model_selection_for_chat(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test adaptive model selection for general chat."""
         response = {
             "choices": [
@@ -442,7 +480,9 @@ class TestAdaptiveModelSelectionMocked:
         mock_client = setup_mock_client(chat_responses=response)
         mock_get_client.return_value = mock_client
 
-        request = AdaptiveModelRequest(query="Hello, how are you?", task_type="reasoning")
+        request = AdaptiveModelRequest(
+            query="Hello, how are you?", task_type="reasoning"
+        )
 
         thrift_metrics = _build_runtime_thrift_metrics(
             "openai/gpt-4",
@@ -471,7 +511,9 @@ class TestCrossModelValidationMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_cross_model_validation_pass(self, mock_get_client, setup_mock_client):
+    async def test_cross_model_validation_pass(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test cross-model validation completes without crashing."""
         # Create consistent validation response for all validators
         validation_response = {
@@ -508,7 +550,9 @@ class TestCrossModelValidationMocked:
 
     @pytest.mark.asyncio
     @patch("openrouter_mcp.handlers.collective_intelligence.get_openrouter_client")
-    async def test_cross_model_validation_fail(self, mock_get_client, setup_mock_client):
+    async def test_cross_model_validation_fail(
+        self, mock_get_client, setup_mock_client
+    ):
         """Test cross-model validation completes without crashing."""
         # Create consistent validation response
         validation_response = {
@@ -643,7 +687,9 @@ class TestCollectiveIntelligenceErrorHandling:
         mock_client.chat_completion.side_effect = Exception("API Connection Error")
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
+        request = CollectiveChatRequest(
+            prompt="Test prompt", min_models=1, max_models=1
+        )
 
         # The handler should surface insufficient response errors cleanly
         try:
@@ -680,13 +726,12 @@ class TestCollectiveIntelligenceErrorHandling:
         mock_client.chat_completion.return_value = {"invalid": "structure"}
         mock_get_client.return_value = mock_client
 
-        request = CollectiveChatRequest(prompt="Test prompt", min_models=1, max_models=1)
+        request = CollectiveChatRequest(
+            prompt="Test prompt", min_models=1, max_models=1
+        )
 
-        # The MCP framework catches exceptions and returns None or error structure
-        result = await collective_chat_completion(request)
-
-        # Either returns None on error or doesn't crash
-        assert result is None or isinstance(result, dict)
+        with pytest.raises(ValueError, match="Insufficient responses"):
+            await collective_chat_completion(request)
 
 
 if __name__ == "__main__":

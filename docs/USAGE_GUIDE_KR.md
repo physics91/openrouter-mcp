@@ -644,10 +644,13 @@ budget_models = await list_available_models(
 # MCP 툴
 {
   "models": ["gpt-4", "claude-3-opus", "gemini-pro"],
-  "prompts": ["Explain AI ethics", "Write a Python decorator"],
-  "metrics": ["quality", "speed", "cost"]
+  "prompt": "Explain AI ethics",
+  "runs": 3
 }
 ```
+
+`benchmark_models`는 응답 시간, 비용, 처리량을 측정합니다. 답변의 정답 여부를
+평가하는 기능은 연결되어 있지 않아 `quality_score`는 `null`입니다.
 
 ### 4. 비용 추적
 
@@ -661,10 +664,11 @@ claude "Compare costs between GPT-4 and Claude Opus"
 
 ```python
 # MCP 툴에서 직접 조회
-stats = await get_usage_stats(
-    start_date="2025-01-01",
-    end_date="2025-01-31"
-)
+from openrouter_mcp.handlers.chat import UsageStatsRequest, get_usage_stats
+
+stats = await get_usage_stats(UsageStatsRequest())
+# 현재 UTC 월의 API 키 지출
+monthly_cost = stats.get("usage_monthly")
 ```
 
 **응답에서 같이 확인할 것**:
@@ -672,17 +676,24 @@ stats = await get_usage_stats(
 - `thrift_summary`: 런타임 절감 효과를 요약한 사람이 읽기 쉬운 필드
 - `thrift_metrics`: 캐시, coalescing, compaction, deferred batch 같은 절감 카운터의 raw 값
 
-`get_usage_stats(start_date=..., end_date=...)` 의 thrift 값은 메모리 땜빵이 아니라 persisted daily rollup에서 읽어옴. 즉 날짜를 주면 같은 로컬 날짜 범위로 잘라서 보여줌
+지출은 `/key` API가 반환하는 현재 인증 키 기준입니다. 임의 날짜 범위는 지원하지 않아
+`start_date` 또는 `end_date`를 지정하면 오류가 반환됩니다. 토큰 수·요청 수는 이 API에서
+제공하지 않으므로 `null`입니다. `thrift_scope: "local_runtime"`의 절감량은 로컬 기록이며,
+키 전체 지출과 집계 범위가 달라 절감률과 절감 전 예상 비용도 `null`로 표시합니다.
+로컬 절감 기록은 로컬 날짜 단위로 저장됩니다. API 키 지출의 UTC 기준 기간과는
+시간대와 수집 대상이 다릅니다.
 
 ```json
 {
   "total_cost": 12.34,
-  "total_tokens": 1850000,
-  "requests": 412,
+  "scope": "api_key",
+  "total_tokens": null,
+  "requests": null,
+  "thrift_scope": "local_runtime",
   "thrift_summary": {
     "saved_cost_usd": 1.48,
-    "estimated_cost_without_thrift_usd": 13.82,
-    "effective_cost_reduction_pct": 10.71,
+    "estimated_cost_without_thrift_usd": null,
+    "effective_cost_reduction_pct": null,
     "prompt_savings_breakdown": {
       "cache_reuse_tokens": 542000,
       "coalesced_prompt_tokens": 91000,
@@ -699,8 +710,8 @@ stats = await get_usage_stats(
       "cache_write_prompt_tokens": 180000,
       "cache_hit_requests": 126,
       "cache_write_requests": 54,
-      "cache_hit_request_rate_pct": 30.58,
-      "cache_write_request_rate_pct": 13.11,
+      "cache_hit_request_rate_pct": null,
+      "cache_write_request_rate_pct": null,
       "reuse_to_write_ratio": 3.01
     },
     "cache_efficiency_by_provider": {

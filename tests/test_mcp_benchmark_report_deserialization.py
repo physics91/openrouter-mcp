@@ -62,7 +62,7 @@ def test_deserialize_benchmark_report_results_filters_and_converts_in_order():
         metrics=benchmark_module.ReportMetrics(
             avg_response_time=1.5,
             avg_cost=0.002,
-            quality_score=8.0,
+            quality_score=None,
             throughput=120.0,
         ),
     )

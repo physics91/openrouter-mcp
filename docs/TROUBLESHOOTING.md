@@ -339,10 +339,9 @@ max_tokens=500  # Limit response length
 2. **Monitor usage**:
 ```python
 # Use get_usage_stats tool
-stats = await get_usage_stats(
-    start_date="2025-01-01",
-    end_date="2025-01-12"
-)
+from openrouter_mcp.handlers.chat import UsageStatsRequest, get_usage_stats
+
+stats = await get_usage_stats(UsageStatsRequest())
 ```
 
 3. **Interpret runtime thrift metadata**:
@@ -351,12 +350,12 @@ stats["thrift_summary"]
 stats["thrift_metrics"]
 ```
 
-`get_usage_stats(start_date=..., end_date=...)` now reads thrift savings from persisted daily rollups, filtered by the same local calendar day window. So if the thrift numbers look off, check the date range first before blaming the provider.
+`get_usage_stats` rejects arbitrary `start_date` / `end_date` ranges. Remote spending is scoped to the authenticated API key, with current UTC day/week/month counters. Local thrift savings come from persisted daily rollups grouped by local calendar day. Their scopes differ, so combined savings percentages and estimated pre-thrift costs are `null`.
 
 Use these fields to tell which cost-saving layer is working and which one is asleep at the wheel:
 
 - `saved_cost_usd`: Estimated dollars avoided by runtime thrift
-- `effective_cost_reduction_pct`: Effective reduction versus estimated cost without thrift
+- `effective_cost_reduction_pct`: `null` for API-key usage stats; only meaningful when spending and savings cover the same activity
 - `prompt_savings_breakdown`: Prompt-token savings from cache reuse, in-flight coalescing, short-lived recent reuse, and compaction
 - `request_savings_breakdown`: Request-count savings split between in-flight coalescing, recent reuse, and deferred batch export
 - `cache_efficiency`: Cache writes versus cache re-use volume, plus request hit/write rates

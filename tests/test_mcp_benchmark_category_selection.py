@@ -57,7 +57,7 @@ def test_serialize_category_overall_ranking_preserves_order_and_limit():
         "overall_score": 0.99,
         "speed_score": 0,
         "cost_score": 0,
-        "quality_score": 0,
+        "quality_score": None,
     }
 
 
@@ -219,11 +219,13 @@ async def test_compare_model_categories_no_selection_preserves_exact_return(
         AsyncMock(return_value=handler),
     )
 
-    result = await mcp_benchmark.compare_model_categories(categories=["chat"], top_n=0)
+    result = await mcp_benchmark.compare_model_categories(
+        categories=["missing"], top_n=1
+    )
 
     assert result == {
         "message": "비교할 모델이 없습니다.",
-        "categories": ["chat"],
-        "available_categories": ["chat"],
+        "categories": ["missing"],
+        "available_categories": [],
     }
     handler.benchmark_models.assert_not_called()

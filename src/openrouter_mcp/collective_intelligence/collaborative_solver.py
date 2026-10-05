@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from time import perf_counter
 from typing import Any, Optional, cast
 
 from ..utils.async_utils import raise_first_fatal_result
@@ -22,10 +23,9 @@ from .base import (
     ProcessingResult,
     QualityMetrics,
     TaskContext,
-    build_quality_metrics,
 )
 from .consensus_engine import ConsensusEngine, ConsensusResult
-from .cross_validator import CrossValidator
+from .cross_validator import CrossValidator, ValidationResult
 from .ensemble_reasoning import EnsembleReasoner, EnsembleResult
 from .operational_controls import OperationalConfig, init_operational_controls
 
@@ -78,8 +78,8 @@ class SolvingResult:
 
     session: SolvingSession
     final_content: str
-    confidence_score: float
-    quality_assessment: QualityMetrics
+    confidence_score: float | None
+    quality_assessment: QualityMetrics | None
     solution_path: list[str]  # Steps taken to reach solution
     alternative_solutions: list[str]
     improvement_suggestions: list[str]
@@ -171,6 +171,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
         session_id = f"session_{task.task_id}_{datetime.now().timestamp()}"
         request_id = task.task_id
+        started_at = perf_counter()
 
         # Acquire task execution slot
         if not await self.concurrency_limiter.acquire_task_slot(session_id):
@@ -210,6 +211,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
 
             # Finalize session
             session.end_time = datetime.now()
+            result.total_processing_time = perf_counter() - started_at
             session.final_result = result
 
             # Move to storage with TTL management
@@ -272,13 +274,36 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         self, ensemble_result: EnsembleResult
     ) -> Optional[ProcessingResult]:
         """Select the best sub-task result based on confidence."""
-        if not ensemble_result.sub_task_results:
+        successful = [
+            subtask for subtask in ensemble_result.sub_task_results if subtask.success
+        ]
+        if not successful:
             return None
         best_subtask = max(
-            ensemble_result.sub_task_results,
-            key=lambda x: x.result.confidence if x.success else 0,
+            successful,
+            key=lambda x: x.result.confidence,
         )
         return best_subtask.result
+
+    def _ensemble_candidate(
+        self, task: TaskContext, result: EnsembleResult
+    ) -> ProcessingResult:
+        if result.success_rate <= 0 or not result.final_content.strip():
+            raise RuntimeError("No successful ensemble solution to validate")
+        return ProcessingResult(
+            task_id=task.task_id, model_id="ensemble", content=result.final_content
+        )
+
+    async def _consensus_for_task(self, task: TaskContext) -> ConsensusResult:
+        """Bound the solver's default quorum to the caller's explicit model set.
+
+        This is request-local; shared engine configuration is never mutated.
+        """
+        preferred = task.requirements.get("preferred_models")
+        if preferred:
+            minimum = min(self.consensus_engine.config.min_models, len(set(preferred)))
+            return await self.consensus_engine.process(task, min_models=minimum)
+        return await self.consensus_engine.process(task)
 
     async def _solve_sequential(
         self, session: SolvingSession, request_id: str
@@ -295,24 +320,15 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         self._record_component(session, "ensemble_reasoner", ensemble_result)
 
         # Step 3: Validate the result
-        best_result = self._select_best_subtask_result(ensemble_result)
-        if best_result:
-            validation_result = await self.cross_validator.process(best_result, task)
-        else:
-            # Create a dummy result for validation
-            dummy_result = ProcessingResult(
-                task_id=task.task_id,
-                model_id="ensemble",
-                content=ensemble_result.final_content,
-                confidence=0.8,
-            )
-            validation_result = await self.cross_validator.process(dummy_result, task)
+        validation_result = await self.cross_validator.process(
+            self._ensemble_candidate(task, ensemble_result), task
+        )
 
         self._record_component(session, "cross_validator", validation_result)
 
         # Step 4: Build consensus if validation suggests improvements
         if not validation_result.is_valid:
-            consensus_result = await self.consensus_engine.process(task)
+            consensus_result = await self._consensus_for_task(task)
             self._record_component(session, "consensus_engine", consensus_result)
             final_content = consensus_result.consensus_content
         else:
@@ -329,7 +345,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         # Run multiple components in parallel
         results = await asyncio.gather(
             self.ensemble_reasoner.process(task),
-            self.consensus_engine.process(task),
+            self._consensus_for_task(task),
             return_exceptions=True,
         )
         raise_first_fatal_result(results)
@@ -343,11 +359,18 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             ensemble_result = None
         else:
             ensemble_result = ensemble_raw
+            if (
+                ensemble_result.success_rate <= 0
+                or not ensemble_result.final_content.strip()
+            ):
+                ensemble_result = None
 
         if isinstance(consensus_raw, BaseException):
             consensus_result = None
         else:
             consensus_result = consensus_raw
+            if not consensus_result.consensus_content.strip():
+                consensus_result = None
 
         self._record_component(session, "ensemble_reasoner", ensemble_result)
         self._record_component(session, "consensus_engine", consensus_result)
@@ -364,7 +387,7 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         elif consensus_result:
             final_content = consensus_result.consensus_content
         else:
-            final_content = "Unable to generate solution due to component failures"
+            raise RuntimeError("Unable to generate solution: all components failed")
 
         return self._create_solving_result(session, final_content)
 
@@ -382,18 +405,16 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
         self._record_component(session, "ensemble_reasoner", ensemble_result)
 
         # Level 2: Validate and improve
-        best_result = self._select_best_subtask_result(ensemble_result)
-        if best_result:
-            validation_result = await self.cross_validator.process(best_result, task)
-            self._record_component(session, "cross_validator", validation_result)
+        validation_result = await self.cross_validator.process(
+            self._ensemble_candidate(task, ensemble_result), task
+        )
+        self._record_component(session, "cross_validator", validation_result)
 
-            # Level 3: Consensus if needed
-            if not validation_result.is_valid:
-                consensus_result = await self.consensus_engine.process(task)
-                self._record_component(session, "consensus_engine", consensus_result)
-                final_content = consensus_result.consensus_content
-            else:
-                final_content = ensemble_result.final_content
+        # Level 3: Consensus if needed; a changed answer remains unevaluated.
+        if not validation_result.is_valid:
+            consensus_result = await self._consensus_for_task(task)
+            self._record_component(session, "consensus_engine", consensus_result)
+            final_content = consensus_result.consensus_content
         else:
             final_content = ensemble_result.final_content
 
@@ -416,13 +437,15 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             if iteration == 0:
                 # Start with ensemble reasoning
                 ensemble_result = await self.ensemble_reasoner.process(task)
-                current_content = ensemble_result.final_content
+                current_content = self._ensemble_candidate(
+                    task, ensemble_result
+                ).content
                 self._record_component(
                     session, f"ensemble_reasoner_iter_{iteration}", ensemble_result
                 )
             else:
                 # Use consensus to refine
-                consensus_result = await self.consensus_engine.process(task)
+                consensus_result = await self._consensus_for_task(task)
                 current_content = consensus_result.consensus_content
                 self._record_component(
                     session, f"consensus_engine_iter_{iteration}", consensus_result
@@ -514,15 +537,24 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
     ) -> SolvingResult:
         """Create the final solving result."""
 
-        # Calculate quality metrics
-        quality_metrics = build_quality_metrics(
-            accuracy=0.8,  # Default values - would be calculated from components
-            consistency=0.8,
-            completeness=0.8,
-            relevance=0.8,
-            confidence=0.8,
-            coherence=0.8,
+        # Only a review of this exact final answer can support a quality claim.
+        assessment = next(
+            (
+                item
+                for item in reversed(session.intermediate_results)
+                if isinstance(item, ValidationResult)
+                and item.original_result.content == final_content
+            ),
+            None,
         )
+        status = (
+            assessment.validation_report.metadata.get("validation_status", "incomplete")
+            if assessment
+            else "not_evaluated"
+        )
+        has_evidence = status in {"complete", "degraded"}
+        quality_metrics = assessment.quality_metrics if has_evidence else None
+        confidence = assessment.validation_confidence if has_evidence else None
 
         # Calculate component contributions
         component_contributions = {}
@@ -531,25 +563,23 @@ class CollaborativeSolver(CollectiveIntelligenceComponent):
             contribution = session.components_used.count(component) / total_components
             component_contributions[component] = contribution
 
-        # Calculate processing time
-        if session.end_time and session.start_time:
-            processing_time = (session.end_time - session.start_time).total_seconds()
-        else:
-            processing_time = 0.0
-
         return SolvingResult(
             session=session,
             final_content=final_content,
-            confidence_score=quality_metrics.overall_score(),
+            confidence_score=confidence,
             quality_assessment=quality_metrics,
             solution_path=[
                 f"Step {i+1}: {comp}" for i, comp in enumerate(session.components_used)
             ],
             alternative_solutions=[],  # Would be populated from intermediate results
-            improvement_suggestions=[],  # Would be generated from validation results
-            total_processing_time=processing_time,
+            improvement_suggestions=(
+                assessment.improvement_suggestions if assessment else []
+            ),
+            total_processing_time=0.0,  # Filled with monotonic elapsed time by process().
             component_contributions=component_contributions,
             metadata={
+                "validation_status": status,
+                "is_valid": assessment.is_valid if assessment else None,
                 "strategy_used": session.strategy.value,
                 "components_count": len(session.components_used),
                 "intermediate_results_count": len(session.intermediate_results),

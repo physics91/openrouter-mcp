@@ -193,6 +193,7 @@ class TestEnvironmentValidation:
 
         # Remove API key
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setattr("openrouter_mcp.server.load_dotenv", lambda: None)
 
         # Should raise ValueError
         with pytest.raises(ValueError):
@@ -202,7 +203,9 @@ class TestEnvironmentValidation:
         """Test that create_app explicitly registers handlers before returning."""
         from openrouter_mcp.server import create_app, mcp
 
-        with patch("openrouter_mcp.server.register_handlers", create=True) as mock_register:
+        with patch(
+            "openrouter_mcp.server.register_handlers", create=True
+        ) as mock_register:
             with patch("openrouter_mcp.server.validate_environment") as mock_validate:
                 app = create_app()
 
@@ -279,7 +282,9 @@ class TestLifecycleManagement:
             if sig == signal.SIGINT:
                 signal_handler_ref = handler
 
-        with patch("openrouter_mcp.server.signal.signal", side_effect=capture_signal_handler):
+        with patch(
+            "openrouter_mcp.server.signal.signal", side_effect=capture_signal_handler
+        ):
             with patch("openrouter_mcp.server.create_app") as mock_create_app:
                 mock_app = Mock()
                 mock_app.run.side_effect = KeyboardInterrupt()
@@ -321,7 +326,9 @@ class TestServerMain:
         """Test that main() configures logging at runtime."""
         from openrouter_mcp.server import main
 
-        with patch("openrouter_mcp.server.configure_logging", create=True) as mock_configure:
+        with patch(
+            "openrouter_mcp.server.configure_logging", create=True
+        ) as mock_configure:
             with patch("openrouter_mcp.server.create_app") as mock_create_app:
                 mock_app = Mock()
                 mock_app.run.side_effect = KeyboardInterrupt()
@@ -516,7 +523,12 @@ class TestServerDocumentation:
 
     def test_function_docstrings(self):
         """Test that server functions have documentation."""
-        from openrouter_mcp.server import create_app, main, shutdown_handler, validate_environment
+        from openrouter_mcp.server import (
+            create_app,
+            main,
+            shutdown_handler,
+            validate_environment,
+        )
 
         assert create_app.__doc__ is not None
         assert validate_environment.__doc__ is not None
@@ -526,4 +538,6 @@ class TestServerDocumentation:
 
 # Run coverage check if executed directly
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"])
+    pytest.main(
+        [__file__, "-v", "--cov=openrouter_mcp.server", "--cov-report=term-missing"]
+    )

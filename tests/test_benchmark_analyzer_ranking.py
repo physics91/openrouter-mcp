@@ -57,14 +57,14 @@ def test_rank_models_by_handles_empty_input_without_scoring():
 
 
 def test_rank_models_delegates_with_existing_fixed_formula():
-    results = [object()]
     metrics = SimpleNamespace(
         speed_score=0.8,
         cost_score=0.6,
         quality_score=0.9,
         throughput_score=0.4,
     )
-    score_target = SimpleNamespace(metrics=metrics)
+    score_target = SimpleNamespace(success=True, metrics=metrics)
+    results = [score_target]
     sentinel = [(object(), 123.0)]
 
     def rank(received_results, score_result):
@@ -80,7 +80,6 @@ def test_rank_models_delegates_with_existing_fixed_formula():
 
 
 def test_rank_models_with_weights_delegates_with_sparse_defaults():
-    results = [object()]
     weights = {"quality": 2.0}
     metrics = SimpleNamespace(
         speed_score=0.8,
@@ -88,7 +87,8 @@ def test_rank_models_with_weights_delegates_with_sparse_defaults():
         quality_score=0.9,
         throughput_score=0.4,
     )
-    score_target = SimpleNamespace(metrics=metrics)
+    score_target = SimpleNamespace(success=True, metrics=metrics)
+    results = [score_target]
     sentinel = [(object(), 456.0)]
 
     def rank(received_results, score_result):

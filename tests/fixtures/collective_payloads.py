@@ -2,9 +2,27 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 
 from openrouter_mcp.collective_intelligence import shutdown_lifecycle_manager
+
+
+def structured_peer_review(
+    criteria: list[str] | None = None,
+    score: float = 0.9,
+    issues: list[dict[str, str]] | None = None,
+) -> str:
+    """Valid simulated reviewer output for happy-path integration tests."""
+    return json.dumps(
+        {
+            "scores": dict.fromkeys(
+                criteria or ["accuracy", "consistency", "completeness", "relevance"],
+                score,
+            ),
+            "issues": issues or [],
+        }
+    )
 
 
 def _model(

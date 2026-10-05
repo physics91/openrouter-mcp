@@ -62,9 +62,9 @@ class TestListModelsWithStatus:
     @pytest.mark.asyncio
     async def test_builds_in_input_order_then_stably_sorts_by_quality(self, router):
         models = [
-            {"id": "first"},
-            {"id": "second"},
-            {"id": "third"},
+            {"id": "first", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "second", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "third", "pricing": {"prompt": "0", "completion": "0"}},
         ]
         original_models = deepcopy(models)
         first_status = {"quality_score": 0.4}
@@ -115,9 +115,9 @@ class TestListModelsWithStatus:
     @pytest.mark.asyncio
     async def test_stops_building_and_propagates_helper_failure(self, router):
         models = [
-            {"id": "first"},
-            {"id": "second"},
-            {"id": "third"},
+            {"id": "first", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "second", "pricing": {"prompt": "0", "completion": "0"}},
+            {"id": "third", "pricing": {"prompt": "0", "completion": "0"}},
         ]
         router._cache.filter_models.return_value = models
         router._build_model_status = Mock(

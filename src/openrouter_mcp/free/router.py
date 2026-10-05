@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from ..config.constants import FreeChatConfig
 from ..models.cache import ModelCache
-from ..utils.metadata import extract_provider_from_id
+from ..utils.metadata import determine_cost_tier, extract_provider_from_id
 from .classifier import TASK_MODEL_AFFINITY, FreeTaskType
 from .metrics import MetricsCollector
 
@@ -101,10 +101,20 @@ class FreeModelRouter:
         may differ when a task_type is provided.
         """
         await self._cache.ensure_cache_ready()
-        free_models = self._cache.filter_models(free_only=True)
+        free_models = self._free_chat_models()
         result = [self._build_model_status(model) for model in free_models]
         result.sort(key=lambda m: -m["quality_score"])
         return result
+
+    def _free_chat_models(self) -> list[dict[str, Any]]:
+        """Recheck cached free labels and restrict chat to text-output models."""
+        return [
+            model
+            for model in self._cache.filter_models(free_only=True)
+            if determine_cost_tier(model) == "free"
+            and (model.get("architecture") or {}).get("output_modalities", ["text"])
+            == ["text"]
+        ]
 
     def is_cache_expired(self) -> bool:
         """Check if the underlying model cache is expired."""
@@ -201,7 +211,7 @@ class FreeModelRouter:
         Returns list of ``(model_dict, effective_score)`` tuples.
         Raises :class:`RuntimeError` if no models are available.
         """
-        free_models = self._cache.filter_models(free_only=True)
+        free_models = self._free_chat_models()
 
         if required_capabilities:
             free_models = self._filter_by_capabilities(
@@ -231,7 +241,7 @@ class FreeModelRouter:
 
         # Try preferred models first (only if they are actually free)
         if preferred_models:
-            free_models = self._cache.filter_models(free_only=True)
+            free_models = self._free_chat_models()
             if required_capabilities:
                 free_models = self._filter_by_capabilities(
                     free_models, required_capabilities

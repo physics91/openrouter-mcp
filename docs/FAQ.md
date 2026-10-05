@@ -162,23 +162,22 @@ Use `list_available_models()` to see current prices.
 ### How can I track my usage?
 Use the `get_usage_stats` tool:
 ```python
-stats = await get_usage_stats(
-    start_date="2025-01-01",
-    end_date="2025-01-12"
-)
+from openrouter_mcp.handlers.chat import UsageStatsRequest, get_usage_stats
+
+stats = await get_usage_stats(UsageStatsRequest())
 ```
 
 The response includes `thrift_summary` and `thrift_metrics` so you can see how much runtime thrift reduced spend. The most useful rollups are:
 
 - `saved_cost_usd`: Estimated dollars avoided
-- `effective_cost_reduction_pct`: Effective reduction versus estimated cost without thrift
+- `effective_cost_reduction_pct`: `null` for usage stats because local savings and API-key spending cover different activity
 - `prompt_savings_breakdown`: Cache reuse, coalesced prompt tokens, and compaction savings
 - `cache_efficiency`: Cache write volume, cache hit/write request rates, and reuse-to-write ratio
 - `cache_efficiency_by_provider` / `cache_efficiency_by_model`: Which providers and exact models are actually returning cache savings instead of just warming cache
 - `cache_hotspots`: Top provider/model winners, each with a `reason` field explaining why it is carrying savings
 - `cache_deadspots`: Top provider/model losers, each with a `reason` field explaining where cache warmups are being wasted
 
-The thrift part is persisted as daily rollups. If you pass `start_date` / `end_date`, the thrift summary is filtered to that same local-day window instead of whatever this process happened to remember in RAM.
+Spending comes from the authenticated API key's cumulative and current UTC day/week/month counters. Arbitrary `start_date` / `end_date` ranges are rejected, and token/request counts are `null` because the endpoint does not supply them. The thrift part is persisted as daily rollups under a separate `thrift_scope: "local_runtime"`; it is not a percentage of API-key spending.
 
 ### How can I reduce costs?
 1. **Use efficient models**: Choose faster/smaller models when possible

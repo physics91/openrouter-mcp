@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http import HTTPStatus
-from math import isnan
+from math import isfinite, isnan
 from types import TracebackType
 from typing import Any, NoReturn, Optional
 
@@ -112,7 +112,9 @@ def _build_model_pricing_result(
 ) -> dict[str, Any]:
     """Normalize model pricing and attach availability metadata."""
     if pricing_available:
-        normalized = normalize_pricing(pricing, fill_missing=False)
+        normalized = normalize_pricing(
+            pricing, normalize_units=False, fill_missing=False
+        )
         if "prompt" not in pricing and "completion" in pricing:
             normalized["prompt"] = normalized["completion"]
         if "completion" not in pricing and "prompt" in pricing:
@@ -837,22 +839,64 @@ class OpenRouterClient:
     async def track_usage(
         self, start_date: Optional[str] = None, end_date: Optional[str] = None
     ) -> dict[str, Any]:
-        """Track API usage statistics.
+        """Report spending for the authenticated API key, not account-wide activity.
 
-        Args:
-            start_date: Start date for usage tracking (YYYY-MM-DD)
-            end_date: End date for usage tracking (YYYY-MM-DD)
-
-        Returns:
-            Usage statistics dictionary
+        GET /key exposes cumulative and current UTC-period spending. It does not
+        provide arbitrary date ranges, model breakdowns, request or token counts.
         """
-        params = {}
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
-
-        return await self._make_request("GET", "/generation", params=params)
+        if start_date is not None or end_date is not None:
+            raise InvalidRequestError(
+                "Arbitrary date ranges are not supported by API-key usage reporting. "
+                "Omit start_date/end_date and use usage_daily, usage_weekly, or "
+                "usage_monthly. Historical activity requires a separate management-key API."
+            )
+        response = await self._make_request("GET", "/key")
+        data = response.get("data")
+        if not isinstance(data, dict) or "usage" not in data:
+            raise OpenRouterError("Invalid API-key usage response")
+        for name in (
+            "usage",
+            "usage_daily",
+            "usage_weekly",
+            "usage_monthly",
+            "byok_usage",
+            "byok_usage_daily",
+            "byok_usage_weekly",
+            "byok_usage_monthly",
+        ):
+            if name not in data:
+                continue
+            value = data[name]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(value)
+                or value < 0
+            ):
+                raise OpenRouterError(f"Invalid API-key usage counter: {name}")
+        # Allowlist counters: key labels, creator IDs, and other account metadata
+        # are not needed by this tool and should not be exposed.
+        counters = (
+            "usage_daily",
+            "usage_weekly",
+            "usage_monthly",
+            "byok_usage",
+            "byok_usage_daily",
+            "byok_usage_weekly",
+            "byok_usage_monthly",
+            "limit",
+            "limit_remaining",
+            "limit_reset",
+            "is_free_tier",
+        )
+        return {
+            "scope": "api_key",
+            "total_cost": data["usage"],
+            "total_tokens": None,
+            "requests": None,
+            "models": None,
+            **{name: data[name] for name in counters if name in data},
+        }
 
     async def close(self) -> None:
         """Close the HTTP client."""

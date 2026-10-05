@@ -27,6 +27,7 @@ from src.openrouter_mcp.collective_intelligence.cross_validator import CrossVali
 from src.openrouter_mcp.collective_intelligence.ensemble_reasoning import (
     EnsembleReasoner,
 )
+from tests.fixtures.collective_payloads import structured_peer_review
 
 
 class PerformanceBenchmarkSuite:
@@ -194,10 +195,15 @@ class TestPerformanceBenchmarks:
         async def fast_process_task(task, model_id, **kwargs):
             # Simulate fast processing with minimal delay
             await asyncio.sleep(0.001)  # 1ms processing time
+            content = f"Fast response from {model_id} for task {task.task_id}"
+            if task.metadata.get("validation_type") == "peer_review":
+                content = structured_peer_review(
+                    task.requirements.get("validation_criteria")
+                )
             return ProcessingResult(
                 task_id=task.task_id,
                 model_id=model_id,
-                content=f"Fast response from {model_id} for task {task.task_id}",
+                content=content,
                 confidence=0.85,
                 processing_time=0.001,
                 tokens_used=100,

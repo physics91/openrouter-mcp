@@ -17,11 +17,19 @@ Usage:
         custom_field: str = Field(...)
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from ..config.constants import ConsensusDefaults, ModelDefaults
+
+NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class ChatMessage(BaseModel):
@@ -42,10 +50,17 @@ class BaseCompletionParams(BaseModel):
     """
 
     temperature: float = Field(
-        ModelDefaults.TEMPERATURE, description="Sampling temperature (0.0 to 2.0)"
+        ModelDefaults.TEMPERATURE,
+        ge=0,
+        le=2,
+        allow_inf_nan=False,
+        description="Sampling temperature (0.0 to 2.0)",
     )
     max_tokens: Optional[int] = Field(
-        ModelDefaults.MAX_TOKENS, description="Maximum number of tokens to generate"
+        ModelDefaults.MAX_TOKENS,
+        ge=1,
+        strict=True,
+        description="Maximum number of tokens to generate",
     )
 
 
@@ -83,12 +98,19 @@ class BaseCollectiveRequest(BaseCompletionParams):
     selection and system prompts.
     """
 
-    models: Optional[list[str]] = Field(
+    models: Optional[list[NonEmptyString]] = Field(
         None, description="Specific models to use (optional)"
     )
     system_prompt: Optional[str] = Field(
         None, description="System prompt for all models"
     )
+
+    @field_validator("models")
+    @classmethod
+    def distinct_models(cls, models: list[str] | None) -> list[str] | None:
+        if models is not None and len(models) != len(set(models)):
+            raise ValueError("models must contain distinct model IDs")
+        return models
 
 
 class BaseConsensusRequest(BaseCollectiveRequest):
@@ -99,15 +121,30 @@ class BaseConsensusRequest(BaseCollectiveRequest):
     """
 
     min_models: int = Field(
-        ConsensusDefaults.MIN_MODELS, description="Minimum number of models to use"
+        ConsensusDefaults.MIN_MODELS,
+        ge=1,
+        strict=True,
+        description="Minimum number of models to use",
     )
     max_models: int = Field(
-        ConsensusDefaults.MAX_MODELS, description="Maximum number of models to use"
+        ConsensusDefaults.MAX_MODELS,
+        ge=1,
+        strict=True,
+        description="Maximum number of models to use",
     )
     confidence_threshold: float = Field(
         ConsensusDefaults.CONFIDENCE_THRESHOLD,
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
         description="Confidence threshold for consensus",
     )
+
+    @model_validator(mode="after")
+    def valid_model_range(self) -> "BaseConsensusRequest":
+        if self.min_models > self.max_models:
+            raise ValueError("min_models must not exceed max_models")
+        return self
 
 
 __all__ = [

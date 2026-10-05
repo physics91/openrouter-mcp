@@ -21,7 +21,8 @@ def _install_operational_mocks(engine, quota_results):
         release_model_slot=Mock(),
     )
     quota_tracker = SimpleNamespace(
-        check_and_increment=AsyncMock(side_effect=quota_results)
+        check_and_increment=AsyncMock(side_effect=quota_results),
+        reconcile_usage=AsyncMock(return_value=(True, "")),
     )
     cancellation_manager = SimpleNamespace(
         register_task=AsyncMock(),
@@ -48,7 +49,7 @@ async def test_model_response_reconciles_actual_quota_and_preserves_cleanup(
     engine = ConsensusEngine(provider, ConsensusConfig(min_models=1, max_models=1))
     limiter, quota_tracker, cancellation = _install_operational_mocks(
         engine,
-        [(True, "estimate accepted"), (False, "actual adjustment rejected")],
+        [(True, "estimate accepted")],
     )
     monkeypatch.setattr(consensus_engine, "count_tokens", lambda content, model_id: 10)
     task = TaskContext(task_id="task", content="prompt")
@@ -62,8 +63,10 @@ async def test_model_response_reconciles_actual_quota_and_preserves_cleanup(
     assert [response.result for response in responses] == [result]
     assert quota_tracker.check_and_increment.await_args_list == [
         call("request", tokens=10, cost=estimated_cost),
-        call("request", tokens=15, cost=result.cost - estimated_cost),
     ]
+    quota_tracker.reconcile_usage.assert_awaited_once_with(
+        "request", tokens=15, cost=result.cost - estimated_cost
+    )
     limiter.release_model_slot.assert_called_once_with()
     cancellation.register_task.assert_awaited_once()
     cancellation.unregister_task.assert_awaited_once()
@@ -116,9 +119,7 @@ async def test_reconcile_quota_usage_preserves_boundary_conditions(
     tokens_used, actual_cost, expected_call
 ):
     engine = object.__new__(ConsensusEngine)
-    quota_tracker = SimpleNamespace(
-        check_and_increment=AsyncMock(return_value=(False, "ignored"))
-    )
+    quota_tracker = SimpleNamespace(reconcile_usage=AsyncMock(return_value=(True, "")))
     engine.quota_tracker = quota_tracker
     result = ProcessingResult(tokens_used=tokens_used, cost=actual_cost)
 
@@ -131,6 +132,6 @@ async def test_reconcile_quota_usage_preserves_boundary_conditions(
     )
 
     if expected_call is None:
-        quota_tracker.check_and_increment.assert_not_awaited()
+        quota_tracker.reconcile_usage.assert_not_awaited()
     else:
-        assert quota_tracker.check_and_increment.await_args == expected_call
+        assert quota_tracker.reconcile_usage.await_args == expected_call

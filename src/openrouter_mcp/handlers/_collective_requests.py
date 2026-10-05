@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..collective_intelligence import TaskContext, TaskType
 from ..config.constants import CollectiveDefaults, ConsensusDefaults
-from ..models.requests import BaseCollectiveRequest, BaseConsensusRequest
+from ..models.requests import (
+    BaseCollectiveRequest,
+    BaseConsensusRequest,
+    NonEmptyString,
+)
 
 
 def _resolve_collective_max_tokens(max_tokens: Optional[int]) -> int:
@@ -141,12 +145,25 @@ class AdaptiveModelRequest(BaseModel):
 class CrossValidationRequest(BaseCollectiveRequest):
     """Request for cross-model validation."""
 
-    content: str = Field(..., description="Content to validate across models")
-    validation_criteria: Optional[list[str]] = Field(
+    content: NonEmptyString = Field(
+        ..., description="Content to validate across models"
+    )
+    validation_criteria: Optional[list[NonEmptyString]] = Field(
         None, description="Specific validation criteria"
     )
+
+    @field_validator("validation_criteria")
+    @classmethod
+    def distinct_criteria(cls, criteria: list[str] | None) -> list[str] | None:
+        if criteria is not None and len(criteria) != len(set(criteria)):
+            raise ValueError("validation_criteria must contain distinct criteria")
+        return criteria
+
     threshold: float = Field(
         ConsensusDefaults.CONFIDENCE_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        allow_inf_nan=False,
         description="Validation threshold (0.0-1.0). Content scoring below this is considered invalid",
     )
 
@@ -161,7 +178,9 @@ class CollaborativeSolvingRequest(BaseCollectiveRequest):
     constraints: Optional[dict[str, Any]] = Field(
         None, description="Problem constraints"
     )
-    max_iterations: int = Field(3, description="Maximum number of iteration rounds")
+    max_iterations: int = Field(
+        3, ge=1, strict=True, description="Maximum number of iteration rounds"
+    )
 
 
 _ORIGINAL_MODULE = f"{__package__}.collective_intelligence"

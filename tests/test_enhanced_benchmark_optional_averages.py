@@ -27,15 +27,15 @@ def test_calculate_enhanced_optional_averages_preserves_filter_semantics():
     ]
 
     assert benchmark._calculate_enhanced_optional_averages(results) == (
-        20.0,
-        -4.0,
         10.0,
         0.0,
-        -2.0,
+        5.0,
+        0.0,
+        0.0,
     )
 
 
-def test_calculate_enhanced_optional_averages_returns_zero_when_absent():
+def test_calculate_enhanced_optional_averages_preserves_unknown_quality():
     result = SimpleNamespace(
         prompt_tokens=0,
         completion_tokens=None,
@@ -48,7 +48,7 @@ def test_calculate_enhanced_optional_averages_returns_zero_when_absent():
         0,
         0,
         0,
-        0,
+        None,
         0,
     )
 
@@ -87,7 +87,7 @@ def test_calculate_enhanced_optional_averages_preserves_access_order():
         benchmark._calculate_enhanced_optional_averages([Result()])
 
     assert exc_info.value is expected_error
-    assert events == ["prompt", "prompt", "completion"]
+    assert events == ["quality", "prompt", "completion"]
 
 
 def test_enhanced_benchmark_metrics_delegates_optional_averages(monkeypatch):

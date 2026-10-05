@@ -238,6 +238,22 @@ def process_image(
         raise
 
 
+def _base64_image_url(data: str) -> str:
+    """Declare the format of validated image bytes without re-encoding them."""
+    try:
+        header = base64.b64decode(data[:16], validate=True)
+    except ValueError:
+        header = b""
+    mime = "image/jpeg"
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif header.startswith((b"GIF87a", b"GIF89a")):
+        mime = "image/gif"
+    elif header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+        mime = "image/webp"
+    return f"data:{mime};base64,{data}"
+
+
 def format_vision_message(
     text: str,
     image_data: Optional[str] = None,
@@ -261,7 +277,7 @@ def format_vision_message(
     # Handle single image
     if image_data and image_type:
         if image_type == "base64":
-            image_url = f"data:image/jpeg;base64,{image_data}"
+            image_url = _base64_image_url(image_data)
         else:
             image_url = image_data
 
@@ -271,7 +287,7 @@ def format_vision_message(
     if images:
         for img in images:
             if img["type"] == "base64":
-                image_url = f"data:image/jpeg;base64,{img['data']}"
+                image_url = _base64_image_url(img["data"])
             else:
                 image_url = img["data"]
 

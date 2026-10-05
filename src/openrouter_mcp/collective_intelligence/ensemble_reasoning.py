@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from time import perf_counter
 from typing import Any, Dict, List, Optional
 
 from .base import (
@@ -25,6 +26,7 @@ from .base import (
     TaskContext,
     TaskType,
     build_quality_metrics,
+    require_complete_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 class DecompositionStrategy(Enum):
     """Strategies for decomposing complex tasks."""
 
+    NONE = "none"  # Execute the original task without decomposition
     SEQUENTIAL = "sequential"  # Tasks must be completed in order
     PARALLEL = "parallel"  # Tasks can be completed simultaneously
     HIERARCHICAL = "hierarchical"  # Tree-like task breakdown
@@ -497,6 +500,11 @@ class ModelAssigner:
     async def assign_models(self, ensemble_task: EnsembleTask) -> List[ModelAssignment]:
         """Assign optimal models to all sub-tasks."""
         available_models = await self.model_provider.get_available_models()
+        preferred = ensemble_task.original_task.requirements.get("preferred_models")
+        if preferred:
+            available_models = [
+                model for model in available_models if model.model_id in preferred
+            ]
         assignments = []
 
         for sub_task in ensemble_task.sub_tasks:
@@ -658,11 +666,28 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         Returns:
             EnsembleResult with comprehensive processing information
         """
-        start_time = datetime.now()
+        start_time = perf_counter()
 
         try:
-            # Step 1: Decompose the task
-            ensemble_task = await self.decomposer.decompose_task(task)
+            # Step 1: Honor the caller's decomposition choice.
+            if kwargs.get("decompose", True):
+                ensemble_task = await self.decomposer.decompose_task(task)
+            else:
+                ensemble_task = EnsembleTask(
+                    task_id=task.task_id,
+                    original_task=task,
+                    decomposition_strategy=DecompositionStrategy.NONE,
+                    sub_tasks=[
+                        SubTask(
+                            sub_task_id=f"{task.task_id}_whole",
+                            parent_task_id=task.task_id,
+                            content=task.content,
+                            task_type=task.task_type,
+                            required_capabilities=[],
+                            priority=TaskPriority.CRITICAL,
+                        )
+                    ],
+                )
 
             # Step 2: Assign models to sub-tasks
             assignments = await self.assigner.assign_models(ensemble_task)
@@ -677,8 +702,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
             )
 
             # Step 5: Calculate metrics
-            end_time = datetime.now()
-            processing_time = (end_time - start_time).total_seconds()
+            processing_time = perf_counter() - start_time
 
             final_result.total_time = processing_time
             final_result.performance_metrics = self._calculate_performance_metrics(
@@ -864,6 +888,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                     self.model_provider.process_task(task_context, assignment.model_id),
                     timeout=sub_task.timeout_seconds,
                 )
+                require_complete_text(result)
 
                 return SubTaskResult(
                     sub_task=sub_task,
@@ -939,7 +964,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         )
 
         # Calculate metrics
-        total_cost = sum(r.assignment.estimated_cost for r in sub_task_results)
+        total_cost = sum(r.result.cost for r in sub_task_results)
         success_rate = (
             len(successful_results) / len(sub_task_results) if sub_task_results else 0.0
         )
@@ -961,6 +986,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
                 "successful_sub_tasks": len(successful_results),
                 "failed_sub_tasks": len(failed_results),
                 "total_sub_tasks": len(sub_task_results),
+                "quality_evaluation": "not_evaluated",
             },
         )
 
@@ -971,6 +997,9 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
 
         if not successful_results:
             return "Unable to complete task due to sub-task failures."
+
+        if ensemble_task.decomposition_strategy == DecompositionStrategy.NONE:
+            return successful_results[0].result.content
 
         # Group results by priority
         critical_results = [
@@ -1070,7 +1099,7 @@ class EnsembleReasoner(CollectiveIntelligenceComponent):
         error_rate = 1.0 - success_rate
 
         # Calculate cost efficiency (results per unit cost)
-        total_cost = sum(r.assignment.estimated_cost for r in sub_task_results)
+        total_cost = sum(r.result.cost for r in sub_task_results)
         cost_efficiency = len(successful_results) / max(total_cost, 0.001)
 
         # Resource utilization (successful tasks / total attempted)

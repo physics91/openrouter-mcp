@@ -12,6 +12,7 @@ def make_free_model(model_id, context_length=32768, provider="unknown"):
         "name": model_id,
         "context_length": context_length,
         "cost_tier": "free",
+        "pricing": {"prompt": "0", "completion": "0"},
         "provider": provider,
         "capabilities": {},
     }

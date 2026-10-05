@@ -7,13 +7,14 @@ and enrichment capabilities for AI models from the OpenRouter API.
 """
 
 import logging
+import math
 import re
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Dict, List, Optional, TypeVar
 
-from .pricing import normalize_pricing, parse_price
+from .pricing import normalize_pricing
 
 logger = logging.getLogger(__name__)
 
@@ -798,22 +799,6 @@ def determine_performance_tier(model_data: Dict[str, Any]) -> str:
     return "economy"
 
 
-_ALL_PRICING_FIELDS = (
-    "prompt",
-    "completion",
-    "request",
-    "image",
-    "web_search",
-    "internal_reasoning",
-)
-
-
-def _has_any_cost(model_data: Dict[str, Any]) -> bool:
-    """Check if model has any non-zero cost across all pricing fields."""
-    pricing = model_data.get("pricing") or {}
-    return any(parse_price(pricing.get(field)) > 0 for field in _ALL_PRICING_FIELDS)
-
-
 def determine_cost_tier(model_data: Dict[str, Any]) -> str:
     """
     Determine cost tier based on pricing.
@@ -822,10 +807,24 @@ def determine_cost_tier(model_data: Dict[str, Any]) -> str:
         model_data: Model information dictionary
 
     Returns:
-        Cost tier string: "free", "low", "medium", or "high". Pricing thresholds
-        assume per-1k tokens.
+        Cost tier string: "free", "low", "medium", "high", or "unknown".
+        Missing, invalid, and dynamic prices are never evidence of free service.
     """
-    if not _has_any_cost(model_data):
+    raw_pricing = model_data.get("pricing")
+    if (
+        not isinstance(raw_pricing, dict)
+        or not {"prompt", "completion"} <= raw_pricing.keys()
+    ):
+        return "unknown"
+    if any(isinstance(value, bool) for value in raw_pricing.values()):
+        return "unknown"
+    try:
+        prices = [float(value) for value in raw_pricing.values()]
+    except (TypeError, ValueError, OverflowError):
+        return "unknown"
+    if any(not math.isfinite(price) or price < 0 for price in prices):
+        return "unknown"
+    if not any(prices):
         return "free"
 
     # NOTE: tiering below uses only prompt+completion. Non-token costs

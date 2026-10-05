@@ -79,7 +79,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_list_models_success(self, mock_api_key, mock_models_response, create_response):
+    async def test_list_models_success(
+        self, mock_api_key, mock_models_response, create_response
+    ):
         """Test successful models listing."""
         client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
 
@@ -106,7 +108,9 @@ class TestOpenRouterClient:
 
             await client.list_models(filter_by="openai")
 
-            mock_request.assert_called_once_with("GET", "/models", params={"filter": "openai"})
+            mock_request.assert_called_once_with(
+                "GET", "/models", params={"filter": "openai"}
+            )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -244,7 +248,8 @@ class TestOpenRouterClient:
             )
 
             assert (
-                response["choices"][0]["message"]["content"] == "Hello! How can I help you today?"
+                response["choices"][0]["message"]["content"]
+                == "Hello! How can I help you today?"
             )
             assert response["usage"]["total_tokens"] == 18
 
@@ -255,7 +260,9 @@ class TestOpenRouterClient:
                 "max_tokens": 100,
                 "stream": False,
             }
-            mock_request.assert_called_once_with("POST", "/chat/completions", json=expected_payload)
+            mock_request.assert_called_once_with(
+                "POST", "/chat/completions", json=expected_payload
+            )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -318,7 +325,9 @@ class TestOpenRouterClient:
                     client.chat_completion(model="openai/gpt-4", messages=messages),
                 )
 
-            response = await client.chat_completion(model="openai/gpt-4", messages=messages)
+            response = await client.chat_completion(
+                model="openai/gpt-4", messages=messages
+            )
 
         assert response == mock_chat_response
         assert attempts == 2
@@ -526,7 +535,9 @@ class TestOpenRouterClient:
             {"role": "user", "content": "latest question"},
         ]
 
-        with patch.object(client, "_make_request", return_value=mock_chat_response) as mock_request:
+        with patch.object(
+            client, "_make_request", return_value=mock_chat_response
+        ) as mock_request:
             await client.chat_completion(
                 model="anthropic/claude-sonnet-4",
                 messages=messages,
@@ -536,7 +547,9 @@ class TestOpenRouterClient:
 
         payload = mock_request.call_args.kwargs["json"]
         assert isinstance(payload["messages"][0]["content"], list)
-        assert payload["messages"][0]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+        assert payload["messages"][0]["content"][-1]["cache_control"] == {
+            "type": "ephemeral"
+        }
         assert payload["messages"][1] == messages[1]
 
     @pytest.mark.unit
@@ -551,7 +564,9 @@ class TestOpenRouterClient:
             {"role": "user", "content": "latest question"},
         ]
 
-        with patch.object(client, "_make_request", return_value=mock_chat_response) as mock_request:
+        with patch.object(
+            client, "_make_request", return_value=mock_chat_response
+        ) as mock_request:
             await client.chat_completion(
                 model="anthropic/claude-sonnet-4",
                 messages=messages,
@@ -564,7 +579,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_chat_completion_records_cached_prompt_token_savings(self, mock_api_key):
+    async def test_chat_completion_records_cached_prompt_token_savings(
+        self, mock_api_key
+    ):
         reset_thrift_metrics()
         client = OpenRouterClient(api_key=mock_api_key)
         response = {
@@ -600,8 +617,14 @@ class TestOpenRouterClient:
         assert metrics["cached_prompt_tokens"] == 1200
         assert metrics["cache_write_prompt_tokens"] == 0
         assert metrics["saved_cost_usd"] > 0
-        assert metrics["cache_efficiency_by_provider"]["anthropic"]["observed_requests"] == 1
-        assert metrics["cache_efficiency_by_provider"]["anthropic"]["cache_hit_requests"] == 1
+        assert (
+            metrics["cache_efficiency_by_provider"]["anthropic"]["observed_requests"]
+            == 1
+        )
+        assert (
+            metrics["cache_efficiency_by_provider"]["anthropic"]["cache_hit_requests"]
+            == 1
+        )
         assert (
             metrics["cache_efficiency_by_model"]["anthropic/claude-sonnet-4"][
                 "cached_prompt_tokens"
@@ -646,7 +669,10 @@ class TestOpenRouterClient:
         metrics = get_thrift_metrics_snapshot()
         assert metrics["cached_prompt_tokens"] == 0
         assert metrics["cache_write_prompt_tokens"] == 1024
-        assert metrics["cache_efficiency_by_provider"]["anthropic"]["cache_write_requests"] == 1
+        assert (
+            metrics["cache_efficiency_by_provider"]["anthropic"]["cache_write_requests"]
+            == 1
+        )
         assert (
             metrics["cache_efficiency_by_model"]["anthropic/claude-sonnet-4"][
                 "cache_write_prompt_tokens"
@@ -656,7 +682,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_stream_chat_completion_success(self, mock_api_key, mock_stream_response):
+    async def test_stream_chat_completion_success(
+        self, mock_api_key, mock_stream_response
+    ):
         """Test successful streaming chat completion."""
         client = OpenRouterClient(api_key=mock_api_key)
 
@@ -682,7 +710,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_stream_chat_completion_records_cached_prompt_token_savings(self, mock_api_key):
+    async def test_stream_chat_completion_records_cached_prompt_token_savings(
+        self, mock_api_key
+    ):
         reset_thrift_metrics()
         client = OpenRouterClient(api_key=mock_api_key)
         chunks = [
@@ -705,7 +735,9 @@ class TestOpenRouterClient:
             for chunk in chunks:
                 yield chunk
 
-        with patch.object(client, "_stream_request", return_value=mock_stream_gen()), patch.object(
+        with patch.object(
+            client, "_stream_request", return_value=mock_stream_gen()
+        ), patch.object(
             client,
             "get_model_pricing",
             AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
@@ -729,7 +761,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_stream_chat_completion_records_cache_write_tokens(self, mock_api_key):
+    async def test_stream_chat_completion_records_cache_write_tokens(
+        self, mock_api_key
+    ):
         reset_thrift_metrics()
         client = OpenRouterClient(api_key=mock_api_key)
         chunks = [
@@ -752,7 +786,9 @@ class TestOpenRouterClient:
             for chunk in chunks:
                 yield chunk
 
-        with patch.object(client, "_stream_request", return_value=mock_stream_gen()), patch.object(
+        with patch.object(
+            client, "_stream_request", return_value=mock_stream_gen()
+        ), patch.object(
             client,
             "get_model_pricing",
             AsyncMock(return_value={"prompt": 0.00001, "completion": 0.00002}),
@@ -777,23 +813,15 @@ class TestOpenRouterClient:
         """Test successful usage tracking."""
         client = OpenRouterClient(api_key=mock_api_key)
 
-        usage_data = {
-            "total_cost": 0.00054,
-            "total_tokens": 18,
-            "requests": 1,
-            "models": ["openai/gpt-4"],
-        }
-
+        usage_data = {"data": {"usage": 0.00054, "usage_daily": 0.00054}}
         with patch.object(client, "_make_request") as mock_request:
             mock_request.return_value = usage_data
-
-            usage = await client.track_usage(start_date="2024-01-01", end_date="2024-01-31")
-
+            usage = await client.track_usage()
             assert usage["total_cost"] == 0.00054
-            assert usage["total_tokens"] == 18
-
-            expected_params = {"start_date": "2024-01-01", "end_date": "2024-01-31"}
-            mock_request.assert_called_once_with("GET", "/generation", params=expected_params)
+            assert usage["total_tokens"] is None
+            assert usage["scope"] == "api_key"
+            mock_request.assert_called_once_with("GET", "/key")
+        await client.close()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -927,7 +955,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_get_model_pricing_marks_fallback_metadata_on_cache_failure(self, mock_api_key):
+    async def test_get_model_pricing_marks_fallback_metadata_on_cache_failure(
+        self, mock_api_key
+    ):
         """Test pricing metadata when cache fetch fails."""
         client = OpenRouterClient(api_key=mock_api_key)
         assert client._model_cache is not None
@@ -947,7 +977,9 @@ class TestOpenRouterClient:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_get_model_pricing_preserves_zero_price_with_api_metadata(self, mock_api_key):
+    async def test_get_model_pricing_preserves_zero_price_with_api_metadata(
+        self, mock_api_key
+    ):
         """Test zero pricing is preserved when pricing data exists."""
         client = OpenRouterClient(api_key=mock_api_key, enable_cache=False)
 

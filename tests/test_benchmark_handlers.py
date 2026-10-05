@@ -122,7 +122,8 @@ class TestResponseQualityAnalyzer:
         analyzer = ResponseQualityAnalyzer()
         result = analyzer.analyze_response("test prompt", "")
 
-        assert result["quality_score"] == 0.0
+        assert result["quality_score"] is None
+        assert result["text_heuristic_score"] == 0.0
         assert result["response_length"] == 0
         assert result["contains_code_example"] is False
         assert result["language_coherence_score"] == 0.0
@@ -137,7 +138,8 @@ class TestResponseQualityAnalyzer:
 
         result = analyzer.analyze_response(prompt, response)
 
-        assert result["quality_score"] > 0
+        assert result["quality_score"] is None
+        assert result["text_heuristic_score"] > 0
         assert result["response_length"] == len(response)
         assert result["contains_code_example"] is False
         assert result["language_coherence_score"] > 0
@@ -160,7 +162,8 @@ This function prints a greeting."""
         result = analyzer.analyze_response(prompt, response)
 
         assert result["contains_code_example"] is True
-        assert result["quality_score"] > 0
+        assert result["quality_score"] is None
+        assert result["text_heuristic_score"] > 0
         assert result["response_length"] > 0
 
     def test_calculate_completeness(self):
@@ -172,7 +175,9 @@ This function prints a greeting."""
         assert 0 <= short_score <= 1
 
         # Long complete response
-        long_response = "This is a comprehensive answer that provides detailed information. " * 5
+        long_response = (
+            "This is a comprehensive answer that provides detailed information. " * 5
+        )
         long_score = analyzer._calculate_completeness("test", long_response)
         assert long_score > short_score
 
@@ -182,9 +187,7 @@ This function prints a greeting."""
 
         # Highly relevant
         prompt = "quantum computing advantages"
-        relevant_response = (
-            "Quantum computing offers advantages in parallel processing and optimization."
-        )
+        relevant_response = "Quantum computing offers advantages in parallel processing and optimization."
         relevant_score = analyzer._calculate_relevance(prompt, relevant_response)
 
         # Less relevant
@@ -193,7 +196,9 @@ This function prints a greeting."""
 
         assert relevant_score > irrelevant_score
 
-    def test_calculate_relevance_uses_prompt_word_order_for_main_topic_bonus(self, monkeypatch):
+    def test_calculate_relevance_uses_prompt_word_order_for_main_topic_bonus(
+        self, monkeypatch
+    ):
         """Main topic bonus should not depend on set iteration order."""
         analyzer = ResponseQualityAnalyzer()
 
@@ -333,8 +338,7 @@ class TestEnhancedBenchmarkHandler:
 
         quality_score = handler.assess_response_quality(prompt, response)
 
-        assert isinstance(quality_score, float)
-        assert 0 <= quality_score <= 1
+        assert quality_score is None
 
     def test_analyze_response_comprehensive(self, handler):
         """Test comprehensive response analysis."""
@@ -358,7 +362,9 @@ This computes the factorial recursively."""
 
     def test_calculate_detailed_cost(self, handler):
         """Test detailed cost calculation."""
-        api_response = {"usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}}
+        api_response = {
+            "usage": {"prompt_tokens": 10, "completion_tokens": 15, "total_tokens": 25}
+        }
 
         model_pricing = {
             "prompt": 0.03,  # per 1k tokens
@@ -419,7 +425,9 @@ This computes the factorial recursively."""
         """Test benchmark with timeout."""
         handler.client.chat_completion = AsyncMock(side_effect=asyncio.TimeoutError())
 
-        result = await handler.benchmark_model(model_id="test-model", prompt="test", timeout=1.0)
+        result = await handler.benchmark_model(
+            model_id="test-model", prompt="test", timeout=1.0
+        )
 
         assert result.error is not None
         assert "Timeout" in result.error
@@ -566,36 +574,38 @@ This computes the factorial recursively."""
 
     def test_calculate_cost_enhanced_no_pricing(self, handler):
         """Test cost calculation with missing pricing info."""
-        cost = handler._calculate_cost_enhanced({}, 10, 20, 30)
-        assert cost == 0.0
+        with pytest.raises(BenchmarkError, match="pricing"):
+            handler._calculate_cost_enhanced({}, 10, 20, 30)
 
     def test_calculate_cost_enhanced_with_pricing(self, handler):
         """Test cost calculation with pricing info."""
         model_info = {
             "pricing": {
-                "prompt": "0.03",  # String to test conversion
-                "completion": "0.06",
+                "prompt": "0.00003",  # Catalog USD per input token
+                "completion": "0.00006",
             }
         }
 
         cost = handler._calculate_cost_enhanced(model_info, 10, 20, 30)
 
-        # Should use actual token breakdown: (10 * 0.03 + 20 * 0.06) / 1_000_000
-        expected = (10 * 0.03 + 20 * 0.06) / 1_000_000
+        # Should use actual token breakdown: 10 * 0.00003 + 20 * 0.00006
+        expected = 10 * 0.00003 + 20 * 0.00006
         assert abs(cost - expected) < 0.0000001
 
-    def test_calculate_cost_enhanced_uses_zero_token_breakdown_when_available(self, handler):
+    def test_calculate_cost_enhanced_uses_zero_token_breakdown_when_available(
+        self, handler
+    ):
         """Zero token counts should still use the explicit breakdown path."""
         model_info = {
             "pricing": {
-                "prompt": "0.03",
-                "completion": "0.06",
+                "prompt": "0.00003",
+                "completion": "0.00006",
             }
         }
 
         cost = handler._calculate_cost_enhanced(model_info, 0, 20, 20)
 
-        expected = (0 * 0.03 + 20 * 0.06) / 1_000_000
+        expected = 0 * 0.00003 + 20 * 0.00006
         assert abs(cost - expected) < 0.0000001
 
     @pytest.mark.asyncio
@@ -1141,7 +1151,7 @@ class TestPrimaryMetricRecommendation:
             == "model-second"
         )
 
-    @pytest.mark.parametrize("metric_name", ["speed", "quality"])
+    @pytest.mark.parametrize("metric_name", ["speed"])
     def test_all_missing_metrics_preserve_attribute_error(self, metric_name):
         ranking = [(SimpleNamespace(model_id="missing", metrics=None), 1.0)]
 
@@ -1149,6 +1159,15 @@ class TestPrimaryMetricRecommendation:
             mcp_benchmark_module._build_primary_metric_recommendation(
                 ranking, metric_name
             )
+
+    def test_unknown_quality_cannot_produce_quality_recommendation(self):
+        ranking = [(SimpleNamespace(model_id="missing", metrics=None), 1.0)]
+        assert (
+            mcp_benchmark_module._build_primary_metric_recommendation(
+                ranking, "quality"
+            )
+            is None
+        )
 
 
 class TestMCPBenchmarkTools:
@@ -1194,7 +1213,9 @@ class TestMCPBenchmarkTools:
                 timestamp=datetime.now(timezone.utc),
             )
 
-            handler.benchmark_models_enhanced = AsyncMock(return_value={"test-model": mock_result})
+            handler.benchmark_models_enhanced = AsyncMock(
+                return_value={"test-model": mock_result}
+            )
             handler.save_results = AsyncMock()
 
             mock_handler.return_value = handler
@@ -1217,7 +1238,9 @@ class TestMCPBenchmarkTools:
             # Create a test benchmark file
             test_data = {
                 "timestamp": datetime.now().isoformat(),
-                "results": {"model1": {"success": True, "metrics": {"quality_score": 0.8}}},
+                "results": {
+                    "model1": {"success": True, "metrics": {"quality_score": 0.8}}
+                },
                 "config": {"models": ["model1"]},
             }
 
@@ -1285,7 +1308,10 @@ class TestMCPBenchmarkTools:
                     "group_count": 2,
                     "groups": [
                         {"provider": "openai", "model_id": "openai/gpt-4"},
-                        {"provider": "anthropic", "model_id": "anthropic/claude-3-haiku"},
+                        {
+                            "provider": "anthropic",
+                            "model_id": "anthropic/claude-3-haiku",
+                        },
                     ],
                 }
             )
@@ -1366,7 +1392,7 @@ class TestMCPBenchmarkTools:
 
             result = await benchmark_module.compare_model_performance(
                 ["model-fast", "model-cheap"],
-                weights={"speed": 0.5, "cost": 0.2, "quality": 0.2, "throughput": 0.1},
+                weights={"speed": 0.5, "cost": 0.2, "throughput": 0.3},
                 include_cost_analysis=True,
             )
 
@@ -1375,7 +1401,10 @@ class TestMCPBenchmarkTools:
                 "model-fast",
                 "model-cheap",
             }
-            assert result["analysis"]["cost_efficiency"]["most_cost_efficient"] == "model-cheap"
+            assert (
+                result["analysis"]["cost_efficiency"]["most_cost_efficient"]
+                == "model-cheap"
+            )
             assert result["recommendations"]
 
     @pytest.mark.asyncio
@@ -1402,7 +1431,7 @@ class TestMCPBenchmarkTools:
             "model2": {"success": True, "metrics": {"quality_score": 0.9}},
         }
         best = _get_best_model(results_quality)
-        assert best == "model2"
+        assert best is None  # Legacy quality scores have no evaluation provenance
 
         # Test category prompts
         assert _get_category_prompt("code") != _get_category_prompt("chat")
@@ -1420,7 +1449,9 @@ class TestIntegration:
     async def test_end_to_end_benchmark_workflow(self):
         """Test complete benchmark workflow."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("src.openrouter_mcp.handlers.benchmark.ModelCache") as mock_cache:
+            with patch(
+                "src.openrouter_mcp.handlers.benchmark.ModelCache"
+            ) as mock_cache:
                 # Create handler
                 handler = EnhancedBenchmarkHandler(
                     api_key="test-key", model_cache=mock_cache(), results_dir=tmpdir
@@ -1442,11 +1473,13 @@ class TestIntegration:
                 )
 
                 # Run benchmark
-                result = await handler.benchmark_model(model_id="test-model", prompt="test prompt")
+                result = await handler.benchmark_model(
+                    model_id="test-model", prompt="test prompt"
+                )
 
                 assert result.error is None
                 assert result.response is not None
-                assert result.quality_score is not None
+                assert result.quality_score is None
 
                 # Create comparison
                 comparison = ModelComparison(

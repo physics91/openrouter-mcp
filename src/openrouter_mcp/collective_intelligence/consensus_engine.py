@@ -11,6 +11,7 @@ import statistics
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from time import perf_counter
 from typing import Any, Optional
 
 from ..config.constants import ConsensusDefaults, PricingDefaults
@@ -25,11 +26,16 @@ from .base import (
     QualityMetrics,
     TaskContext,
     build_quality_metrics,
+    require_complete_text,
 )
 from .operational_controls import OperationalConfig, init_operational_controls
 from .semantic_similarity import ResponseGrouper, SemanticSimilarityCalculator
 
 logger = logging.getLogger(__name__)
+
+
+class QuotaExceededError(RuntimeError):
+    """Observed provider usage exceeded the request budget."""
 
 
 class ConsensusStrategy(Enum):
@@ -152,7 +158,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             ValueError: If insufficient valid responses
             asyncio.CancelledError: If execution cancelled due to failures
         """
-        start_time = datetime.now()
+        start_time = perf_counter()
         request_id = task.task_id
 
         # Acquire task execution slot
@@ -174,35 +180,30 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             models = await self._select_models(task)
             logger.info(f"Selected {len(models)} models for consensus: {models}")
 
-            # Estimate tokens for quota check using tiktoken
-            # Use the first model for token counting (they're all similar enough)
-            estimated_tokens = count_tokens(
-                task.content, model_id=models[0] if models else "default"
-            )
-            # Multiply by number of models for total request estimate
-            total_estimated_tokens = estimated_tokens * len(models)
-
-            # Estimate cost - we'll update with actual costs as responses come in
-            # For now, use a conservative estimate based on average pricing
-            # Will be updated with actual costs from model responses
-            estimated_cost_per_token = PricingDefaults.ESTIMATED_TOKEN_PRICE
-            estimated_cost = total_estimated_tokens * estimated_cost_per_token
-
-            # Check quota before proceeding
-            can_proceed, reason = await self.quota_tracker.check_and_increment(
-                request_id, tokens=total_estimated_tokens, cost=estimated_cost
-            )
-            if not can_proceed:
-                raise RuntimeError(f"Quota check failed: {reason}")
-
+            # Each provider call reserves its own quota exactly once.
             # Get responses from all models with cancellation support
-            model_responses = await self._get_model_responses(task, models, request_id)
+            required_models = kwargs.get("min_models", self.config.min_models)
+            if (
+                type(required_models) is not int
+                or not 1 <= required_models <= self.config.max_models
+            ):
+                raise ValueError(
+                    "min_models must be positive and must not exceed max_models"
+                )
+            if len(models) < required_models:
+                raise ValueError(
+                    "Insufficient responses for consensus: "
+                    f"only {len(models)} available models, need {required_models}"
+                )
+            model_responses = await self._get_model_responses(
+                task, models, request_id, min_models=required_models
+            )
 
             # Build consensus
             consensus_result = await self._build_consensus(task, model_responses)
 
             # Update metrics and history with TTL management
-            processing_time = (datetime.now() - start_time).total_seconds()
+            processing_time = perf_counter() - start_time
             consensus_result.processing_time = processing_time
 
             self._update_model_reliability(model_responses, consensus_result)
@@ -251,13 +252,18 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
     async def _select_models(self, task: TaskContext) -> list[str]:
         """Select appropriate models for consensus building."""
         available_models = await self.model_provider.get_available_models()
+        preferred = task.requirements.get("preferred_models")
 
         # Filter excluded models
         eligible_models = [
             model
             for model in available_models
             if model.model_id not in self.config.exclude_models
+            and (not preferred or model.model_id in preferred)
         ]
+        eligible_models = list(
+            {model.model_id: model for model in eligible_models}.values()
+        )
 
         # Sort by relevance to task type and reliability
         scored_models = []
@@ -310,16 +316,23 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             actual_cost_diff = result.cost - estimated_cost
 
             if actual_token_diff != 0 or actual_cost_diff != 0:
-                await self.quota_tracker.check_and_increment(
+                can_proceed, reason = await self.quota_tracker.reconcile_usage(
                     request_id, tokens=actual_token_diff, cost=actual_cost_diff
                 )
+                if not can_proceed:
+                    raise QuotaExceededError(reason)
                 logger.debug(
                     f"Updated quota for {model_id}: "
                     f"token_diff={actual_token_diff}, cost_diff=${actual_cost_diff:.6f}"
                 )
 
     async def _get_model_responses(
-        self, task: TaskContext, model_ids: list[str], request_id: str
+        self,
+        task: TaskContext,
+        model_ids: list[str],
+        request_id: str,
+        *,
+        min_models: int | None = None,
     ) -> list[ModelResponse]:
         """Get responses from all selected models with concurrency control."""
 
@@ -368,6 +381,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                     estimated_tokens,
                     estimated_cost,
                 )
+                require_complete_text(result)
 
                 weight = self.config.model_weights.get(model_id, 1.0)
                 reliability = self.model_reliability.get(model_id, 1.0)
@@ -378,6 +392,12 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
                     weight=weight,
                     reliability_score=reliability,
                 )
+
+            except QuotaExceededError:
+                await self.cancellation_manager.cancel_all_tasks(
+                    request_id, "Observed usage exceeded quota"
+                )
+                raise
 
             except asyncio.CancelledError:
                 logger.info(f"Model {model_id} call cancelled")
@@ -408,6 +428,9 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
         responses = await asyncio.gather(*tasks, return_exceptions=True)
 
         raise_first_fatal_result(responses)
+        for response in responses:
+            if isinstance(response, QuotaExceededError):
+                raise response
 
         # Filter out failed responses
         valid_responses = [
@@ -418,10 +441,11 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
 
         logger.info(f"Got {len(valid_responses)}/{len(model_ids)} valid responses")
 
-        if len(valid_responses) < self.config.min_models:
+        required_models = self.config.min_models if min_models is None else min_models
+        if len(valid_responses) < required_models:
             raise ValueError(
                 f"Insufficient responses for consensus: got {len(valid_responses)}, "
-                f"need at least {self.config.min_models}"
+                f"need at least {required_models}"
             )
 
         return valid_responses
@@ -460,6 +484,7 @@ class ConsensusEngine(CollectiveIntelligenceComponent):
             strategy_used=self.config.strategy,
             processing_time=0.0,
             quality_metrics=quality_metrics,
+            metadata={"quality_evaluation": "not_evaluated"},
         )
 
     def _majority_vote_consensus(

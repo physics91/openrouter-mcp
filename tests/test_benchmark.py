@@ -385,7 +385,7 @@ class TestBenchmarkHandler:
         mock_client.chat_completion.side_effect = [
             {
                 "choices": [{"message": {"content": "Success"}}],
-                "usage": {"total_tokens": 20},
+                "usage": {"total_tokens": 20, "cost": 0.001},
             },
             Exception("API Error"),
         ]
@@ -649,13 +649,14 @@ class TestAdvancedBenchmarkHandler:
     async def test_quality_assessment(self, enhanced_handler):
         """Test response quality assessment."""
         # This will fail initially - we need to implement quality assessment
-        response_text = "Quantum computing is a revolutionary technology that uses quantum bits..."
+        response_text = (
+            "Quantum computing is a revolutionary technology that uses quantum bits..."
+        )
         quality_score = enhanced_handler.assess_response_quality(
             prompt="Explain quantum computing", response=response_text
         )
 
-        assert 0 <= quality_score <= 1
-        assert quality_score > 0.5  # Should be decent quality
+        assert quality_score is None
 
     @pytest.mark.asyncio
     async def test_detailed_cost_calculation_from_api(self, enhanced_handler):
@@ -731,7 +732,9 @@ class TestAdvancedBenchmarkHandler:
             finally:
                 active_calls -= 1
 
-        with patch.object(enhanced_handler, "benchmark_model", side_effect=tracked_benchmark):
+        with patch.object(
+            enhanced_handler, "benchmark_model", side_effect=tracked_benchmark
+        ):
             results = await enhanced_handler.benchmark_models_enhanced(
                 model_ids=model_ids,
                 prompt="Run enhanced concurrently",
@@ -794,7 +797,9 @@ class TestNewBenchmarkTools:
             # Test markdown export - needs actual result objects not dict
             md_path = os.path.join(temp_dir, "test_report.md")
             # Create a simplified dict for markdown export with first result from each model
-            markdown_results = {model: results[0] for model, results in comparison.results.items()}
+            markdown_results = {
+                model: results[0] for model, results in comparison.results.items()
+            }
             await exporter.export_markdown(markdown_results, md_path)
             assert os.path.exists(md_path)
 
@@ -825,7 +830,8 @@ class TestBenchmarkIntegration:
             "Explain quantum computing", high_quality_response.strip()
         )
 
-        assert analysis["quality_score"] > 0.7
+        assert analysis["quality_score"] is None
+        assert analysis["text_heuristic_score"] > 0.7
         assert analysis["response_length"] > 200
         assert analysis["contains_code_example"] is False
         assert analysis["language_coherence_score"] > 0.6
@@ -849,7 +855,10 @@ class TestBenchmarkIntegration:
         This creates a Bell state, demonstrating quantum entanglement.
         """
 
-        code_analysis = analyzer.analyze_response("Show me quantum code", code_response.strip())
+        code_analysis = analyzer.analyze_response(
+            "Show me quantum code", code_response.strip()
+        )
 
         assert code_analysis["contains_code_example"] is True
-        assert code_analysis["quality_score"] > 0.6
+        assert code_analysis["quality_score"] is None
+        assert code_analysis["text_heuristic_score"] > 0.6

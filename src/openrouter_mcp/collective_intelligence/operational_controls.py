@@ -294,6 +294,31 @@ class QuotaTracker:
         while self.hour_calls and self.hour_calls[0] < hour_ago:
             self.hour_calls.popleft()
 
+    async def reconcile_usage(
+        self, request_id: str, *, tokens: int, cost: float
+    ) -> tuple[bool, str]:
+        """Replace reserved usage with observed deltas without counting a new call.
+
+        These resources have already been spent, so retain them even on overage.
+        Future reservations see the updated totals and are refused when over quota.
+        """
+        async with self._lock:
+            total_tokens = max(0, self.request_tokens.get(request_id, 0) + tokens)
+            total_cost = max(0.0, self.request_costs.get(request_id, 0.0) + cost)
+            self.request_tokens[request_id] = total_tokens
+            self.request_costs[request_id] = total_cost
+            if total_tokens > self.config.max_tokens_per_request:
+                return (
+                    False,
+                    f"Token quota exceeded: {total_tokens}/{self.config.max_tokens_per_request} tokens",
+                )
+            if total_cost > self.config.max_cost_per_request:
+                return (
+                    False,
+                    f"Cost quota exceeded: ${total_cost:.4f}/${self.config.max_cost_per_request:.2f}",
+                )
+            return True, ""
+
     def reset_request(self, request_id: str) -> None:
         """Reset counters for a specific request."""
         self.request_calls.pop(request_id, None)

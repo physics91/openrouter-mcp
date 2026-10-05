@@ -34,7 +34,7 @@ async def test_peer_review_propagates_fatal_signal_after_sibling_completion(
         return ProcessingResult(
             task_id=validation_task.task_id,
             model_id=validator_model_id,
-            content="No errors found",
+            content='{"scores":{"accuracy":0.9,"consistency":0.9,"completeness":0.9,"relevance":0.9},"issues":[]}',
             confidence=0.9,
         )
 
@@ -75,7 +75,7 @@ async def test_peer_review_keeps_child_cancellation_in_failure_metadata(
         return ProcessingResult(
             task_id=validation_task.task_id,
             model_id=validator_model_id,
-            content="No errors found",
+            content='{"scores":{"accuracy":0.9,"consistency":0.9,"completeness":0.9,"relevance":0.9},"issues":[]}',
             confidence=0.9,
         )
 

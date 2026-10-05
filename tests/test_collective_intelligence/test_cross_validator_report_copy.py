@@ -56,7 +56,7 @@ def test_copy_validation_report_with_strategy_preserves_existing_copy_contract(
     assert copied.recommendations is recommendations
     assert copied.revised_content is None
     assert copied.validation_time == 0.0
-    assert copied.metadata == {}
+    assert copied.metadata == source.metadata
     assert copied.metadata is not source.metadata
     assert copied.timestamp != source.timestamp
     assert source.validation_strategy is ValidationStrategy.PEER_REVIEW
