@@ -1,6 +1,7 @@
 # Semgrep is installed in an isolated venv because its dependency pins conflict
 # with pip-audit in the shared security scanner environment.
-semgrep==1.161.0
+semgrep==1.179.0
 
 # Transitive vulnerability floor for Semgrep's MCP dependency.
-python-multipart>=0.0.26
+python-multipart>=0.0.31
+PyJWT>=2.15.1

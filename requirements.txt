@@ -4,8 +4,26 @@ python-dotenv>=1.2.2
 pydantic>=2.11.7
 
 # Transitive vulnerability floor for FastMCP request parsing.
-python-multipart>=0.0.26
+python-multipart>=0.0.31
 typing-extensions>=4.15.0
-Pillow>=12.2.0
+Pillow>=12.3.0
 portalocker>=2.8.0
 tiktoken>=0.5.0
+
+# Runtime version verification uses FastMCP's existing PEP 440 parser.
+packaging>=24.0
+
+# Security floors for transitive runtime dependencies (reviewed 2026-10-05).
+# Keep startup validation effective when installing into an existing environment.
+mcp>=1.30.0,<2
+anyio>=4.14.2
+authlib>=1.6.12
+certifi>=2024.7.4
+click>=8.3.3
+cryptography>=50.0.0
+idna>=3.15
+pydantic-settings>=2.14.2
+Pygments>=2.20.0
+PyJWT>=2.15.1
+requests>=2.33.0
+starlette>=1.3.1
